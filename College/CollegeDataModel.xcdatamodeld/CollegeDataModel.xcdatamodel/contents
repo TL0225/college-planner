@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23173" systemVersion="24C57" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithSwiftData="YES" userDefinedModelVersionIdentifier="">
+    <entity name="SemesterEntity" representedClassName="SemesterEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="year" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="season" optional="NO" attributeType="String"/>
+        <attribute name="seasonOrder" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="isPlanned" optional="NO" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <relationship name="courses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CourseEntity" inverseName="semester" inverseEntity="CourseEntity"/>
+        <relationship name="calendarEvents" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CalendarEventEntity" inverseName="semester" inverseEntity="CalendarEventEntity"/>
+        <relationship name="tasks" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="TaskEntity" inverseName="semester" inverseEntity="TaskEntity"/>
+        <relationship name="plan" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="PlanEntity" inverseName="semesters" inverseEntity="PlanEntity"/>
+    </entity>
+    <entity name="PlanEntity" representedClassName="PlanEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="type" optional="NO" attributeType="String"/>
+        <attribute name="major" optional="YES" attributeType="String"/>
+        <attribute name="minor" optional="YES" attributeType="String"/>
+        <attribute name="concentration" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="semesters" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SemesterEntity" inverseName="plan" inverseEntity="SemesterEntity"/>
+    </entity>
+    <entity name="CourseEntity" representedClassName="CourseEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="code" optional="NO" attributeType="String"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="credits" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="status" optional="NO" attributeType="String" defaultValueString="Planned"/>
+        <attribute name="gradingType" optional="NO" attributeType="String" defaultValueString="Letter Grade"/>
+        <attribute name="professor" optional="YES" attributeType="String"/>
+        <attribute name="isCompleted" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="countsTowardGenEd" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="grade" optional="YES" attributeType="String"/>
+        <attribute name="syllabusFileName" optional="YES" attributeType="String"/>
+        <attribute name="sortOrder" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="semester" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="SemesterEntity" inverseName="courses" inverseEntity="SemesterEntity"/>
+        <relationship name="catalogCourse" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CourseCatalogEntity" inverseName="enrollments" inverseEntity="CourseCatalogEntity"/>
+        <relationship name="calendarEvents" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CalendarEventEntity" inverseName="course" inverseEntity="CalendarEventEntity"/>
+        <relationship name="tasks" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="TaskEntity" inverseName="course" inverseEntity="TaskEntity"/>
+    </entity>
+
+    <entity name="CalendarEventEntity" representedClassName="CalendarEventEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <attribute name="startDate" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="endDate" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="allDay" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="semester" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SemesterEntity" inverseName="calendarEvents" inverseEntity="SemesterEntity"/>
+        <relationship name="course" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CourseEntity" inverseName="calendarEvents" inverseEntity="CourseEntity"/>
+    </entity>
+
+    <entity name="TaskEntity" representedClassName="TaskEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <attribute name="dueDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="isCompleted" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="completedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="priority" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="createdAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="semester" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="SemesterEntity" inverseName="tasks" inverseEntity="SemesterEntity"/>
+        <relationship name="course" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="CourseEntity" inverseName="tasks" inverseEntity="CourseEntity"/>
+    </entity>
+    <entity name="CourseCatalogEntity" representedClassName="CourseCatalogEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="courseCode" optional="NO" attributeType="String"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+        <attribute name="descriptionText" optional="YES" attributeType="String"/>
+        <attribute name="credits" optional="NO" attributeType="Integer 16" defaultValueString="3" usesScalarValueType="YES"/>
+        <attribute name="creditsValue" optional="YES" attributeType="Double" usesScalarValueType="YES"/>
+        <attribute name="department" optional="YES" attributeType="String"/>
+        <attribute name="prerequisiteCodes" optional="YES" attributeType="String"/>
+        <attribute name="prerequisiteRulesJSON" optional="YES" attributeType="String"/>
+        <attribute name="prerequisiteParsingStatus" optional="YES" attributeType="String"/>
+        <attribute name="prerequisiteValidationStatus" optional="YES" attributeType="String"/>
+        <attribute name="prerequisiteConfidence" optional="YES" attributeType="String"/>
+        <attribute name="invalidPrerequisiteCodes" optional="YES" attributeType="String"/>
+        <attribute name="corequisiteCodes" optional="YES" attributeType="String"/>
+        <attribute name="typicallyOffered" optional="YES" attributeType="String"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="isArchived" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <relationship name="university" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="UniversityEntity" inverseName="courses" inverseEntity="UniversityEntity"/>
+        <relationship name="enrollments" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CourseEntity" inverseName="catalogCourse" inverseEntity="CourseEntity"/>
+        <relationship name="departmentEntity" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="DepartmentEntity" inverseName="courses" inverseEntity="DepartmentEntity"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraintElement propertyName="university"/>
+                <constraintElement propertyName="courseCode"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
+    <entity name="CourseOverrideEntity" representedClassName="CourseOverrideEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="courseCode" optional="NO" attributeType="String"/>
+        <attribute name="courseName" optional="YES" attributeType="String"/>
+        <attribute name="credits" optional="YES" attributeType="Double" usesScalarValueType="YES"/>
+        <attribute name="status" optional="YES" attributeType="String"/>
+        <attribute name="gradingType" optional="YES" attributeType="String"/>
+        <attribute name="professor" optional="YES" attributeType="String"/>
+        <attribute name="semesterText" optional="YES" attributeType="String"/>
+        <attribute name="grade" optional="YES" attributeType="String"/>
+        <attribute name="externalURL" optional="YES" attributeType="String"/>
+        <attribute name="syllabusFileName" optional="YES" attributeType="String"/>
+        <attribute name="syllabusFileBookmarkData" optional="YES" attributeType="Binary"/>
+        <attribute name="syllabusFileSizeBytes" optional="YES" attributeType="Integer 64" usesScalarValueType="YES"/>
+        <attribute name="syllabusUploadedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="university" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="UniversityEntity" inverseName="courseOverrides" inverseEntity="UniversityEntity"/>
+    </entity>
+    <entity name="UniversityEntity" representedClassName="UniversityEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="shortName" optional="YES" attributeType="String"/>
+        <attribute name="catalogURL" optional="YES" attributeType="String"/>
+        <attribute name="lastCatalogSync" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="catalogFormat" optional="YES" attributeType="String"/>
+        <attribute name="isActive" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <relationship name="courses" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CourseCatalogEntity" inverseName="university" inverseEntity="CourseCatalogEntity"/>
+        <relationship name="courseOverrides" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CourseOverrideEntity" inverseName="university" inverseEntity="CourseOverrideEntity"/>
+        <relationship name="courseScrapeStates" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="CatalogScrapeStateEntity" inverseName="university" inverseEntity="CatalogScrapeStateEntity"/>
+        <relationship name="degreeRequirements" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DegreeRequirementEntity" inverseName="university" inverseEntity="DegreeRequirementEntity"/>
+        <relationship name="departments" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="DepartmentEntity" inverseName="university" inverseEntity="DepartmentEntity"/>
+        <relationship name="majors" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MajorEntity" inverseName="university" inverseEntity="MajorEntity"/>
+    </entity>
+
+    <entity name="CatalogScrapeStateEntity" representedClassName="CatalogScrapeStateEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="catoid" optional="NO" attributeType="String"/>
+        <attribute name="catalogTitle" optional="YES" attributeType="String"/>
+        <attribute name="courseCount" optional="NO" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="lastScrapedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="university" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="UniversityEntity" inverseName="courseScrapeStates" inverseEntity="UniversityEntity"/>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraintElement propertyName="university"/>
+                <constraintElement propertyName="catoid"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
+    <entity name="DepartmentEntity" representedClassName="DepartmentEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="code" optional="YES" attributeType="String"/>
+        <attribute name="school" optional="YES" attributeType="String"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="university" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="UniversityEntity" inverseName="departments" inverseEntity="UniversityEntity"/>
+        <relationship name="majors" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="MajorEntity" inverseName="departments" inverseEntity="MajorEntity"/>
+        <relationship name="courses" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="CourseCatalogEntity" inverseName="departmentEntity" inverseEntity="CourseCatalogEntity"/>
+    </entity>
+    <entity name="MajorEntity" representedClassName="MajorEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="NO" attributeType="String"/>
+        <attribute name="degreeLevel" optional="NO" attributeType="String"/>
+        <attribute name="degreeType" optional="YES" attributeType="String"/>
+        <attribute name="isMinor" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="programURL" optional="YES" attributeType="String"/>
+        <attribute name="programURLs" optional="YES" attributeType="String"/>
+        <attribute name="sourceCatoids" optional="YES" attributeType="String"/>
+        <attribute name="resolvedDepartment" optional="YES" attributeType="String"/>
+        <attribute name="resolvedCollege" optional="YES" attributeType="String"/>
+        <attribute name="mappingConfidence" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="mappingSource" optional="YES" attributeType="String"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="university" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="UniversityEntity" inverseName="majors" inverseEntity="UniversityEntity"/>
+        <relationship name="departments" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="DepartmentEntity" inverseName="majors" inverseEntity="DepartmentEntity"/>
+    </entity>
+    <entity name="DegreeRequirementEntity" representedClassName="DegreeRequirementEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="degreeType" optional="NO" attributeType="String"/>
+        <attribute name="major" optional="NO" attributeType="String"/>
+        <attribute name="programURL" optional="YES" attributeType="String"/>
+        <attribute name="requirementCategory" optional="NO" attributeType="String"/>
+        <attribute name="sectionOrder" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="requiredCourses" optional="YES" attributeType="String"/>
+        <attribute name="requiredCoursesDetailedJSON" optional="YES" attributeType="String"/>
+        <attribute name="selectFromJSON" optional="YES" attributeType="String"/>
+        <attribute name="selectFromDetailedJSON" optional="YES" attributeType="String"/>
+        <attribute name="selectCount" optional="YES" attributeType="Integer 16" usesScalarValueType="YES"/>
+        <attribute name="creditsRequired" optional="NO" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="descriptionText" optional="YES" attributeType="String"/>
+        <attribute name="requirementsHash" optional="YES" attributeType="String"/>
+        <attribute name="lastScrapedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastUpdated" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="university" optional="NO" maxCount="1" deletionRule="Nullify" destinationEntity="UniversityEntity" inverseName="degreeRequirements" inverseEntity="UniversityEntity"/>
+    </entity>
+    <entity name="ProfileEntity" representedClassName="ProfileEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <attribute name="degreeLevel" optional="YES" attributeType="String" defaultValueString="Undergraduate"/>
+        <attribute name="degreeType" optional="YES" attributeType="String" defaultValueString="Bachelor of Science (BS)"/>
+        <attribute name="major" optional="YES" attributeType="String"/>
+        <attribute name="secondaryMajor" optional="YES" attributeType="String"/>
+        <attribute name="minor" optional="YES" attributeType="String"/>
+        <attribute name="gpa" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="classStanding" optional="YES" attributeType="String"/>
+        <attribute name="expectedGraduation" optional="YES" attributeType="String"/>
+        <attribute name="collegeName" optional="YES" attributeType="String"/>
+        <attribute name="department" optional="YES" attributeType="String"/>
+        <attribute name="savedSelectionsJSON" optional="YES" attributeType="String"/>
+        <attribute name="profilePhotoData" optional="YES" attributeType="Binary"/>
+        <attribute name="transcriptFileName" optional="YES" attributeType="String"/>
+        <attribute name="transcriptData" optional="YES" attributeType="Binary"/>
+        <attribute name="transcriptUploadDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <relationship name="experiences" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ExperienceEntity" inverseName="profile" inverseEntity="ExperienceEntity"/>
+        <relationship name="achievements" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="AchievementEntity" inverseName="profile" inverseEntity="AchievementEntity"/>
+    </entity>
+    <entity name="ExperienceEntity" representedClassName="ExperienceEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <attribute name="company" optional="YES" attributeType="String"/>
+        <attribute name="location" optional="YES" attributeType="String"/>
+        <attribute name="startDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="endDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="isCurrent" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="descriptionText" optional="YES" attributeType="String"/>
+        <relationship name="profile" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ProfileEntity" inverseName="experiences" inverseEntity="ProfileEntity"/>
+    </entity>
+    <entity name="AchievementEntity" representedClassName="AchievementEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="name" optional="YES" attributeType="String"/>
+        <attribute name="organization" optional="YES" attributeType="String"/>
+        <attribute name="dateReceived" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="amount" optional="YES" attributeType="String"/>
+        <attribute name="descriptionText" optional="YES" attributeType="String"/>
+        <attribute name="url" optional="YES" attributeType="String"/>
+        <relationship name="profile" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ProfileEntity" inverseName="achievements" inverseEntity="ProfileEntity"/>
+    </entity>
+
+    <entity name="VaultDocumentEntity" representedClassName="VaultDocumentEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="fileName" optional="NO" attributeType="String"/>
+        <attribute name="category" optional="NO" attributeType="String" defaultValueString="Other"/>
+        <attribute name="addedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="fileSizeBytes" optional="NO" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="localRelativePath" optional="NO" attributeType="String"/>
+        <attribute name="source" optional="YES" attributeType="String"/>
+    </entity>
+</model>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>College uses your location to estimate travel time to event locations.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st</string>
+			</array>
+		</dict>
+	</array>
+	<key>GOOGLE_CLIENT_ID</key>
+	<string>500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st.apps.googleusercontent.com</string>
+	<key>GOOGLE_REDIRECT_URI</key>
+	<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st:/oauth2redirect</string>
+</dict>
+</plist>

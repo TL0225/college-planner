@@ -1,0 +1,1049 @@
+import SwiftUI
+
+struct AcademicIdentityView: View {
+    @EnvironmentObject var coreDataManager: CoreDataManager
+    @ObservedObject var profile: ProfileEntity
+
+    private let githubService = GitHubDataService()
+    private let scraperService = WebScraperService()
+    
+    // Fallback lists in case catalog not downloaded yet
+    // NOTE: Once a catalog is available for a school, the dropdowns should reflect *only* scraped programs.
+    // These fallbacks are intentionally used only when there is no downloaded catalog.
+    let fallbackMajors = ["Computer Science", "Business Administration", "Biology", "Psychology", "Engineering", "Mathematics", "English", "History", "Chemistry", "Physics", "Economics", "Political Science", "Sociology", "Art", "Music", "Nursing", "Education", "Communications", "Philosophy", "Other"]
+    
+    let fallbackMinors = ["Computer Science", "Business", "Mathematics", "Statistics", "Data Science", "Economics", "Psychology", "Biology", "Chemistry", "Physics", "English", "History", "Art", "Music", "Philosophy", "Political Science", "Sociology", "Communications", "Other"]
+    
+    // Dynamic class standings based on degree level
+    private var classStandings: [String] {
+        let currentLevel = profile.degreeLevel ?? "Undergraduate"
+        return DegreeConfiguration.classStandings(for: currentLevel)
+    }
+    
+    // Available degree types from catalog (or fallback to hardcoded)
+    private var availableDegreeTypes: [String] {
+        guard let collegeName = profile.collegeName, !collegeName.isEmpty else {
+            // Fallback to hardcoded types if no college selected
+            let currentLevel = profile.degreeLevel ?? "Undergraduate"
+            return DegreeConfiguration.types(for: currentLevel)
+        }
+        
+        let degreeLevel = profile.degreeLevel ?? "Undergraduate"
+        let typesFromCatalog = coreDataManager.fetchDegreeTypes(for: collegeName, degreeLevel: degreeLevel)
+        
+        // If no types found in catalog, fall back to hardcoded
+        if typesFromCatalog.isEmpty {
+            return DegreeConfiguration.types(for: degreeLevel)
+        }
+        
+        return typesFromCatalog
+    }
+
+    @State private var collegeNameDraft: String = ""
+    @State private var availableSchools: [SchoolManifest] = []
+    @State private var isLoadingSchools: Bool = false
+    @State private var schoolsLoadError: String?
+    @State private var showCollegeSuggestions: Bool = false
+    
+    @State private var isDownloadingCatalog: Bool = false
+    @State private var catalogDownloadMessage: String?
+    @State private var showCatalogStatus: Bool = false
+    
+    // Computed properties for dynamic major/minor lists from Core Data
+    private var availableDepartments: [String] {
+        guard let collegeName = profile.collegeName, !collegeName.isEmpty else {
+            return []
+        }
+        // Clean department names when loading from Core Data
+        let departments = coreDataManager.fetchDepartments(for: collegeName)
+        var cleanedSet = Set<String>()
+        for dept in departments {
+            let cleaned = cleanDepartmentName(dept)
+            if !cleaned.isEmpty {
+                cleanedSet.insert(cleaned)
+            }
+        }
+        return Array(cleanedSet).sorted()
+    }
+
+    private var availableDepartmentGroups: [(group: String, departments: [String])] {
+        guard let collegeName = profile.collegeName, !collegeName.isEmpty else { return [] }
+        let groups = coreDataManager.fetchDepartmentGroups(for: collegeName)
+        
+        // Clean and deduplicate department names within each group
+        return groups.map { group in
+            var cleanedSet = Set<String>()
+            for dept in group.departments {
+                let cleaned = cleanDepartmentName(dept)
+                if !cleaned.isEmpty {
+                    cleanedSet.insert(cleaned)
+                }
+            }
+            return (group: group.group, departments: Array(cleanedSet).sorted())
+        }.filter { !$0.departments.isEmpty } // Remove empty groups
+    }
+    
+    // Helper to map cleaned department name back to original for Core Data queries
+    private func getOriginalDepartmentName(_ cleanedName: String, collegeName: String) -> String? {
+        let groups = coreDataManager.fetchDepartmentGroups(for: collegeName)
+        for group in groups {
+            for originalDept in group.departments {
+                if cleanDepartmentName(originalDept) == cleanedName {
+                    return originalDept
+                }
+            }
+        }
+        return nil
+    }
+    
+    private var availableMajors: [String] {
+        guard let collegeName = profile.collegeName, !collegeName.isEmpty else { return fallbackMajors }
+
+        // If we have a downloaded catalog, show ONLY scraped majors.
+        if coreDataManager.hasUniversityCatalog(name: collegeName) {
+            let degreeLevel = profile.degreeLevel ?? "Undergraduate"
+            let degreeType = profile.degreeType
+
+            // If the user has selected a department/college, prefer showing *only* majors under it.
+            if let selectedDept = profile.department, !selectedDept.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                // Try with original department name first (in case it was cleaned for display)
+                let originalDept = getOriginalDepartmentName(selectedDept, collegeName: collegeName) ?? selectedDept
+                
+                let majorsForDept = coreDataManager.fetchMajors(
+                    for: collegeName,
+                    degreeLevel: degreeLevel,
+                    department: originalDept,
+                    degreeType: degreeType,
+                    includeMinors: false
+                )
+
+                // If we can find majors for this department, show only those.
+                if !majorsForDept.isEmpty {
+                    return majorsForDept
+                }
+
+                // Fallback: some catalogs don’t provide a reliable mapping between program and department/college.
+                // In that case, avoid an empty menu by showing all majors for the degree level/type.
+                return coreDataManager.fetchMajors(
+                    for: collegeName,
+                    degreeLevel: degreeLevel,
+                    department: nil,
+                    degreeType: degreeType,
+                    includeMinors: false
+                )
+            }
+
+            // No department selected: show all majors for the degree level/type.
+            return coreDataManager.fetchMajors(
+                for: collegeName,
+                degreeLevel: degreeLevel,
+                department: nil,
+                degreeType: degreeType,
+                includeMinors: false
+            )
+        }
+
+        // Otherwise, use fallback.
+        return fallbackMajors
+    }
+    
+    private var availableMinors: [String] {
+        guard let collegeName = profile.collegeName, !collegeName.isEmpty else {
+            return ["None"] + fallbackMinors
+        }
+
+        // If we have a downloaded catalog, show ONLY scraped minors.
+        if coreDataManager.hasUniversityCatalog(name: collegeName) {
+            let degreeLevel = profile.degreeLevel ?? "Undergraduate"
+            let minorsFromCatalog = coreDataManager.fetchMinors(
+                for: collegeName,
+                degreeLevel: degreeLevel
+            )
+            // Avoid showing "None" twice if it ends up in the catalog list.
+            let cleaned = minorsFromCatalog.filter { $0.lowercased() != "none" }
+            return ["None"] + cleaned
+        }
+
+        // Otherwise, use fallback.
+        return ["None"] + fallbackMinors
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack {
+                Label("Academic Identity", systemImage: "building.columns.fill")
+                    .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                    .foregroundColor(DesignSystem.Colors.textMain)
+                Spacer()
+            }
+            
+            VStack(spacing: 16) {
+                HStack(spacing: 16) {
+                    // Expected Graduation - Editable
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("EXPECTED GRAD")
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                            .foregroundColor(DesignSystem.Colors.textLight)
+                        
+                        TextField("May 2025", text: Binding(
+                            get: { profile.expectedGraduation ?? "" },
+                            set: { profile.expectedGraduation = $0; coreDataManager.save() }
+                        ))
+                        .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .textFieldStyle(PlainTextFieldStyle())
+                        .padding()
+                        .background(DesignSystem.Colors.bgMain)
+                        .cornerRadius(12)
+                    }
+                    
+                    // Class Standing - Dropdown with color coding
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("CLASS STANDING")
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                            .foregroundColor(DesignSystem.Colors.textLight)
+                        
+                        Picker("", selection: Binding(
+                            get: { profile.classStanding ?? "Junior" },
+                            set: { profile.classStanding = $0; coreDataManager.save() }
+                        )) {
+                            ForEach(classStandings, id: \.self) { standing in
+                                Text(standing).tag(standing)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(classStandingColor(for: profile.classStanding ?? "Junior").opacity(0.1))
+                        .cornerRadius(12)
+                        .overlay(
+                            HStack {
+                                Text(profile.classStanding ?? "Select")
+                                    .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                                    .foregroundColor(classStandingColor(for: profile.classStanding ?? "Junior"))
+                                Spacer()
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(classStandingColor(for: profile.classStanding ?? "Junior"))
+                            }
+                            .padding()
+                            .allowsHitTesting(false)
+                        )
+                    }
+                }
+                
+                HStack(spacing: 16) {
+                    // College Name - Editable with white text
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("College Name")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                            .foregroundColor(DesignSystem.Colors.textMain)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            TextField("Enter college name", text: $collegeNameDraft)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .font(DesignSystem.Fonts.main(size: 14))
+                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .padding()
+                                .background(Color.clear)
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                                )
+                                .onChange(of: collegeNameDraft) {
+                                    // Keep profile updated as the user types
+                                    profile.collegeName = collegeNameDraft
+                                    coreDataManager.save()
+
+                                    // Show suggestions only when there's input
+                                    showCollegeSuggestions = !collegeNameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                }
+                                .onSubmit {
+                                    showCollegeSuggestions = false
+                                }
+
+                            // Inline helper row: refresh + status
+                            HStack(spacing: 8) {
+                                Button {
+                                    Task { await refreshSchoolsList() }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                        Text(isLoadingSchools ? "Loading..." : "Load schools")
+                                    }
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                                }
+                                .buttonStyle(.plain)
+                                .foregroundColor(DesignSystem.Colors.primary)
+                                .disabled(isLoadingSchools)
+
+                                if let err = schoolsLoadError {
+                                    Text(err)
+                                        .font(DesignSystem.Fonts.main(size: 12))
+                                        .foregroundColor(DesignSystem.Colors.error)
+                                        .lineLimit(1)
+                                } else if !availableSchools.isEmpty {
+                                    Text("\(availableSchools.count) schools")
+                                        .font(DesignSystem.Fonts.main(size: 12))
+                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                }
+
+                                Spacer()
+                            }
+
+                            // Suggestions dropdown
+                            if showCollegeSuggestions {
+                                let matches = filteredSchoolMatches(for: collegeNameDraft)
+
+                                if matches.isEmpty {
+                                    Text(isLoadingSchools ? "Loading schools…" : "No matches. Tap ‘Load schools’. ")
+                                        .font(DesignSystem.Fonts.main(size: 12))
+                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                        .padding(.horizontal, 8)
+                                } else {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        ForEach(Array(matches.prefix(6)), id: \.id) { school in
+                                            Button {
+                                                selectSchool(school)
+                                            } label: {
+                                                HStack {
+                                                    VStack(alignment: .leading, spacing: 2) {
+                                                        Text(school.name)
+                                                            .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                                            .foregroundColor(DesignSystem.Colors.textMain)
+                                                        if let short = school.shortName, !short.isEmpty {
+                                                            Text(short)
+                                                                .font(DesignSystem.Fonts.main(size: 12))
+                                                                .foregroundColor(DesignSystem.Colors.textLight)
+                                                        }
+                                                    }
+                                                    Spacer()
+                                                    Image(systemName: "arrow.down.left")
+                                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                                }
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 8)
+                                            }
+                                            .buttonStyle(.plain)
+
+                                            Divider()
+                                        }
+                                    }
+                                    .background(DesignSystem.Colors.surface)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                                    )
+                                }
+                            }
+                            
+                            // Catalog download status
+                            if showCatalogStatus, let message = catalogDownloadMessage {
+                                HStack(spacing: 8) {
+                                    if isDownloadingCatalog {
+                                        ProgressView()
+                                            .scaleEffect(0.7)
+                                            .frame(width: 14, height: 14)
+                                    }
+                                    Text(message)
+                                        .font(DesignSystem.Fonts.main(size: 12))
+                                        .foregroundColor(
+                                            message.hasPrefix("✓") ? DesignSystem.Colors.success :
+                                            message.hasPrefix("Failed") ? DesignSystem.Colors.error :
+                                            DesignSystem.Colors.textLight
+                                        )
+                                }
+                                .padding(.top, 4)
+                            }
+                        }
+                    }
+                    
+                    // Department - Dynamic dropdown
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Department")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                            .foregroundColor(DesignSystem.Colors.textMain)
+                        
+                        if availableDepartments.isEmpty {
+                            // Show text field if no departments loaded yet
+                            TextField("Enter department", text: Binding(
+                                get: { profile.department ?? "" },
+                                set: { profile.department = $0; coreDataManager.save() }
+                            ))
+                            .textFieldStyle(PlainTextFieldStyle())
+                            .font(DesignSystem.Fonts.main(size: 14))
+                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                            )
+                        } else {
+                            // Show dropdown when departments available
+                            Menu {
+                                Button("Select Department") {
+                                    profile.department = nil
+                                    profile.major = nil
+                                    profile.secondaryMajor = nil
+                                    coreDataManager.save()
+                                }
+
+                                // Grouped Department dropdown: headers are non-selectable.
+                                // Falls back to a single "(Other)" group if no grouping metadata exists.
+                                ForEach(Array(availableDepartmentGroups.enumerated()), id: \.offset) { _, group in
+                                    // Header
+                                    Text(group.group)
+                                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                                        .foregroundColor(DesignSystem.Colors.textLight)
+
+                                    ForEach(group.departments, id: \.self) { dept in
+                                        Button(dept) {
+                                            profile.department = dept
+                                            profile.major = nil
+                                            profile.secondaryMajor = nil
+                                            coreDataManager.save()
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text(profile.department ?? "Select Department")
+                                        .foregroundColor(profile.department == nil ? DesignSystem.Colors.textLight : DesignSystem.Colors.textMain)
+                                        .font(DesignSystem.Fonts.main(size: 14))
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                        .font(.system(size: 12))
+                                }
+                                .padding()
+                                .background(Color.white)
+                                .cornerRadius(12)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // Export catalog modifications button (only show if catalog downloaded)
+                if let collegeName = profile.collegeName, !collegeName.isEmpty,
+                   coreDataManager.hasUniversityCatalog(name: collegeName) {
+                    Button {
+                        exportCatalog()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Export Catalog Modifications")
+                        }
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                        .foregroundColor(DesignSystem.Colors.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(DesignSystem.Colors.secondary.opacity(0.1))
+                        .cornerRadius(10)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Export your local corrections to share with the community")
+                }
+                
+                // Degree Level - First dropdown (Undergraduate, Graduate, Doctorate)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DEGREE LEVEL")
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.textLight)
+                    
+                    Picker("", selection: Binding(
+                        get: { profile.degreeLevel ?? "Undergraduate" },
+                        set: { newLevel in
+                            profile.degreeLevel = newLevel
+                            
+                            // Reset degree type to first option for this level
+                            let types = DegreeConfiguration.types(for: newLevel)
+                            if !types.isEmpty {
+                                profile.degreeType = types[0]
+                            }
+                            
+                            // Update class standing options based on level
+                            let standings = DegreeConfiguration.classStandings(for: newLevel)
+                            if let current = profile.classStanding, !standings.contains(current) {
+                                profile.classStanding = standings.first
+                            }
+                            
+                            // Reset majors and minor when degree level changes
+                            profile.major = nil
+                            profile.secondaryMajor = nil
+                            profile.minor = nil
+                            
+                            coreDataManager.save()
+                        }
+                    )) {
+                        ForEach(DegreeConfiguration.allLevels, id: \.self) { level in
+                            Text(level).tag(level)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(DesignSystem.Colors.bgMain)
+                    .cornerRadius(12)
+                    .overlay(
+                        HStack {
+                            Text(profile.degreeLevel ?? "Undergraduate")
+                                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                                .foregroundColor(DesignSystem.Colors.textMain)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(DesignSystem.Colors.textLight)
+                        }
+                        .padding(.horizontal, 12)
+                        .allowsHitTesting(false)
+                    )
+                }
+                
+                // Degree Type is now automatically set based on the selected major
+                // No manual selection needed
+                /*
+                // Degree Type - Second dropdown (BS, BA, MS, PhD, etc.)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("DEGREE TYPE")
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.textLight)
+                    
+                    Picker("", selection: Binding(
+                        get: { 
+                            // If no degree type is set yet, use the first available one
+                            if let currentType = profile.degreeType, !availableDegreeTypes.isEmpty {
+                                return availableDegreeTypes.contains(currentType) ? currentType : availableDegreeTypes[0]
+                            }
+                            return availableDegreeTypes.first ?? "BS"
+                        },
+                        set: { newType in
+                            profile.degreeType = newType
+                            
+                            // Reset majors when degree type changes (different programs available)
+                            profile.major = nil
+                            profile.secondaryMajor = nil
+                            profile.minor = nil
+                            
+                            coreDataManager.save()
+                        }
+                    )) {
+                        ForEach(availableDegreeTypes, id: \.self) { type in
+                            Text(type).tag(type)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(DesignSystem.Colors.bgMain)
+                    .cornerRadius(12)
+                    .overlay(
+                        HStack {
+                            // Display the degree type (short form if available, or the value itself)
+                            let currentType = profile.degreeType ?? availableDegreeTypes.first ?? "BS"
+                            let displayText = currentType.count <= 5 ? currentType : DegreeConfiguration.shortForm(from: currentType)
+                            Text(displayText)
+                                .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+                                .foregroundColor(DesignSystem.Colors.primary)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(DesignSystem.Colors.textLight)
+                        }
+                        .padding(.horizontal, 12)
+                        .allowsHitTesting(false)
+                    )
+                }
+                */
+                
+                // Primary Major - Dropdown
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Primary Major")
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.textMain)
+                    
+                    Menu {
+                        if availableMajors.isEmpty {
+                            Button("No majors available") { }
+                                .disabled(true)
+                        } else {
+                            ForEach(availableMajors, id: \.self) { major in
+                                Button(major) {
+                                    profile.major = major
+                                    
+                                    // Auto-set degree type based on major
+                                    if let collegeName = profile.collegeName {
+                                        let degreeType = coreDataManager.fetchDegreeType(for: major, universityName: collegeName)
+                                        profile.degreeType = degreeType
+                                    }
+                                    
+                                    coreDataManager.save()
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack {
+                            Text(profile.major ?? "Select Major")
+                                .foregroundColor(profile.major == nil ? DesignSystem.Colors.textLight : DesignSystem.Colors.textMain)
+                                .font(DesignSystem.Fonts.main(size: 14))
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .font(.system(size: 12))
+                        }
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                        )
+                    }
+                }
+                
+                HStack(spacing: 16) {
+                    // Secondary Major - Dropdown
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Secondary Major")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                            .foregroundColor(DesignSystem.Colors.textMain)
+                        
+                        Menu {
+                            Button("None") {
+                                profile.secondaryMajor = nil
+                                coreDataManager.save()
+                            }
+                            if availableMajors.isEmpty {
+                                Button("No majors available") { }
+                                    .disabled(true)
+                            } else {
+                                ForEach(availableMajors, id: \.self) { major in
+                                    Button(major) {
+                                        profile.secondaryMajor = major
+                                        coreDataManager.save()
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(profile.secondaryMajor ?? "Select Secondary Major")
+                                    .foregroundColor(profile.secondaryMajor == nil ? DesignSystem.Colors.textLight : DesignSystem.Colors.textMain)
+                                    .font(DesignSystem.Fonts.main(size: 14))
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(.system(size: 12))
+                            }
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                            )
+                        }
+                    }
+                    
+                    // Minor - Dropdown with searchable
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Minor")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                            .foregroundColor(DesignSystem.Colors.textMain)
+                        
+                        Menu {
+                            Button("None") {
+                                profile.minor = nil
+                                coreDataManager.save()
+                            }
+                            ForEach(availableMinors, id: \.self) { minor in
+                                Button(minor) {
+                                    profile.minor = minor
+                                    coreDataManager.save()
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(profile.minor ?? "None")
+                                    .foregroundColor(profile.minor == nil || profile.minor == "None" ? DesignSystem.Colors.textLight : DesignSystem.Colors.textMain)
+                                    .font(DesignSystem.Fonts.main(size: 14))
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(.system(size: 12))
+                            }
+                            .padding()
+                            .background(Color.white)
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+                .onAppear {
+                    // Initialize the draft from the persisted value
+                    if collegeNameDraft.isEmpty {
+                        collegeNameDraft = profile.collegeName ?? ""
+                    }
+
+                    // Try cached list first so autocomplete works offline
+                    if availableSchools.isEmpty {
+                        availableSchools = githubService.loadCachedSchoolsList() ?? []
+                    }
+                }
+            }
+        }
+        .padding(24)
+        .background(Color.white)
+        .cornerRadius(24)
+        .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
+    }
+
+    // MARK: - Autocomplete helpers
+
+    private func filteredSchoolMatches(for query: String) -> [SchoolManifest] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+
+        // If we don't have schools loaded yet, show nothing (and prompt user to load)
+        guard !availableSchools.isEmpty else { return [] }
+
+        // Prioritize prefix matches, then contains
+        let lowerQ = q.lowercased()
+        let prefix = availableSchools.filter {
+            $0.name.lowercased().hasPrefix(lowerQ) || ($0.shortName?.lowercased().hasPrefix(lowerQ) ?? false)
+        }
+        let contains = availableSchools.filter {
+            $0.name.lowercased().contains(lowerQ) || ($0.shortName?.lowercased().contains(lowerQ) ?? false)
+        }
+
+        // Preserve order while de-duping
+        var seen = Set<String>()
+        var result: [SchoolManifest] = []
+        for s in (prefix + contains) {
+            if seen.insert(s.id).inserted {
+                result.append(s)
+            }
+        }
+        return result
+    }
+
+    @MainActor
+    private func refreshSchoolsList() async {
+        let logger = DebugLogger.shared
+        logger.logSection("REFRESHING SCHOOLS LIST")
+        
+        // **TESTING ONLY**: Delete all old catalog data
+        logger.log("🗑️ [TEST MODE] Deleting all old catalog data...")
+        await MainActor.run {
+            coreDataManager.deleteAllCatalogData()
+        }
+        
+        schoolsLoadError = nil
+        isLoadingSchools = true
+        defer { isLoadingSchools = false }
+
+        do {
+            logger.log("📡 Fetching schools from GitHub...")
+            let schools = try await githubService.fetchSchoolsList()
+            availableSchools = schools
+            
+            logger.log("✅ Loaded \(schools.count) schools:")
+            for school in schools {
+                logger.log("   • \(school.name)")
+                logger.log("     ID: \(school.id)")
+                logger.log("     Catalog URL: \(school.catalogURL ?? "nil")")
+                logger.log("     Format: \(school.catalogFormat)")
+            }
+            try? githubService.cacheSchoolsList(schools)
+        } catch {
+            // Surface the actual error so issues like 404/403/400 show the real cause + URL.
+            schoolsLoadError = error.localizedDescription
+        }
+    }
+
+    private func selectSchool(_ school: SchoolManifest) {
+        // Fill field
+        collegeNameDraft = school.name
+        profile.collegeName = school.name
+        coreDataManager.save()
+
+        showCollegeSuggestions = false
+        
+        // Automatically scrape catalog from school's website
+        Task {
+            await scrapeAndImportCatalog(school: school)
+        }
+    }
+    
+    /// Clean up department names by removing common artifacts
+    private func cleanDepartmentName(_ name: String) -> String {
+        var cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = cleaned.lowercased()
+        
+        // Filter out noise entries
+        if lower.isEmpty || 
+           lower == "learn more about the" || 
+           lower == "program office" || 
+           lower == "program office:" ||
+           lower.count < 3 {
+            return ""
+        }
+        
+        // Remove common artifacts
+        cleaned = cleaned.replacingOccurrences(of: " department page", with: "", options: .caseInsensitive)
+        cleaned = cleaned.replacingOccurrences(of: " page", with: "", options: .caseInsensitive)
+        
+        // Remove " department" suffix UNLESS it's "Department of X"
+        if !lower.hasPrefix("department of") && lower.hasSuffix(" department") {
+            cleaned = cleaned.replacingOccurrences(of: " department", with: "", options: [.caseInsensitive, .anchored, .backwards])
+        }
+        
+        // Trim again after replacements
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return cleaned
+    }
+    
+    /// Scrape course catalog from school's website and import into Core Data
+    private func scrapeAndImportCatalog(school: SchoolManifest) async {
+        let logger = DebugLogger.shared
+        
+        isDownloadingCatalog = true
+        catalogDownloadMessage = "Connecting to \(school.name) catalog..."
+        showCatalogStatus = true
+        
+        logger.logSection("SCRAPING ATTEMPT")
+        logger.log("🔍 Starting scrape for: \(school.name)")
+        logger.log("School ID: \(school.id)")
+        logger.log("Catalog URL: \(school.catalogURL ?? "nil")")
+        logger.log("Catalog Format: \(school.catalogFormat)")
+        
+        do {
+            // Get catalog URL from school manifest
+            guard let catalogURL = school.catalogURL, !catalogURL.isEmpty else {
+                logger.log("❌ catalogURL is nil or empty")
+                catalogDownloadMessage = "Error: No catalog URL configured for \(school.name)"
+                throw ScraperError.invalidURL
+            }
+            
+            logger.log("✓ Validated catalog URL: \(catalogURL)")
+            catalogDownloadMessage = "Scraping courses from \(catalogURL)..."
+            
+            // 1. Scrape courses from the actual school website
+            let courses: [CatalogCourse]
+            
+            logger.log("📋 Starting course extraction...")
+            logger.log("Format: \(school.catalogFormat.lowercased())")
+            
+            switch school.catalogFormat.lowercased() {
+            case "acalog":
+                logger.log("Using Acalog scraper")
+                catalogDownloadMessage = "Detected Acalog system, scraping..."
+                courses = try await scraperService.scrapeAcalog(url: catalogURL)
+            case "banner":
+                logger.log("Using Banner scraper")
+                catalogDownloadMessage = "Detected Banner system, scraping..."
+                courses = try await scraperService.scrapeBanner(url: catalogURL)
+            default:
+                logger.log("Using default (Acalog) scraper")
+                catalogDownloadMessage = "Attempting to scrape catalog..."
+                courses = try await scraperService.scrapeAcalog(url: catalogURL)
+            }
+            
+            logger.log("✅ Found \(courses.count) courses")
+            catalogDownloadMessage = "Found \(courses.count) courses, importing..."
+            
+            // 2. Create SchoolProfile structure with scraped data
+            let schoolProfile = SchoolProfile(
+                schoolID: school.id,
+                schoolName: school.name,
+                catalogURL: catalogURL,
+                version: "1.0.0-scraped",
+                lastUpdated: Date(),
+                courses: courses,
+                degreeRequirements: [], // Will be populated manually or scraped separately
+                policies: SchoolPolicies(
+                    transferCreditLimit: nil,
+                    minorTransferLimit: nil,
+                    maxCreditsPerSemester: nil,
+                    minCreditsForFullTime: nil,
+                    gradeForCredit: nil,
+                    repeatCoursePolicy: nil
+                )
+            )
+            
+            // 3. Import courses into Core Data
+            logger.log("💾 Importing courses to Core Data...")
+            try coreDataManager.importSchoolCatalog(schoolProfile)
+            logger.log("✅ Imported \(courses.count) courses")
+            
+            // 4. Use UniversalCatalogScraper for hierarchy (departments, colleges, majors)
+            catalogDownloadMessage = "Discovering catalog version..."
+            logger.log("🔎 Discovering current catalog ID...")
+
+            // Normalize catalog URL and extract catalog ID hint
+            let (normalizedCatalogURL, catoidHint) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
+            let catalogID = try await (catoidHint != nil ? catoidHint! : ModernCampusEngine.discoverCurrentCatalogID(baseURL: normalizedCatalogURL))
+            logger.log("✅ Using catalog ID: \(catalogID)")
+            
+            catalogDownloadMessage = "Scraping academic programs..."
+            logger.log("� Starting UniversalCatalogScraper...")
+            
+            // Use the production-ready universal scraper
+            let baseURL = URL(string: normalizedCatalogURL)!
+            let universalScraper = UniversalCatalogScraper()
+            let catalogIDInt = Int(catalogID) ?? 0
+            let programs = try await universalScraper.scrapeAllPrograms(baseURL: baseURL, catalogID: catalogIDInt)
+            
+            logger.log("✅ Universal scraper found \(programs.count) programs")
+            
+            // Extract unique departments from scraped programs
+            var departmentSet = Set<String>()
+            var collegeSet = Set<String>()
+            for program in programs {
+                if let dept = program.department {
+                    // Clean up department name before adding to set
+                    let cleanedDept = cleanDepartmentName(dept)
+                    if !cleanedDept.isEmpty {
+                        departmentSet.insert(cleanedDept)
+                    }
+                }
+                if let college = program.college {
+                    collegeSet.insert(college)
+                }
+            }
+            
+            logger.log("✅ Extracted \(departmentSet.count) departments and \(collegeSet.count) colleges")
+            
+            // Save departments with college associations
+            catalogDownloadMessage = "Saving departments and colleges..."
+            let departmentsWithSchools = departmentSet.sorted().map { dept in
+                // Find which college this department belongs to by looking at programs
+                let college = programs.first(where: { $0.department == dept })?.college
+                return (name: dept, code: nil as String?, school: college)
+            }
+            
+            try coreDataManager.saveDepartments(departmentsWithSchools, for: school.name)
+            logger.log("💾 Saved \(departmentsWithSchools.count) departments to Core Data")
+            
+            // Save majors with hierarchy information
+            catalogDownloadMessage = "Saving \(programs.count) programs..."
+            
+            // Convert ScrapedProgram to the tuple format expected by saveMajors
+            let majorsForSaving = programs.map { program -> (
+                name: String,
+                degreeLevel: String,
+                degreeType: String?,
+                isMinor: Bool,
+                department: String?,
+                url: String?,
+                resolvedDepartment: String?,
+                resolvedCollege: String?,
+                mappingConfidence: Double?,
+                mappingSource: String?
+            ) in
+                let isMinor = program.type.lowercased().contains("minor")
+                let degreeLevel = isMinor ? "Minor" : "Undergraduate" // Default to Undergraduate for majors
+                
+                return (
+                    name: program.name,
+                    degreeLevel: degreeLevel,
+                    degreeType: program.degreeType, // Use the extracted degree type (BS, BA, etc.)
+                    isMinor: isMinor,
+                    department: program.department,
+                    url: program.url,
+                    resolvedDepartment: program.department,
+                    resolvedCollege: program.college,
+                    mappingConfidence: 1.0, // High confidence from direct scraping
+                    mappingSource: "UniversalCatalogScraper"
+                )
+            }
+            
+            try coreDataManager.saveMajors(majorsForSaving, for: school.name)
+            logger.log("💾 Saved \(programs.count) programs to Core Data")
+            
+            // 5. Show success
+            logger.log("🎉 SUCCESS! Complete catalog import:")
+            logger.log("   • \(courses.count) courses")
+            logger.log("   • \(departmentsWithSchools.count) departments")
+            logger.log("   • \(programs.count) programs")
+            
+            catalogDownloadMessage = "✓ Successfully imported \(courses.count) courses, \(departmentsWithSchools.count) departments, and \(programs.count) programs from \(school.name)"
+            
+            // Hide success message after 4 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                showCatalogStatus = false
+            }
+            
+        } catch {
+            logger.logError(error)
+            
+            if let scraperError = error as? ScraperError {
+                logger.log("Scraper-specific error: \(scraperError)")
+            }
+            
+            catalogDownloadMessage = "Failed to scrape catalog: \(error.localizedDescription)"
+            
+            // Hide error message after 5 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                showCatalogStatus = false
+            }
+        }
+        
+        isDownloadingCatalog = false
+    }
+    
+    /// Export local catalog modifications as JSON file
+    private func exportCatalog() {
+        guard let collegeName = profile.collegeName else { return }
+        
+        do {
+            let fileURL = try coreDataManager.exportCatalogModifications(for: collegeName)
+            
+            // Open Finder to show the exported file
+            NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+            
+            // Show success message
+            catalogDownloadMessage = "✓ Catalog exported to: \(fileURL.lastPathComponent)"
+            showCatalogStatus = true
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                showCatalogStatus = false
+            }
+        } catch {
+            catalogDownloadMessage = "Failed to export: \(error.localizedDescription)"
+            showCatalogStatus = true
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+                showCatalogStatus = false
+            }
+        }
+    }
+    
+    // Helper function for class standing colors
+    func classStandingColor(for standing: String) -> Color {
+        switch standing {
+        case "Freshman":
+            return Color(hex: "10b981") // Green
+        case "Sophomore":
+            return Color(hex: "3b82f6") // Blue
+        case "Junior":
+            return Color(hex: "f59e0b") // Amber/Orange
+        case "Senior":
+            return Color(hex: "ef4444") // Red
+        default:
+            return DesignSystem.Colors.primary
+        }
+    }
+}

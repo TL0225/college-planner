@@ -1,0 +1,53 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode / Swift
+DerivedData/
+build/
+*.o
+*.a
+*.dSYM/
+*.ipa
+*.app/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Xcode project user data
+*.xcuserdata/
+*.xcuserdatad/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+
+# CocoaPods / Carthage (uncomment if used)
+# Pods/
+# Carthage/Build/
+
+# Fastlane (uncomment if used)
+# fastlane/report.xml
+# fastlane/Preview.html
+# fastlane/screenshots
+# fastlane/test_output
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Profiling / coverage artifacts
+*.profraw
+
+# Local editor/workspace folders
+.cursor/
+.vscode/
+
+# ML / large model artifacts
+*.safetensors
+*.safetensors.*
+Models/llama-*/

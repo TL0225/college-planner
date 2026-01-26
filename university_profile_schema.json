@@ -1,0 +1,224 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "University Course Catalog Profile",
+  "description": "Complete course catalog and degree requirements for a university",
+  "type": "object",
+  "required": ["school_id", "school_name", "catalog_url", "version", "last_updated", "courses", "degree_requirements", "policies"],
+  "properties": {
+    "school_id": {
+      "type": "string",
+      "description": "Unique identifier for the school (e.g., 'rutgers_nb', 'stanford')",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "school_name": {
+      "type": "string",
+      "description": "Full name of the university"
+    },
+    "catalog_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the official course catalog"
+    },
+    "version": {
+      "type": "string",
+      "description": "Academic year (e.g., '2025-2026')"
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this data was last scraped/updated"
+    },
+    "courses": {
+      "type": "array",
+      "description": "All courses offered by the university",
+      "items": {
+        "$ref": "#/definitions/Course"
+      }
+    },
+    "degree_requirements": {
+      "type": "array",
+      "description": "Graduation requirements by major",
+      "items": {
+        "$ref": "#/definitions/DegreeRequirement"
+      }
+    },
+    "policies": {
+      "$ref": "#/definitions/SchoolPolicies"
+    }
+  },
+  "definitions": {
+    "Course": {
+      "type": "object",
+      "required": ["id", "course_code", "title", "credits", "department"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "course_code": {
+          "type": "string",
+          "description": "Course identifier (e.g., 'CS 101', 'MATH 241')",
+          "pattern": "^[A-Z]{2,4}\\s*\\d{3,4}[A-Z]?$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Course title"
+        },
+        "description": {
+          "type": "string",
+          "description": "Full course description"
+        },
+        "credits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12,
+          "description": "Number of credits"
+        },
+        "department": {
+          "type": "string",
+          "description": "Department code (e.g., 'CS', 'MATH')"
+        },
+        "prerequisites": {
+          "$ref": "#/definitions/PrerequisiteRule"
+        },
+        "corequisites": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Courses that must be taken simultaneously"
+        },
+        "typically_offered": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["Fall", "Spring", "Summer", "Winter"]
+          },
+          "description": "Semesters when course is typically offered"
+        }
+      }
+    },
+    "PrerequisiteRule": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["course", "and", "or"],
+          "description": "Type of prerequisite rule"
+        },
+        "course": {
+          "$ref": "#/definitions/CourseRequirement",
+          "description": "Required when type='course'"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PrerequisiteRule"
+          },
+          "description": "Required when type='and' or type='or'"
+        }
+      }
+    },
+    "CourseRequirement": {
+      "type": "object",
+      "required": ["course_code"],
+      "properties": {
+        "course_code": {
+          "type": "string",
+          "description": "Required course code"
+        },
+        "min_grade": {
+          "type": "string",
+          "enum": ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-"],
+          "description": "Minimum grade required"
+        }
+      }
+    },
+    "DegreeRequirement": {
+      "type": "object",
+      "required": ["id", "degree_type", "major", "category", "credits_required"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "degree_type": {
+          "type": "string",
+          "enum": ["Bachelor of Science", "Bachelor of Arts", "Master of Science", "Master of Arts", "Doctor of Philosophy"],
+          "description": "Type of degree"
+        },
+        "major": {
+          "type": "string",
+          "description": "Major name (e.g., 'Computer Science', 'Mathematics')"
+        },
+        "category": {
+          "type": "string",
+          "description": "Requirement category (e.g., 'Core', 'Electives', 'General Education')"
+        },
+        "required_courses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Specific courses required (empty if flexible)"
+        },
+        "credits_required": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of credits required in this category"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of requirement"
+        },
+        "select_from": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of courses to choose from (for elective categories)"
+        },
+        "select_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How many courses to select from select_from list"
+        }
+      }
+    },
+    "SchoolPolicies": {
+      "type": "object",
+      "properties": {
+        "transfer_credit_limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum transfer credits allowed toward degree"
+        },
+        "minor_transfer_limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum transfer credits allowed toward minor"
+        },
+        "max_credits_per_semester": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum credits per semester without overload approval"
+        },
+        "min_credits_full_time": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum credits to be considered full-time"
+        },
+        "grade_for_credit": {
+          "type": "string",
+          "enum": ["D-", "D", "D+", "C-", "C"],
+          "description": "Minimum passing grade to receive credit"
+        },
+        "repeat_course_policy": {
+          "type": "string",
+          "description": "Policy on repeating courses"
+        }
+      }
+    }
+  }
+}
