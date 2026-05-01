@@ -1,0 +1,14 @@
+/Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/deps/serde-36a32c4f174c854c.d: /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/build/serde-52eba04b850bd37d/out/private.rs
+
+/Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/deps/libserde-36a32c4f174c854c.rlib: /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/build/serde-52eba04b850bd37d/out/private.rs
+
+/Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/deps/libserde-36a32c4f174c854c.rmeta: /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/build/serde-52eba04b850bd37d/out/private.rs
+
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/build/serde-52eba04b850bd37d/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/timothy/Desktop/College/rust-core/target/aarch64-apple-darwin/release/build/serde-52eba04b850bd37d/out

@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 import UniformTypeIdentifiers
 
 /// Main-panel content shown when the user clicks "View Details" for their Major.
@@ -6,8 +7,29 @@ import UniformTypeIdentifiers
 /// This view intentionally matches the provided design: header (title + badge + subtitle + actions),
 /// three stat cards, then requirements sections with a table-style list.
 struct MajorMinorDetailsView: View {
+#if DEBUG
+    private static let perfLog = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "College", category: "Perf.Requirements")
+#endif
+    private static let courseCodeRegex = try? NSRegularExpression(
+        pattern: "\\b([A-Z]{2,6})\\s*[-–]?\\s*([0-9]{2,4})\\b"
+    )
+    private static let creditsRequirementRegex = try? NSRegularExpression(
+        pattern: #"\((\d+(?:\.\d+)?)\s*(?:[-–]\s*(\d+(?:\.\d+)?))?\s*credits?\)"#,
+        options: [.caseInsensitive]
+    )
     @EnvironmentObject private var coreDataManager: CoreDataManager
     @EnvironmentObject private var modalCoordinator: ModalCoordinator
+    @FetchRequest(sortDescriptors: [NSSortDescriptor(key: "createdAt", ascending: true)]) private var plans: FetchedResults<PlanEntity>
+    @FetchRequest(fetchRequest: MajorMinorDetailsView.profileFetchRequest) private var profiles: FetchedResults<ProfileEntity>
+
+    private static var profileFetchRequest: NSFetchRequest<ProfileEntity> {
+        let request = NSFetchRequest<ProfileEntity>(entityName: "ProfileEntity")
+        request.fetchLimit = 1
+        request.sortDescriptors = []
+        return request
+    }
+
+    private var profile: ProfileEntity? { profiles.first }
 
     enum ProgramKind {
         case major
@@ -27,6 +49,7 @@ struct MajorMinorDetailsView: View {
     @State private var isGenEdDropTargeted: Bool = false
 
     @State private var isGPACalculatorPresented: Bool = false
+    @State private var removedCourseCodes: Set<String> = []
 
     private var majorTitle: String {
         let s = majorDisplay.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -44,10 +67,10 @@ struct MajorMinorDetailsView: View {
 
     private var majorSubtitle: String {
         // Keep this derived from the profile/department so it stays consistent with what the user selected.
-        let level = (coreDataManager.profile?.degreeLevel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let degreeType = (coreDataManager.profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let department = (coreDataManager.profile?.department ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let university = (coreDataManager.profile?.collegeName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let level = (profile?.degreeLevel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let degreeType = (profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let department = (profile?.department ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let university = (profile?.collegeName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         var left = ""
         if programKind == .minor {
@@ -113,8 +136,16 @@ struct MajorMinorDetailsView: View {
 
             VStack(spacing: 28) {
                 ForEach(dynamicRequirementSections) { section in
-                    let rows = section.rowsOverride ?? buildRows(from: section.requirements)
-                    let completedText = section.completedTextOverride ?? progressText(for: section.requirements)
+                    let claimed = claimedCourseCodes(in: fetchedRequirements)
+
+                    let baseRows = section.rowsOverride ?? buildRows(from: section.requirements)
+                    let rows = filterRemovedRows(
+                        resolvedRowsForOpenEndedSection(baseRows: baseRows, claimedCourseCodes: claimed)
+                    )
+
+                    let creditsRequirement = creditsRequirementForSection(title: section.title, requirements: section.requirements)
+                    let completedCredits = completedCreditsInRows(rows)
+                    let completedText = creditsProgressText(completedCredits: completedCredits, requirement: creditsRequirement)
 
                     let isGenEdSection = (section.id == "gened-manual")
 
@@ -150,6 +181,104 @@ struct MajorMinorDetailsView: View {
                                     defaultCreditsText: row.credits
                                 )
                             )
+                        },
+                        onOpenDashboard: { row in
+                            let normalized = normalizeCode(row.code)
+                            guard !normalized.isEmpty else { return }
+                            guard !normalized.hasPrefix("SELECT ") else { return }
+
+                            modalCoordinator.activeModal = .courseDashboard(
+                                courseCode: normalized,
+                                defaultCourseName: row.title,
+                                defaultCreditsText: row.credits,
+                                courseObjectID: nil
+                            )
+                        },
+                        onDeleteCourse: { code in
+                            let normalized = normalizeCode(code)
+                            if !normalized.isEmpty {
+                                removedCourseCodes.insert(normalized)
+                            }
+                            deletePlannedCourseAndOverrides(for: code)
+                        },
+                        availableSemesters: availablePlanSemesters,
+                        onChangeStatus: { code, newStatus in
+                            let normalized = normalizeCode(code)
+                            guard !normalized.isEmpty else { return }
+                            let existing = courseOverride(for: normalized)
+                            coreDataManager.upsertCourseOverride(
+                                courseCode: normalized,
+                                courseName: existing?.courseName,
+                                credits: existing.map { $0.credits },
+                                professor: existing?.professor,
+                                semesterText: existing?.semesterText,
+                                status: newStatus.displayString,
+                                grade: existing?.grade,
+                                gradingType: existing?.gradingType ?? "Standard",
+                                externalURL: existing?.externalURL
+                            )
+                            if let course = plannedCourse(for: normalized) {
+                                course.status = newStatus.displayString
+                                course.isCompleted = (newStatus == .completed)
+                                coreDataManager.save()
+                            }
+                        },
+                        onChangeSemester: { row, sem in
+                            let normalized = normalizeCode(row.code)
+                            guard !normalized.isEmpty else { return }
+                            if let sem {
+                                if let course = plannedCourse(for: normalized) {
+                                    course.semester = sem
+                                    coreDataManager.save()
+                                } else {
+                                    let creditsInt = Int(row.credits.replacingOccurrences(of: ".0", with: "")) ?? 3
+                                    _ = coreDataManager.addCourse(
+                                        to: sem,
+                                        code: normalized,
+                                        name: row.title,
+                                        credits: creditsInt,
+                                        status: "Planned",
+                                        gradingType: "Standard",
+                                        professor: nil
+                                    )
+                                }
+                                let semLabel: String = {
+                                    let season = (sem.season ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let year = Int(sem.year)
+                                    guard !season.isEmpty, year > 0 else { return "" }
+                                    return "\(season) \(year)"
+                                }()
+                                let existing = courseOverride(for: normalized)
+                                coreDataManager.upsertCourseOverride(
+                                    courseCode: normalized,
+                                    courseName: existing?.courseName,
+                                    credits: existing.map { $0.credits },
+                                    professor: existing?.professor,
+                                    semesterText: semLabel,
+                                    status: existing?.status ?? "Planned",
+                                    grade: existing?.grade,
+                                    gradingType: existing?.gradingType ?? "Standard",
+                                    externalURL: existing?.externalURL
+                                )
+                            } else {
+                                // Unassign: detach from semester
+                                if let course = plannedCourse(for: normalized) {
+                                    course.semester = nil
+                                    coreDataManager.save()
+                                }
+                                let existing = courseOverride(for: normalized)
+                                coreDataManager.upsertCourseOverride(
+                                    courseCode: normalized,
+                                    courseName: existing?.courseName,
+                                    credits: existing.map { $0.credits },
+                                    professor: existing?.professor,
+                                    semesterText: nil,
+                                    status: existing?.status ?? "Not Planned",
+                                    grade: existing?.grade,
+                                    gradingType: existing?.gradingType ?? "Standard",
+                                    externalURL: existing?.externalURL
+                                )
+                            }
                         }
                     )
                 }
@@ -179,23 +308,26 @@ struct MajorMinorDetailsView: View {
         let kind = (programKind == .minor) ? "minor" : "major"
         let dt = (programKind == .minor)
             ? "Minor"
-            : (coreDataManager.profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            : (profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let major = majorDisplay.trimmingCharacters(in: .whitespacesAndNewlines)
         return [kind, dt, major].joined(separator: "|")
     }
 
     @MainActor
     private func refreshRequirementsIfNeeded() async {
+#if DEBUG
+        let spid = OSSignpostID(log: Self.perfLog)
+        os_signpost(.begin, log: Self.perfLog, name: "RequirementsRefresh", signpostID: spid)
+        defer { os_signpost(.end, log: Self.perfLog, name: "RequirementsRefresh", signpostID: spid) }
+#endif
         let logger = DebugLogger.shared
         requirementsError = nil
-        isLoadingRequirements = true
-
-        defer { isLoadingRequirements = false }
+        isLoadingRequirements = false
         
         let isMinor = (programKind == .minor)
         logger.log("[MajorDetails] Starting requirements refresh")
         logger.log("[MajorDetails] kind=\(isMinor ? "minor" : "major") display='\(majorDisplay)'")
-        logger.log("[MajorDetails] Profile degreeType: '\(coreDataManager.profile?.degreeType ?? "nil")'")
+        logger.log("[MajorDetails] Profile degreeType: '\(profile?.degreeType ?? "nil")'")
 
         guard let programURL = coreDataManager.resolveProgramProgramURL(programDisplay: majorDisplay, isMinor: isMinor) else {
             requirementsError = isMinor
@@ -207,9 +339,19 @@ struct MajorMinorDetailsView: View {
 
         let degreeTypeForScrape: String = {
             if isMinor { return "Minor" }
-            let dt = (coreDataManager.profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let dt = (profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             return dt.isEmpty ? "Unknown" : dt
         }()
+
+        // Show whatever we already have cached in Core Data immediately.
+        // Then refresh in the background and update once the refresh completes.
+        let cachedRequirements = coreDataManager.getDegreeRequirements(programURL: programURL, degreeType: degreeTypeForScrape)
+        if !cachedRequirements.isEmpty {
+            fetchedRequirements = cachedRequirements
+            isLoadingRequirements = false
+        } else {
+            isLoadingRequirements = true
+        }
 
         await coreDataManager.refreshProgramRequirementsIfNeeded(
             programURL: programURL,
@@ -218,8 +360,15 @@ struct MajorMinorDetailsView: View {
             force: false
         )
 
+        if Task.isCancelled {
+            isLoadingRequirements = false
+            return
+        }
+
         fetchedRequirements = coreDataManager.getDegreeRequirements(programURL: programURL, degreeType: degreeTypeForScrape)
         logger.log("[MajorDetails] Fetched \(fetchedRequirements.count) requirement entities")
+
+        isLoadingRequirements = false
         
         if fetchedRequirements.isEmpty {
             logger.log("[MajorDetails] ❌ No requirements found in Core Data")
@@ -334,35 +483,45 @@ struct MajorMinorDetailsView: View {
     }
 
     private var statsRow: some View {
-        let progress = coreDataManager.courseProgressSummary(requirements: fetchedRequirements)
-        let percent = Int((progress.fraction * 100).rounded())
+        let fraction = creditsCompletionCardFraction(requirements: fetchedRequirements)
+        let percent = Int((fraction * 100).rounded())
         let gpaSummary = coreDataManager.majorGPASummary(requirements: fetchedRequirements)
         let gpaText = gpaSummary.map { String(format: "%.2f", $0.gpa) } ?? "-"
+        let gpaFraction = gpaSummary.map { min(max($0.gpa / 4.0, 0), 1) } ?? 0
+        let gpaPercentText = gpaSummary.map { "\(Int(($0.gpa / 4.0 * 100).rounded()))%" } ?? "-"
+        let gpaInGoodStanding = (gpaSummary?.gpa ?? 0) >= 2.0
+        let allRows = allRequirementRows()
+        let issues = potentialIssues(in: allRows)
+        let issueCount = issues.count
+        let issueSummary = potentialIssueSummaryText(issues)
+        let totalCourseCount = uniqueCourseCodeCount(in: allRows)
+        let issueFraction = totalCourseCount > 0 ? Double(issueCount) / Double(totalCourseCount) : 0
         let universityID = coreDataManager.getActiveUniversity()?.id
         return HStack(spacing: 16) {
             StatCard(
                 title: programKind == .minor ? "Minor Completion" : "Major Completion",
                 valueText: "\(percent)%",
                 valueColor: accentColor,
-                subtitleLeft: "\(progress.done) / \(progress.total) Courses Completed",
-                subtitleRight: "\(progress.remaining) Courses Remaining",
-                buttonTitle: "View Progress Timeline",
-                buttonIcon: "chart.bar",
-                buttonColor: accentColor,
-                progressFraction: progress.fraction
+                subtitleLeft: creditsCompletionCardSubtitleLeft(requirements: fetchedRequirements),
+                subtitleRight: creditsCompletionCardSubtitleRight(requirements: fetchedRequirements),
+                buttonTitle: nil,
+                buttonIcon: nil,
+                buttonColor: nil,
+                progressFraction: fraction
             )
 
             StatCard(
                 title: programKind == .minor ? "Minor GPA" : "Major GPA",
-                valueText: gpaText,
-                valueColor: DesignSystem.Colors.success,
-                subtitleLeft: "Min. Required: 2.0",
-                subtitleRight: nil,
-                pillText: "Good Standing",
-                pillColor: DesignSystem.Colors.success,
+                valueText: gpaPercentText,
+                valueColor: gpaInGoodStanding ? DesignSystem.Colors.success : DesignSystem.Colors.warning,
+                subtitleLeft: "GPA: \(gpaText)",
+                subtitleRight: "Min. Required: 2.0",
+                pillText: gpaSummary == nil ? nil : (gpaInGoodStanding ? "Good Standing" : "Needs Attention"),
+                pillColor: gpaInGoodStanding ? DesignSystem.Colors.success : DesignSystem.Colors.warning,
                 buttonTitle: "GPA Calculator",
                 buttonIcon: "chart.line.uptrend.xyaxis",
                 buttonColor: DesignSystem.Colors.primary,
+                progressFraction: gpaFraction,
                 onButtonTap: {
                     isGPACalculatorPresented = true
                 },
@@ -377,13 +536,14 @@ struct MajorMinorDetailsView: View {
 
             StatCard(
                 title: "Potential Issues",
-                valueText: "2",
-                valueColor: DesignSystem.Colors.warning,
-                subtitleLeft: "Warnings",
-                subtitleRight: "Unmet prereqs, low grades",
-                buttonTitle: "Review Bottlenecks",
-                buttonIcon: "exclamationmark.triangle",
-                buttonColor: DesignSystem.Colors.warning
+                valueText: "\(issueCount)",
+                valueColor: issueCount > 0 ? DesignSystem.Colors.warning : DesignSystem.Colors.textLight,
+                subtitleLeft: "C- or below",
+                subtitleRight: issueSummary,
+                buttonTitle: nil,
+                buttonIcon: nil,
+                buttonColor: nil,
+                progressFraction: issueFraction
             )
         }
     }
@@ -420,7 +580,7 @@ struct MajorMinorDetailsView: View {
 
     private var dynamicRequirementSections: [DynamicRequirementSection] {
         // While loading or erroring, still render a single section so the user sees feedback.
-        if isLoadingRequirements || (requirementsError != nil && fetchedRequirements.isEmpty) {
+        if (isLoadingRequirements && fetchedRequirements.isEmpty) || (requirementsError != nil && fetchedRequirements.isEmpty) {
             return [
                 DynamicRequirementSection(
                     id: "requirements",
@@ -459,7 +619,7 @@ struct MajorMinorDetailsView: View {
             )
         }
 
-        let degreeLevel = (coreDataManager.profile?.degreeLevel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let degreeLevel = (profile?.degreeLevel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let isUndergrad = degreeLevel.lowercased().contains("under")
 
         // General Education applies only to Undergraduate Majors and should appear after other requirement sections.
@@ -513,9 +673,11 @@ struct MajorMinorDetailsView: View {
 
     private func genEdProgressText() -> String {
         let courses = genEdCourses()
-        let assigned = courses.count
-        let completed = courses.filter { $0.isCompleted }.count
-        return "\(completed) of \(assigned) Completed"
+        let completed = courses.filter { $0.isCompleted }.reduce(0.0) { $0 + Double($1.credits) }
+        let total = genEdTotalCredits()
+        let doneText = formatCreditsTotal(completed)
+        let totalText = formatCreditsTotal(total)
+        return "\(doneText) of \(totalText) credits completed"
     }
 
     private func genEdCourses() -> [CourseEntity] {
@@ -677,15 +839,38 @@ struct MajorMinorDetailsView: View {
     }
 
     private func normalizeCode(_ raw: String) -> String {
-        raw
+        let cleaned = raw
             .replacingOccurrences(of: "\u{00A0}", with: " ")
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
+
+        // Canonicalize common catalog variants:
+        // - "CSE410LEC" / "CSE 410LEC" / "CSE 410" -> "CSE 410"
+        // - "MTH-131LR" -> "MTH 131"
+        if let re = Self.courseCodeRegex {
+            let nsRange = NSRange(cleaned.startIndex..<cleaned.endIndex, in: cleaned)
+            if let m = re.firstMatch(in: cleaned, range: nsRange), m.numberOfRanges >= 3,
+               let r1 = Range(m.range(at: 1), in: cleaned),
+               let r2 = Range(m.range(at: 2), in: cleaned) {
+                return "\(cleaned[r1]) \(cleaned[r2])"
+            }
+        }
+
+        return cleaned
     }
 
     private func allPlannedCourses() -> [CourseEntity] {
-        coreDataManager.plans.flatMap { $0.semestersArray.flatMap { $0.coursesArray } }
+        plans.flatMap { $0.semestersArray.flatMap { $0.coursesArray } }
+    }
+
+    private var availablePlanSemesters: [SemesterEntity] {
+        var result = [SemesterEntity]()
+        for plan in plans { result.append(contentsOf: plan.semestersArray) }
+        return result.sorted(by: {
+            if $0.year != $1.year { return $0.year < $1.year }
+            return $0.seasonOrder < $1.seasonOrder
+        })
     }
 
     private func plannedCourse(for code: String) -> CourseEntity? {
@@ -698,6 +883,22 @@ struct MajorMinorDetailsView: View {
         let needle = normalizeCode(code)
         guard !needle.isEmpty else { return nil }
         return coreDataManager.getCourseOverride(courseCode: needle)
+    }
+
+    private func deletePlannedCourseAndOverrides(for rawCode: String) {
+        let code = normalizeCode(rawCode)
+        guard !code.isEmpty else { return }
+
+        // Remove any planned course enrollments for this code (across plans/semesters).
+        let matches = allPlannedCourses().filter { normalizeCode($0.code ?? "") == code }
+        for c in matches {
+            coreDataManager.deleteCourse(c)
+        }
+
+        // Remove any manual override for the course (status/credits/etc).
+        if let ov = courseOverride(for: code) {
+            coreDataManager.deleteCourseOverride(ov)
+        }
     }
 
     private func semesterText(for course: CourseEntity) -> String {
@@ -792,8 +993,11 @@ struct MajorMinorDetailsView: View {
             if let detailedJSON = req.requiredCoursesDetailedJSON,
                let detailedCourses = coreDataManager.decodeDetailedCourseList(detailedJSON),
                !detailedCourses.isEmpty {
-                total += detailedCourses.count
-                done += detailedCourses.filter { statusForCourse(code: $0.code) == .completed }.count
+                let codes = detailedCourses
+                    .map { normalizeCode($0.code) }
+                    .filter { !$0.isEmpty } // ignore subsection header rows (code == "")
+                total += codes.count
+                done += codes.filter { statusForCourse(code: $0) == .completed }.count
                 continue
             }
 
@@ -826,6 +1030,10 @@ struct MajorMinorDetailsView: View {
 
         var rows: [CourseRequirementRow] = []
 
+        func makeSubheaderRow(_ title: String) -> CourseRequirementRow {
+            .init(code: "", title: title, credits: "", grade: "", semester: "", status: .planned)
+        }
+
         func makeCourseRow(code rawCode: String, title preferredTitle: String?, credits preferredCredits: String?) -> CourseRequirementRow {
             let code = normalizeCode(rawCode)
             let catalog = coreDataManager.getCatalogCourse(code: code)
@@ -855,7 +1063,15 @@ struct MajorMinorDetailsView: View {
                let detailedCourses = coreDataManager.decodeDetailedCourseList(detailedJSON),
                !detailedCourses.isEmpty {
                 for detail in detailedCourses {
-                    rows.append(makeCourseRow(code: detail.code, title: detail.title, credits: detail.credits))
+                    let normalized = normalizeCode(detail.code)
+                    if normalized.isEmpty {
+                        let title = (detail.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !title.isEmpty {
+                            rows.append(makeSubheaderRow(title))
+                        }
+                        continue
+                    }
+                    rows.append(makeCourseRow(code: normalized, title: detail.title, credits: detail.credits))
                 }
                 continue
             }
@@ -901,13 +1117,339 @@ struct MajorMinorDetailsView: View {
         return rows
     }
 
-    private func progressText(for requirements: [DegreeRequirementEntity]) -> String {
-        if isLoadingRequirements { return "Loading…" }
-        if requirements.isEmpty { return "0 Completed" }
+    // MARK: - Credits-based progress + open-ended sections
 
-        let (total, done) = requirementUnitsTotalAndDone(for: requirements)
-        if total <= 0 { return "0 Completed" }
-        return "\(done) of \(total) Completed"
+    private struct CreditsRequirement {
+        let min: Double
+        let max: Double?
+
+        var displayText: String {
+            if let max {
+                return "\(format(min))–\(format(max))"
+            }
+            return format(min)
+        }
+
+        private func format(_ value: Double) -> String {
+            let rounded = value.rounded()
+            if abs(value - rounded) < 0.0001 {
+                return String(Int(rounded))
+            }
+            return String(format: "%.1f", value)
+        }
+    }
+
+    private func creditsRequirementForSection(title: String, requirements: [DegreeRequirementEntity]) -> CreditsRequirement {
+        if let parsed = parseCreditsRequirementFromTitle(title) {
+            return parsed
+        }
+
+        let fallback: Double = {
+            if let firstNonZero = requirements.first(where: { $0.creditsRequired > 0 }) {
+                return Double(firstNonZero.creditsRequired)
+            }
+            return 0
+        }()
+
+        return CreditsRequirement(min: fallback, max: nil)
+    }
+
+    private func parseCreditsRequirementFromTitle(_ title: String) -> CreditsRequirement? {
+        guard let re = Self.creditsRequirementRegex else { return nil }
+        let ns = NSRange(title.startIndex..<title.endIndex, in: title)
+        guard let m = re.firstMatch(in: title, options: [], range: ns) else { return nil }
+
+        func capture(_ idx: Int) -> String? {
+            guard m.numberOfRanges > idx else { return nil }
+            let r = m.range(at: idx)
+            guard r.location != NSNotFound, let rr = Range(r, in: title) else { return nil }
+            return String(title[rr])
+        }
+
+        guard let a = capture(1), let min = Double(a) else { return nil }
+        let max = capture(2).flatMap(Double.init)
+        return CreditsRequirement(min: min, max: max)
+    }
+
+    private func completedCreditsInRows(_ rows: [CourseRequirementRow]) -> Double {
+        rows.reduce(0.0) { partial, row in
+            let code = row.code.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else { return partial }
+            guard row.status == .completed else { return partial }
+
+            let t = row.credits.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, t != "-" else { return partial }
+            return partial + (Double(t) ?? 0)
+        }
+    }
+
+    private func creditsProgressText(completedCredits: Double, requirement: CreditsRequirement) -> String {
+        let doneText = formatCreditsTotal(completedCredits)
+        return "\(doneText) of \(requirement.displayText) credits completed"
+    }
+
+    private func creditsCompletionCardFraction(requirements: [DegreeRequirementEntity]) -> Double {
+        let summary = creditsCompletionSummary(requirements: requirements)
+        guard summary.requiredMin > 0 else { return 0 }
+        return min(max(summary.completed / summary.requiredMin, 0), 1)
+    }
+
+    private func creditsCompletionCardSubtitleLeft(requirements: [DegreeRequirementEntity]) -> String {
+        let summary = creditsCompletionSummary(requirements: requirements)
+        let doneText = formatCreditsTotal(summary.completed)
+        return "\(doneText) of \(summary.requiredDisplay) credits completed"
+    }
+
+    private func creditsCompletionCardSubtitleRight(requirements: [DegreeRequirementEntity]) -> String {
+        let summary = creditsCompletionSummary(requirements: requirements)
+        let remainingText = summary.remainingDisplay
+        return "\(remainingText) credits remaining"
+    }
+
+    private func creditsCompletionSummary(requirements: [DegreeRequirementEntity]) -> (completed: Double, requiredMin: Double, requiredMax: Double?, requiredDisplay: String, remainingDisplay: String) {
+        let claimed = claimedCourseCodes(in: requirements)
+
+        // Total required credits: sum each section's credits requirement.
+        let sections = dynamicRequirementSections
+        var requiredMin: Double = 0
+        var requiredMax: Double = 0
+
+        for section in sections {
+            let req = creditsRequirementForSection(title: section.title, requirements: section.requirements)
+            requiredMin += req.min
+            requiredMax += (req.max ?? req.min)
+        }
+
+        // Completed credits counted toward these requirements:
+        // - any explicitly-listed requirement course
+        // - plus any unclaimed courses (to support open-ended elective categories)
+        let completedFromClaimed: Double = {
+            let codes = claimed
+            let completedCourses = allPlannedCourses().filter { $0.isCompleted }
+            return completedCourses.reduce(0.0) { partial, c in
+                let code = normalizeCode(c.code ?? "")
+                guard !code.isEmpty, codes.contains(code) else { return partial }
+                return partial + Double(c.credits)
+            }
+        }()
+
+        let completedFromUnclaimed: Double = {
+            // Only treat unclaimed planned courses as contributing when at least one section is open-ended.
+            let openEndedExists = sections.contains { section in
+                let baseRows = section.rowsOverride ?? buildRows(from: section.requirements)
+                return baseRows.count == 1
+                    && baseRows.first?.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true
+                    && baseRows.first?.title.trimmingCharacters(in: .whitespacesAndNewlines) == "No requirements found."
+            }
+            guard openEndedExists else { return 0 }
+
+            let completedCourses = allPlannedCourses().filter { $0.isCompleted }
+            return completedCourses.reduce(0.0) { partial, c in
+                let code = normalizeCode(c.code ?? "")
+                guard !code.isEmpty else { return partial }
+                guard !claimed.contains(code) else { return partial }
+                guard c.countsTowardGenEd == false else { return partial }
+                return partial + Double(c.credits)
+            }
+        }()
+
+        let completed = completedFromClaimed + completedFromUnclaimed
+
+        func creditsText(_ value: Double) -> String { formatCreditsTotal(value) }
+
+        let requiredDisplay: String = {
+            if abs(requiredMax - requiredMin) > 0.0001 {
+                return "\(creditsText(requiredMin))–\(creditsText(requiredMax))"
+            }
+            return creditsText(requiredMin)
+        }()
+
+        let remainingDisplay: String = {
+            let minRem = max(requiredMin - completed, 0)
+            let maxRem = max(requiredMax - completed, 0)
+            if abs(requiredMax - requiredMin) > 0.0001 {
+                return "\(creditsText(minRem))–\(creditsText(maxRem))"
+            }
+            return creditsText(minRem)
+        }()
+
+        return (completed: completed, requiredMin: requiredMin, requiredMax: abs(requiredMax - requiredMin) > 0.0001 ? requiredMax : nil, requiredDisplay: requiredDisplay, remainingDisplay: remainingDisplay)
+    }
+
+    private func claimedCourseCodes(in requirements: [DegreeRequirementEntity]) -> Set<String> {
+        var out = Set<String>()
+
+        for req in requirements {
+            if let detailedJSON = req.requiredCoursesDetailedJSON,
+               let detailed = coreDataManager.decodeDetailedCourseList(detailedJSON) {
+                for d in detailed {
+                    let code = normalizeCode(d.code)
+                    if !code.isEmpty { out.insert(code) }
+                }
+            }
+
+            let requiredCodes: [String] = (req.requiredCourses ?? "")
+                .split(separator: ",")
+                .map { normalizeCode(String($0)) }
+                .filter { !$0.isEmpty }
+            for c in requiredCodes { out.insert(c) }
+
+            if let selectDetailedJSON = req.selectFromDetailedJSON,
+               let selectDetailed = coreDataManager.decodeDetailedCourseList(selectDetailedJSON) {
+                for d in selectDetailed {
+                    let code = normalizeCode(d.code)
+                    if !code.isEmpty { out.insert(code) }
+                }
+            }
+
+            let selectCodes = coreDataManager.decodeJSONCourseList(req.selectFromJSON)
+                .map(normalizeCode)
+                .filter { !$0.isEmpty }
+            for c in selectCodes { out.insert(c) }
+        }
+
+        return out
+    }
+
+    private func resolvedRowsForOpenEndedSection(baseRows: [CourseRequirementRow], claimedCourseCodes: Set<String>) -> [CourseRequirementRow] {
+        // If the scraper produced no course rows for this section, treat it as open-ended.
+        if baseRows.count == 1,
+           baseRows.first?.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true,
+           baseRows.first?.title.trimmingCharacters(in: .whitespacesAndNewlines) == "No requirements found." {
+            let unclaimed = allPlannedCourses().filter { c in
+                let code = normalizeCode(c.code ?? "")
+                guard !code.isEmpty else { return false }
+                guard !claimedCourseCodes.contains(code) else { return false }
+                return c.countsTowardGenEd == false
+            }
+
+            if unclaimed.isEmpty {
+                // Render a friendlier placeholder message in the table.
+                return [
+                    .init(code: "", title: "You can take whatever classes you want!", credits: "", grade: "", semester: "", status: .planned)
+                ]
+            }
+
+            return unclaimed.map { course in
+                let code = normalizeCode(course.code ?? "")
+                let catalogTitle = coreDataManager.getCatalogCourse(code: code)?.title
+                let title = (course.name ?? catalogTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let grade = (course.grade ?? "-").trimmingCharacters(in: .whitespacesAndNewlines)
+                return .init(
+                    code: code,
+                    title: title.isEmpty ? "Course" : title,
+                    credits: formatCredits(course.credits),
+                    grade: grade.isEmpty ? "-" : grade,
+                    semester: semesterText(for: course),
+                    status: genEdStatus(for: course)
+                )
+            }
+        }
+
+        // Replace the old generic placeholder with the new friendly one.
+        if baseRows.count == 1,
+           baseRows.first?.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true,
+           baseRows.first?.title.trimmingCharacters(in: .whitespacesAndNewlines) == "No requirements found." {
+            return [
+                .init(code: "", title: "You can take whatever classes you want!", credits: "", grade: "", semester: "", status: .planned)
+            ]
+        }
+
+        return baseRows
+    }
+
+    private func filterRemovedRows(_ rows: [CourseRequirementRow]) -> [CourseRequirementRow] {
+        rows.filter { row in
+            let raw = row.code.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { return true }
+            guard !raw.uppercased().hasPrefix("SELECT ") else { return true }
+            let code = normalizeCode(raw)
+            return !removedCourseCodes.contains(code)
+        }
+    }
+
+    private struct PotentialIssue {
+        let code: String
+        let grade: String
+    }
+
+    private func allRequirementRows() -> [CourseRequirementRow] {
+        let claimed = claimedCourseCodes(in: fetchedRequirements)
+        return dynamicRequirementSections.flatMap { section in
+            let baseRows = section.rowsOverride ?? buildRows(from: section.requirements)
+            let rows = resolvedRowsForOpenEndedSection(baseRows: baseRows, claimedCourseCodes: claimed)
+            return filterRemovedRows(rows)
+        }
+    }
+
+    private func uniqueCourseCodeCount(in rows: [CourseRequirementRow]) -> Int {
+        var codes = Set<String>()
+        for row in rows {
+            let raw = row.code.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { continue }
+            guard !raw.uppercased().hasPrefix("SELECT ") else { continue }
+            let code = normalizeCode(raw)
+            if !code.isEmpty { codes.insert(code) }
+        }
+        return codes.count
+    }
+
+    private func potentialIssues(in rows: [CourseRequirementRow]) -> [PotentialIssue] {
+        var seen = Set<String>()
+        var out: [PotentialIssue] = []
+        for row in rows {
+            let raw = row.code.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { continue }
+            guard !raw.uppercased().hasPrefix("SELECT ") else { continue }
+            let code = normalizeCode(raw)
+            guard !code.isEmpty, !seen.contains(code) else { continue }
+            seen.insert(code)
+
+            let grade = row.grade.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard isCMinusOrBelow(grade) else { continue }
+            out.append(.init(code: code, grade: grade))
+        }
+        return out
+    }
+
+    private func potentialIssueSummaryText(_ issues: [PotentialIssue]) -> String {
+        guard !issues.isEmpty else { return "None" }
+        if issues.count <= 2 {
+            let details = issues.map { "\($0.code) (\($0.grade))" }.joined(separator: ", ")
+            return "C- or below: \(details)"
+        }
+        return "C- or below: \(issues.count) courses"
+    }
+
+    private func isCMinusOrBelow(_ rawGrade: String) -> Bool {
+        guard let points = gradePoints(for: rawGrade) else { return false }
+        return points <= 1.7
+    }
+
+    private func gradePoints(for rawGrade: String) -> Double? {
+        let g = rawGrade
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        guard !g.isEmpty else { return nil }
+
+        switch g {
+        case "A+", "A": return 4.0
+        case "A-": return 3.7
+        case "B+": return 3.3
+        case "B": return 3.0
+        case "B-": return 2.7
+        case "C+": return 2.3
+        case "C": return 2.0
+        case "C-": return 1.7
+        case "D+": return 1.3
+        case "D": return 1.0
+        case "D-": return 0.7
+        case "F": return 0.0
+        default:
+            return nil
+        }
     }
 }
 
@@ -919,9 +1461,9 @@ private struct StatCard: View {
     let subtitleRight: String?
     var pillText: String? = nil
     var pillColor: Color? = nil
-    let buttonTitle: String
-    let buttonIcon: String
-    let buttonColor: Color
+    let buttonTitle: String?
+    let buttonIcon: String?
+    let buttonColor: Color?
     var progressFraction: Double = 0.35
 
     var onButtonTap: (() -> Void)? = nil
@@ -978,7 +1520,8 @@ private struct StatCard: View {
             }
 
             Group {
-                if let popoverIsPresented, let popoverContent {
+                if let buttonTitle, let buttonIcon, let buttonColor {
+                    if let popoverIsPresented, let popoverContent {
                     Button(action: {
                         onButtonTap?()
                         popoverIsPresented.wrappedValue = true
@@ -995,7 +1538,7 @@ private struct StatCard: View {
                     .popover(isPresented: popoverIsPresented, arrowEdge: .leading) {
                         popoverContent()
                     }
-                } else {
+                    } else {
                     Button(action: {
                         onButtonTap?()
                     }) {
@@ -1008,6 +1551,7 @@ private struct StatCard: View {
                             .cornerRadius(12)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    }
                 }
             }
         }
@@ -1033,6 +1577,11 @@ private struct RequirementsSection: View {
     @Binding var isDropTargeted: Bool
     let onDropCourseCode: (String) -> Void
     let onSelectCourse: (CourseRequirementRow) -> Void
+    let onOpenDashboard: (CourseRequirementRow) -> Void
+    let onDeleteCourse: (String) -> Void
+    let availableSemesters: [SemesterEntity]
+    let onChangeStatus: (String, RequirementStatus) -> Void
+    let onChangeSemester: (CourseRequirementRow, SemesterEntity?) -> Void
 
     @State private var statusFilter: RequirementStatus? = nil
 
@@ -1107,10 +1656,34 @@ private struct RequirementsSection: View {
                 RequirementsHeaderRow()
                 ForEach(rows.filter { row in
                     guard let statusFilter else { return true }
+                    // Always keep subsection header rows visible regardless of filtering.
+                    if row.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
                     return row.status == statusFilter
                 }) { row in
-                    RequirementsDataRow(row: row, onSelect: { onSelectCourse(row) })
-                    Divider().opacity(0.4)
+                    if row.code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       row.title.trimmingCharacters(in: .whitespacesAndNewlines) != "No requirements found." {
+                        RequirementsSubheaderRow(title: row.title)
+                        Divider().opacity(0.2)
+                    } else {
+                        RequirementsDataRow(
+                            row: row,
+                            availableSemesters: availableSemesters,
+                            onSelect: { onSelectCourse(row) },
+                            onOpenDashboard: { onOpenDashboard(row) },
+                            onDelete: {
+                                let code = row.code.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !code.isEmpty else { return }
+                                onDeleteCourse(code)
+                            },
+                            onChangeStatus: { newStatus in
+                                onChangeStatus(row.code, newStatus)
+                            },
+                            onChangeSemester: { sem in
+                                onChangeSemester(row, sem)
+                            }
+                        )
+                        Divider().opacity(0.4)
+                    }
                 }
             }
             .background(DesignSystem.Colors.surface)
@@ -1180,6 +1753,7 @@ private struct RequirementsHeaderRow: View {
             Text("GRADE").frame(width: 60, alignment: .center)
             Text("SEMESTER").frame(width: 110, alignment: .center)
             Text("STATUS").frame(width: 110, alignment: .trailing)
+            Text("").frame(width: 56, alignment: .trailing)
         }
         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
         .foregroundColor(DesignSystem.Colors.textLight)
@@ -1191,14 +1765,26 @@ private struct RequirementsHeaderRow: View {
 
 private struct RequirementsDataRow: View {
     let row: CourseRequirementRow
+    let availableSemesters: [SemesterEntity]
     let onSelect: () -> Void
+    let onOpenDashboard: () -> Void
+    let onDelete: () -> Void
+    let onChangeStatus: (RequirementStatus) -> Void
+    let onChangeSemester: (SemesterEntity?) -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(row.code)
-                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
-                .frame(width: 110, alignment: .leading)
+            HStack(spacing: 6) {
+                if isCMinusOrBelow(row.grade) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.warning)
+                }
+                Text(row.code)
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                    .foregroundColor(DesignSystem.Colors.textMain)
+            }
+            .frame(width: 110, alignment: .leading)
 
             Text(row.title)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
@@ -1215,27 +1801,152 @@ private struct RequirementsDataRow: View {
                 .foregroundColor(row.status == .completed ? DesignSystem.Colors.success : DesignSystem.Colors.textLight)
                 .frame(width: 60, alignment: .center)
 
-            Text(row.semester)
-                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+            // SEMESTER — interactive menu
+            Menu {
+                if availableSemesters.isEmpty {
+                    Text("No semesters in your plan")
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                        .foregroundColor(DesignSystem.Colors.textLight)
+                } else {
+                    ForEach(availableSemesters, id: \.objectID) { sem in
+                        let label = semesterLabel(sem)
+                        Button(action: { onChangeSemester(sem) }) {
+                            if row.semester == label {
+                                Label(label, systemImage: "checkmark")
+                            } else {
+                                Text(label)
+                            }
+                        }
+                    }
+                    Divider()
+                }
+                Button(role: .destructive, action: { onChangeSemester(nil) }) {
+                    Label("Unassign", systemImage: "xmark.circle")
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(row.semester)
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(DesignSystem.Colors.textLight.opacity(0.5))
+                }
                 .frame(width: 110, alignment: .center)
+            }
+            .buttonStyle(.plain)
 
-            StatusPill(status: row.status)
-                .frame(width: 110, alignment: .trailing)
+            // STATUS — interactive menu
+            Menu {
+                ForEach(RequirementStatus.allCases, id: \.displayString) { s in
+                    Button(action: { onChangeStatus(s) }) {
+                        if row.status == s {
+                            Label(s.displayString, systemImage: "checkmark")
+                        } else {
+                            Label(s.displayString, systemImage: s.sfSymbol)
+                        }
+                    }
+                }
+            } label: {
+                StatusPill(status: row.status)
+            }
+            .buttonStyle(.plain)
+            .frame(width: 110, alignment: .trailing)
+
+            HStack(spacing: 8) {
+                Button(action: onOpenDashboard) {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.textLight.opacity(0.7))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Open course dashboard")
+
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(DesignSystem.Colors.error)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Remove from your plan/overrides (so you can replace it)")
+            }
+            .frame(width: 56, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
     }
+
+    private func semesterLabel(_ sem: SemesterEntity) -> String {
+        let season = (sem.season ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let year = Int(sem.year)
+        guard !season.isEmpty, year > 0 else { return "Unknown Semester" }
+        return "\(season) \(year)"
+    }
+
+    private func isCMinusOrBelow(_ rawGrade: String) -> Bool {
+        let g = rawGrade
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+
+        switch g {
+        case "C-", "D+", "D", "D-", "F":
+            return true
+        default:
+            return false
+        }
+    }
 }
 
-private enum RequirementStatus {
+private struct RequirementsSubheaderRow: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                .foregroundColor(DesignSystem.Colors.textMain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(DesignSystem.Colors.textLight.opacity(0.035))
+    }
+}
+
+private enum RequirementStatus: CaseIterable {
     case notPlanned
     case completed
     case inProgress
     case planned
     case dropped
+
+    var displayString: String {
+        switch self {
+        case .notPlanned: return "Not Planned"
+        case .completed:  return "Completed"
+        case .inProgress: return "In Progress"
+        case .planned:    return "Planned"
+        case .dropped:    return "Dropped"
+        }
+    }
+
+    var sfSymbol: String {
+        switch self {
+        case .notPlanned: return "circle"
+        case .completed:  return "checkmark.circle.fill"
+        case .inProgress: return "clock.fill"
+        case .planned:    return "circle.dotted"
+        case .dropped:    return "minus.circle.fill"
+        }
+    }
 }
 
 private struct CourseRequirementRow: Identifiable {

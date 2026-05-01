@@ -1,0 +1,135 @@
+text,label
+"search the web for graduation requirements",web_search
+look up FAFSA deadlines online,google the SAP policy for my school
+"can you google whether cal grant needs full time enrollment",web_search
+"I need an internet search for verificiation process",web_search
+find on the web what counts as satisfactory academic progress,web_search
+search online how TAP works for NY students,web_search
+"look up online if dropping a class hurts Pell eligibility",web_search
+when is the FAFSA deadline for next year,fafsa_help
+how do I apply for FAFSA,fafsa_help
+what is FAFSA verification,fafsa_help
+where do I submit the federal aid application,fafsa_help
+do I need an FSA ID to file,fafsa_help
+explain dependency status on FAFSA,fafsa_help
+my FAFSA says selected for verification what now,fafsa_help
+"how early should I submit FAFSA each year",fafsa_help
+is the FAFSA the same thing as applying for grants,fafsa_help
+what documents do schools ask for verification,fafsa_help
+tell me about the federal aid application deadlines,fafsa_help
+difference between FAFSA submission and enrollment deposit,fafsa_help
+explain parent contribution on FAFSA briefly,fafsa_help
+do I qualify for california state grants,state_aid_help
+explain Cal Grant eligibility for community college transfers,state_aid_help
+how does TAP work for NY residents,state_aid_help
+what is Wisconsin grant vs federal Pell,state_aid_help
+state aid residency rules for public universities,state_aid_help
+HESC TAP award overview,state_aid_help
+Florida bright futures SAT requirement,state_aid_help
+"CSAC california student aid basics",state_aid_help
+compare state merit scholarship vs federal aid,state_aid_help
+in state tuition waiver vs separate state grants,state_aid_help
+how to check my state residency for aid packaging,state_aid_help
+what is satisfactory academic progress and who sets it,sap_risk
+will withdrawing mid semester hurt my sap completion pace,sap_risk
+if I get an F does SAP fail me automatically,sap_risk
+how is SAP completion rate computed,sap_risk
+difference between GPA and SAP pace requirement,sap_risk
+max timeframe SAP financial aid cutoff,sap_risk
+satisfactory academic progress appeals,sap_risk
+two W grades this term sap implications,sap_risk
+explain SAP probation vs suspension,sap_risk
+if I appeal SAP what documentation helps,sap_risk
+how many attempted credits sap counts,sap_risk
+am I full time for aid with 13 credits this term,enrollment_intensity
+how many credits count as half time enrollment for aid,enrollment_intensity
+if I drop to 9 credits will my grant drop,enrollment_intensity
+Pell disbursement amounts at three quarter vs full time,enrollment_intensity
+difference between census date credits and billed credits aid,enrollment_intensity
+enrollment intensity billing vs academic load,enrollment_intensity
+is 11 credits considered three quarter time for undergrads,enrollment_intensity
+summer term fewer credits affecting aid eligibility,enrollment_intensity
+changing from fifteen to twelve credits before refund deadline aid,enrollment_intensity
+work study hours cap when under full time enrollment,enrollment_intensity
+rough estimate of my aid package,aid_estimate
+how much pell grant could I roughly get,aid_estimate
+ballpark gift aid assuming average COA figures,aid_estimate
+nonofficial estimate aid range calculator,aid_estimate
+what inputs go into estimating grant amounts,aid_estimate
+comparing unsubsidized loan cap to billed tuition rough idea,aid_estimate
+explain EFC terminology without quoting my exact awards,aid_estimate
+explain net price vs billed price for estimating net cost,aid_estimate
+award letter terminology net direct costs,award_letter_review
+how to read unsubsidized vs subsidized awards on aid offer,award_letter_review
+compare my merit scholarship line to loan lines,award_letter_review
+disbursement schedules on award notices,award_letter_review
+work study line item meaning on packaged aid,award_letter_review
+review document I uploaded explaining award letter terms,award_letter_review
+scholarship renewability wording on acceptance letter review,award_letter_review
+balance due after scholarships what that line usually means,award_letter_review
+plan my fall schedule as an incoming freshman,first_semester_plan
+classes I should prioritize in first semester,first_semester_plan
+recommended credit load starter term,first_semester_plan
+balancing gen eds and core first year plan,first_semester_plan
+new student sequencing advice before prerequisites done,first_semester_plan
+what is a sane first semester if I commute,first_semester_plan
+incoming transfer first term course mix,first_semester_plan
+how to avoid overloaded first semester,first_semester_plan
+first year writing plus math sequencing idea,first_semester_plan
+exploratory elective in first semester good idea or not,first_semester_plan
+what should my second semester courses look like,next_semester_plan
+plan next semester at sixteen credits,next_semester_plan
+courses to line up prerequisites for spring,next_semester_plan
+balancing harder major course with easier elective next term,next_semester_plan
+next term schedule around part time internship,next_semester_plan
+registering for prerequisites I still owe next semester,next_semester_plan
+target credits fifteen next semester doable workload,next_semester_plan
+next semester sequencing after passing fall prereqs,next_semester_plan
+second semester roadmap for declared major progression,next_semester_plan
+next semester elective slot ideas,next_semester_plan
+map graduation over four semesters, multi_semester_plan
+sequence remaining degree requirements efficiently,multi_semester_plan
+spread harder courses across terms,multi_semester_plan
+six semester roadmap to graduation example,multi_semester_plan
+when to take calculus in the sequence,multi_semester_plan
+long range plan including summer offerings,multi_semester_plan
+multi year course plan with study abroad semester,multi_semester_plan
+two year finish associates transfer plan pacing,multi_semester_plan
+graduation feasibility if I repeat a course,multi_semester_plan
+what classes am I missing for my major planner view,requirement_explanation
+how many elective credits remain toward degree,requirement_explanation
+understanding humanities distribution requirements left,requirement_explanation
+prerequisite chain explanation for junior level courses,requirement_explanation
+major vs minor leftover credits checklist,requirement_explanation
+gen ed categories still outstanding,requirement_explanation
+residency requirement thirty credits explanation,requirement_explanation
+upper division credit quota remaining narrative,requirement_explanation
+transcript evaluation vs catalog year requirements wording,requirement_explanation
+readiness checklist before registering this term,registration_readiness
+do I have holds blocking enrollment,registration_readiness
+prerequisite holds on courses I picked,registration_readiness
+advisor clearance needed before I register,registration_readiness
+financial clearance from bursar for registration holds,registration_readiness
+degree audit flags blocking progression,registration_readiness
+registration window timing vs holds,registration_readiness
+overdue tasks that might block signup,registration_readiness
+billing balance registration block hypothetical,registration_readiness
+what could stop me registering besides holds,registration_readiness
+study blocks around my labs this week template,weekly_schedule
+draft weekly structure around work shifts twelve hours weekly,weekly_schedule
+where to squeeze review before midterm-heavy week plan,weekly_schedule
+balance classes study sleep blocks,weekly_schedule
+time blocking commuter study windows,weekly_schedule
+priority matrix for coursework this week planner,weekly_schedule
+evening shifts plus morning classes weekly rhythm,weekly_schedule
+planning study hours per credit heuristic,weekly_schedule
+sync tasks and calendar deadlines into weekly plan,weekly_schedule
+add advisor meeting calendar event march fifteenth two pm,event_action
+create calendar reminder for FAFSA renewal next january,event_action
+put study group sunday blocking two hours calendar,event_action
+schedule a registration advising appointment placeholder,event_action
+bulk create recurring office hours placeholders,event_action
+financial aid counselor lens general question,financial_aid
+student aid terminology without specific award numbers,financial_aid
+balancing loans vs grants conceptual question,financial_aid
+deferment vs forbearance high level wording,financial_aid

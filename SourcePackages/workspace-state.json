@@ -1,0 +1,166 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "lrucache",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/nicklockwood/LRUCache.git",
+          "name" : "LRUCache"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0d91406ecd4d6c1c56275866f00508d9aeacc92a",
+            "version" : "1.2.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "LRUCache"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "mlx-swift",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/ml-explore/mlx-swift",
+          "name" : "mlx-swift"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "4dccaeda1d83cf8697f235d2786c2d72ad4bb925",
+            "version" : "0.30.3"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "mlx-swift"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "mlx-swift-lm",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/ml-explore/mlx-swift-lm",
+          "name" : "mlx-swift-lm"
+        },
+        "state" : {
+          "checkoutState" : {
+            "branch" : "main",
+            "revision" : "2c700546340c37f275d23302163701b77c4dcbd9"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "mlx-swift-lm"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-atomics",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-atomics.git",
+          "name" : "swift-atomics"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "b601256eab081c0f92f059e12818ac1d4f178ff7",
+            "version" : "1.3.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-atomics"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-collections",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-collections.git",
+          "name" : "swift-collections"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "7b847a3b7008b2dc2f47ca3110d8c782fb2e5c7e",
+            "version" : "1.3.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-collections"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-jinja",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/huggingface/swift-jinja.git",
+          "name" : "swift-jinja"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "d81197f35f41445bc10e94600795e68c6f5e94b0",
+            "version" : "2.3.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-jinja"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-numerics",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/apple/swift-numerics",
+          "name" : "swift-numerics"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "0c0290ff6b24942dadb83a929ffaaa1481df04a2",
+            "version" : "1.1.1"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-numerics"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swift-transformers",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/huggingface/swift-transformers",
+          "name" : "swift-transformers"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "573e5c9036c2f136b3a8a071da8e8907322403d0",
+            "version" : "1.1.6"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "swift-transformers"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "swiftsoup",
+          "kind" : "remoteSourceControl",
+          "location" : "https://github.com/scinfu/SwiftSoup",
+          "name" : "SwiftSoup"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "d86f244ed497d48012782e2f59c985a55e77b3f5",
+            "version" : "2.11.3"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "SwiftSoup"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

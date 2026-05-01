@@ -3,6 +3,11 @@
 .AppleDouble
 .LSOverride
 
+# Local perf harness output (see assistant perf plan)
+.benchmark_transcript.txt
+.assistant_ui_analysis_last_run.json
+.college_ui_test_long_waits
+
 # Xcode / Swift
 DerivedData/
 build/
@@ -46,8 +51,12 @@ __pycache__/
 # Local editor/workspace folders
 .cursor/
 .vscode/
+.artifacts/
 
 # ML / large model artifacts
 *.safetensors
 *.safetensors.*
-Models/llama-*/
+
+# Documentation / text artifacts
+*.md
+*.txt

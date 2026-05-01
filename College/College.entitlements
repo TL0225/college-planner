@@ -6,6 +6,8 @@
 	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
 	<key>com.apple.security.personal-information.location</key>
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
@@ -14,9 +16,14 @@
 	<true/>
 	<key>com.apple.security.personal-information.addressbook</key>
 	<true/>
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
+	<key>com.apple.security.personal-information.music-library</key>
+	<true/>
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+	<key>com.apple.security.temporary-exception.apple-events</key>
 	<array>
-		<string>/Users/timothy/Desktop/</string>
+		<string>com.spotify.client</string>
+		<string>com.apple.Music</string>
 	</array>
 </dict>
 </plist>

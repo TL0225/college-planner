@@ -1,0 +1,21 @@
+[package]
+name = "college-core"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance Rust core for the College macOS app — HTML parsing, prerequisite parsing, and text utilities."
+
+[lib]
+name = "college_core"
+crate-type = ["staticlib"]   # Produces libcollege_core.a for static linking into the .app bundle
+
+[dependencies]
+# HTML5 spec-compliant tokenizer for catalog page parsing
+html5ever = "0.27"
+# Fast, allocation-free substring matching
+memchr = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

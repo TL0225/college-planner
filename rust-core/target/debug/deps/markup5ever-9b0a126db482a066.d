@@ -1,0 +1,15 @@
+/Users/timothy/Desktop/College/rust-core/target/debug/deps/markup5ever-9b0a126db482a066.d: /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/lib.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/data/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/interface/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/interface/tree_builder.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/serialize.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/util/buffer_queue.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/util/smallcharset.rs /Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out/generated.rs /Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out/named_entities.rs
+
+/Users/timothy/Desktop/College/rust-core/target/debug/deps/libmarkup5ever-9b0a126db482a066.rmeta: /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/lib.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/data/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/interface/mod.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/interface/tree_builder.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/serialize.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/util/buffer_queue.rs /Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/util/smallcharset.rs /Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out/generated.rs /Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out/named_entities.rs
+
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/lib.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/data/mod.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/interface/mod.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/interface/tree_builder.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/serialize.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/util/buffer_queue.rs:
+/Users/timothy/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/markup5ever-0.12.1/util/smallcharset.rs:
+/Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out/generated.rs:
+/Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out/named_entities.rs:
+
+# env-dep:OUT_DIR=/Users/timothy/Desktop/College/rust-core/target/debug/build/markup5ever-078e5e9951b3854f/out

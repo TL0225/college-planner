@@ -1,0 +1,4 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /Users/timothy/Desktop/College/rust-core/college-core/Cargo.toml
+workspace: /Users/timothy/Desktop/College/rust-core/Cargo.toml
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.05s

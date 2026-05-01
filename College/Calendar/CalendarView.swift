@@ -1,0 +1,2910 @@
+import SwiftUI
+import CoreData
+import Combine
+import os
+import MapKit
+
+// Domain types and cache logic live in CalendarCacheEngine.swift
+typealias CalEvent = CalendarCalEvent
+typealias EventLayoutSegment = CalendarLayoutSegment
+typealias EventType = CalendarEventKind
+
+enum CalendarViewDisplayMode: String, CaseIterable {
+    case month = "Month"
+    case week = "Week"
+    case day = "Day"
+}
+
+enum CalendarSidebarPanel: String, CaseIterable {
+    case eventList = "Event List"
+    case tasks = "Tasks"
+}
+
+@MainActor
+final class CalendarEventCacheStore: ObservableObject {
+    @Published var dayEventsByDate: [Date: [CalEvent]] = [:]
+    @Published var timedLayoutsByDate: [Date: [EventLayoutSegment]] = [:]
+}
+
+/// Shell: holds navigation state and derives the Core Data fetch window so `CalendarViewContent` can use bounded fetches.
+struct CalendarView: View {
+    @Binding var activePage: AppPage
+    @ObservedObject var cacheStore: CalendarEventCacheStore
+
+    @State private var currentDate = Date()
+    @State private var activeViewMode: CalendarViewDisplayMode = .month
+    @SceneStorage("calendar.currentDateTS") private var storedCurrentDateTS: Double = Date().timeIntervalSince1970
+    @SceneStorage("calendar.activeViewModeRaw") private var storedActiveViewModeRaw: String = CalendarViewDisplayMode.month.rawValue
+    @State private var didRestoreState = false
+
+    #if os(macOS)
+    @EnvironmentObject private var toolbarCoordinator: AppToolbarCoordinator
+    @State private var isEventListSidebarShown: Bool = true
+    @State private var sidebarPanel: CalendarSidebarPanel = .eventList
+    #endif
+
+    var body: some View {
+        let cal: Calendar = {
+            var c = Calendar.current
+            c.firstWeekday = 1
+            return c
+        }()
+        let fetchedWindow = CalendarCacheEngine.fetchWindow(
+            currentDate: currentDate,
+            mode: Self.mapFetchMode(activeViewMode),
+            cal: cal
+        )
+        let todayStart = cal.startOfDay(for: Date())
+        let todayEnd = cal.date(byAdding: .day, value: 1, to: todayStart) ?? todayStart
+        let windowStart = min(fetchedWindow.start, todayStart)
+        let windowEnd = max(fetchedWindow.end, todayEnd)
+
+        Group {
+            CalendarViewContent(
+                rangeStart: windowStart,
+                rangeEnd: windowEnd,
+                activePage: $activePage,
+                currentDate: $currentDate,
+                activeViewMode: $activeViewMode,
+                cacheStore: cacheStore,
+                calendarSearchText: contentCalendarSearchBinding,
+                isEventListSidebarShown: contentEventListSidebarBinding,
+                sidebarPanel: contentSidebarPanelBinding
+            )
+        }
+        .onAppear {
+            guard !didRestoreState else { return }
+            didRestoreState = true
+            currentDate = Date(timeIntervalSince1970: storedCurrentDateTS)
+            if let restoredMode = CalendarViewDisplayMode(rawValue: storedActiveViewModeRaw) {
+                activeViewMode = restoredMode
+            }
+        }
+        .onChange(of: currentDate) { _, newDate in
+            storedCurrentDateTS = newDate.timeIntervalSince1970
+        }
+        .onChange(of: activeViewMode) { _, newMode in
+            storedActiveViewModeRaw = newMode.rawValue
+        }
+        #if os(macOS)
+        .overlay(alignment: .topTrailing) {
+            calendarSearchResultsFloatingPanel
+        }
+        #endif
+    }
+
+    private var contentCalendarSearchBinding: Binding<String> {
+        #if os(macOS)
+        Binding(
+            get: { toolbarCoordinator.calendarToolbarSearchText },
+            set: { toolbarCoordinator.calendarToolbarSearchText = $0 }
+        )
+        #else
+        .constant("")
+        #endif
+    }
+
+    private var contentEventListSidebarBinding: Binding<Bool> {
+        #if os(macOS)
+        $isEventListSidebarShown
+        #else
+        .constant(true)
+        #endif
+    }
+
+    private var contentSidebarPanelBinding: Binding<CalendarSidebarPanel> {
+        #if os(macOS)
+        $sidebarPanel
+        #else
+        .constant(.eventList)
+        #endif
+    }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var calendarSearchResultsFloatingPanel: some View {
+        let searchText = toolbarCoordinator.calendarToolbarSearchText
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if activePage == .calendar, toolbarCoordinator.calendarToolbarSearchExpanded, !trimmed.isEmpty {
+            let results = toolbarCoordinator.calendarToolbarSearchResults
+            VStack(alignment: .leading, spacing: 0) {
+                if results.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                        Text("No events found")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                } else {
+                    let shown = Array(results.prefix(6))
+                    ForEach(shown) { match in
+                        HStack(spacing: 12) {
+                            Circle()
+                                .fill(Color.indigo)
+                                .frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(match.title)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .lineLimit(1)
+                                Text(match.subtitle)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        if match.id != shown.last?.id {
+                            Divider().padding(.horizontal, 14)
+                        }
+                    }
+                }
+            }
+            .frame(width: 300)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(.separator.opacity(0.35), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.12), radius: 16, y: 4)
+            .padding(.top, 10)
+            .padding(.trailing, 20)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: trimmed)
+        }
+    }
+    #endif
+
+    private static func mapFetchMode(_ mode: CalendarViewDisplayMode) -> CalendarFetchMode {
+        switch mode {
+        case .month: return .month
+        case .week: return .week
+        case .day: return .day
+        }
+    }
+}
+
+private struct PressableCardStyle: ButtonStyle {
+    var reduceMotion: Bool = false
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1.0)
+            .animation(.spring(response: 0.10, dampingFraction: 0.72), value: configuration.isPressed)
+    }
+}
+
+private struct CalendarViewContent: View {
+    let rangeStart: Date
+    let rangeEnd: Date
+
+    @Binding var activePage: AppPage
+    @Binding var currentDate: Date
+    @Binding var activeViewMode: CalendarViewDisplayMode
+
+    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    @EnvironmentObject private var coreDataManager: CoreDataManager
+    @EnvironmentObject private var modalCoordinator: ModalCoordinator
+    #if os(macOS)
+    @EnvironmentObject private var toolbarCoordinator: AppToolbarCoordinator
+    #endif
+
+    @Environment(\.managedObjectContext) private var viewContext
+    @ObservedObject private var cacheStore: CalendarEventCacheStore
+
+    @FetchRequest private var events: FetchedResults<CalendarEventEntity>
+    @FetchRequest private var tasks: FetchedResults<TaskEntity>
+    @FetchRequest private var profileRows: FetchedResults<ProfileEntity>
+
+    @SceneStorage("calendar.view.hasAnimatedIn") private var hasAnimatedIn = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("ui.reduceMotion") private var prefReduceMotion = false
+    private var motionReduced: Bool { systemReduceMotion || prefReduceMotion }
+
+    @State private var navigationDirection: Int = 1
+    @State private var hourHeight: CGFloat = 60
+    @State private var swipeNavProgress: CGFloat = 0  // -1...1: negative=forward, positive=backward
+
+    @State private var cacheRebuildTask: Task<Void, Never>?
+    @State private var didPrewarmEventEntities = false
+
+    // Event List sidebar state
+    @State private var sidebarDate: Date = Date()
+    @State private var isFilterPopoverShown: Bool = false
+    @State private var activeCalendarFilters: Set<String> = []
+    @State private var isCalendarStatusExpanded: Bool = false
+    @State private var isCalendarStatusHovering: Bool = false
+    @State private var expandedCalendarServiceNames: Set<String> = []
+
+    #if os(macOS)
+    @State private var toolbarCalendarSearchTask: Task<Void, Never>? = nil
+    /// Driven by CalendarView's toolbar search popover (passed as binding).
+    @Binding var calendarSearchText: String
+    #endif
+
+    @Binding var isEventListSidebarShown: Bool
+    @Binding var sidebarPanel: CalendarSidebarPanel
+
+    init(
+        rangeStart: Date,
+        rangeEnd: Date,
+        activePage: Binding<AppPage>,
+        currentDate: Binding<Date>,
+        activeViewMode: Binding<CalendarViewDisplayMode>,
+        cacheStore: CalendarEventCacheStore,
+        calendarSearchText: Binding<String> = .constant(""),
+        isEventListSidebarShown: Binding<Bool> = .constant(true),
+        sidebarPanel: Binding<CalendarSidebarPanel> = .constant(.eventList)
+    ) {
+        self.rangeStart = rangeStart
+        self.rangeEnd = rangeEnd
+        _activePage = activePage
+        _currentDate = currentDate
+        _activeViewMode = activeViewMode
+        _cacheStore = ObservedObject(wrappedValue: cacheStore)
+        _isEventListSidebarShown = isEventListSidebarShown
+        _sidebarPanel = sidebarPanel
+        #if os(macOS)
+        _calendarSearchText = calendarSearchText
+        #endif
+
+        let eventRequest = NSFetchRequest<CalendarEventEntity>(entityName: "CalendarEventEntity")
+        eventRequest.sortDescriptors = [NSSortDescriptor(keyPath: \CalendarEventEntity.startDate, ascending: true)]
+        eventRequest.predicate = NSPredicate(
+            format: "startDate < %@ AND endDate > %@",
+            rangeEnd as NSDate,
+            rangeStart as NSDate
+        )
+        _events = FetchRequest(fetchRequest: eventRequest, animation: nil)
+
+        let taskRequest = NSFetchRequest<TaskEntity>(entityName: "TaskEntity")
+        taskRequest.sortDescriptors = [NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)]
+        taskRequest.predicate = NSPredicate(
+            format: "dueDate != nil AND dueDate >= %@ AND dueDate < %@",
+            rangeStart as NSDate,
+            rangeEnd as NSDate
+        )
+        _tasks = FetchRequest(fetchRequest: taskRequest, animation: nil)
+
+        let profileRequest = NSFetchRequest<ProfileEntity>(entityName: "ProfileEntity")
+        profileRequest.fetchLimit = 1
+        profileRequest.sortDescriptors = []
+        _profileRows = FetchRequest(fetchRequest: profileRequest, animation: nil)
+    }
+
+    private var calendarToolbarInitials: String {
+        Self.initialsFromProfileName(profileRows.first?.name)
+    }
+
+    private static func initialsFromProfileName(_ raw: String?) -> String {
+        let name = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty else { return "" }
+        let parts = name.split(separator: " ").map(String.init)
+        if parts.count >= 2,
+           let a = parts[0].first,
+           let b = parts[1].first {
+            return "\(a)\(b)".uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
+    private static let performanceLog = OSLog(subsystem: "Timothy.College", category: .pointsOfInterest)
+
+    private enum CalendarFormatters {
+        static let monthHeader: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMMM yyyy"
+            return formatter
+        }()
+
+        static let weekHeader: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d, yyyy"
+            return formatter
+        }()
+
+        static let dayHeader: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMMM d, yyyy"
+            return formatter
+        }()
+
+        static let today: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "MMM d"
+            return formatter
+        }()
+
+        static let weekday: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE"
+            return formatter
+        }()
+
+        static let currentTime: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "h:mm a"
+            return formatter
+        }()
+
+        static let shortTime: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            return formatter
+        }()
+    }
+    
+    private var calendar: Calendar {
+        var cal = Calendar.current
+        cal.firstWeekday = 1 // Sunday
+        return cal
+    }
+    
+    private var headerDateString: String {
+        switch activeViewMode {
+        case .month:
+            return CalendarFormatters.monthHeader.string(from: currentDate).uppercased()
+        case .week:
+            return CalendarFormatters.weekHeader.string(from: currentDate).uppercased()
+        case .day:
+            return CalendarFormatters.dayHeader.string(from: currentDate).uppercased()
+        }
+    }
+    
+    private func shiftDate(by value: Int) {
+        navigationDirection = value >= 0 ? 1 : -1
+        switch activeViewMode {
+        case .month:
+            currentDate = calendar.date(byAdding: .month, value: value, to: currentDate) ?? currentDate
+        case .week:
+            currentDate = calendar.date(byAdding: .weekOfYear, value: value, to: currentDate) ?? currentDate
+        case .day:
+            currentDate = calendar.date(byAdding: .day, value: value, to: currentDate) ?? currentDate
+        }
+    }
+    
+    private var sidebarDateString: String {
+        if calendar.isDateInToday(sidebarDate) {
+            return "TODAY • " + CalendarFormatters.today.string(from: sidebarDate).uppercased()
+        } else if calendar.isDateInTomorrow(sidebarDate) {
+            return "TOMORROW • " + CalendarFormatters.today.string(from: sidebarDate).uppercased()
+        }
+        return CalendarFormatters.today.string(from: sidebarDate).uppercased()
+    }
+
+    private var orderedSidebarEvents: [CalEvent] {
+        var content = getEvents(for: sidebarDate)
+        if !activeCalendarFilters.isEmpty {
+            content = content.filter { activeCalendarFilters.contains(calendarNameForEvent($0)) }
+        }
+        let now = Date()
+        return content.sorted { lhs, rhs in
+            let lhsPassed = isEventPassed(lhs, referenceDate: now)
+            let rhsPassed = isEventPassed(rhs, referenceDate: now)
+            if lhsPassed != rhsPassed { return !lhsPassed && rhsPassed }
+            if let lhsStart = lhs.startDate, let rhsStart = rhs.startDate { return lhsStart < rhsStart }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
+    private var orderedSidebarTasks: [TaskEntity] {
+        tasks
+            .filter { task in
+                guard let due = task.dueDate else { return false }
+                return calendar.isDate(due, inSameDayAs: sidebarDate)
+            }
+            .sorted { lhs, rhs in
+                let ld = lhs.dueDate ?? .distantFuture
+                let rd = rhs.dueDate ?? .distantFuture
+                if ld != rd { return ld < rd }
+                let lt = lhs.title ?? ""
+                let rt = rhs.title ?? ""
+                return lt.localizedCaseInsensitiveCompare(rt) == .orderedAscending
+            }
+    }
+
+    private func calendarNameForEvent(_ event: CalEvent) -> String {
+        let code = courseCode(for: event.title)
+        if code != "SCHEDULED" { return code }
+        switch event.type {
+        case .extracurricular, .club: return "Extracurricular"
+        case .deadline: return "Tasks"
+        case .personal: return "Personal"
+        case .management: return "Management"
+        default: return "Academic"
+        }
+    }
+
+    private func entity(for event: CalEvent) -> CalendarEventEntity? {
+        guard let eventID = event.calendarEventID else { return nil }
+        return events.first { $0.id == eventID }
+    }
+
+    private var uniqueCalendarNames: [String] {
+        let today = Date()
+        let allDays = getDaysForCurrentView()
+        var names: Set<String> = []
+        for day in allDays {
+            for event in getEvents(for: day) {
+                names.insert(calendarNameForEvent(event))
+            }
+        }
+        for event in getEvents(for: today) {
+            names.insert(calendarNameForEvent(event))
+        }
+        return names.sorted()
+    }
+
+    #if os(macOS)
+    @MainActor
+    private func scheduleToolbarCalendarSearch(_ query: String) {
+        toolbarCalendarSearchTask?.cancel()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            toolbarCoordinator.calendarToolbarSearchResults = []
+            return
+        }
+        toolbarCalendarSearchTask = Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            let results = coreDataManager.searchCalendarEvents(semester: nil, query: trimmed)
+            guard !Task.isCancelled else { return }
+            let df = DateFormatter()
+            df.dateStyle = .medium
+            df.timeStyle = .short
+            let matches: [CalendarToolbarSearchMatch] = results.compactMap { ev in
+                guard let id = ev.id else { return nil }
+                let sub = ev.startDate.map { df.string(from: $0) } ?? ""
+                return CalendarToolbarSearchMatch(id: id, title: ev.title ?? "Untitled", subtitle: sub)
+            }
+            await MainActor.run {
+                toolbarCoordinator.calendarToolbarSearchResults = matches
+            }
+        }
+    }
+    #endif
+
+    private func normalizeDay(_ date: Date) -> Date {
+        calendar.startOfDay(for: date)
+    }
+
+    private func scheduleCacheRebuild(delay: TimeInterval = 0.05) {
+        cacheRebuildTask?.cancel()
+        cacheRebuildTask = Task { @MainActor in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            guard !Task.isCancelled else { return }
+            await rebuildCachesAsync()
+        }
+    }
+
+    private func prewarmEventEntitiesIfNeeded() {
+        guard !didPrewarmEventEntities else { return }
+        let objectIDs = events.map(\.objectID)
+        guard !objectIDs.isEmpty else { return }
+
+        didPrewarmEventEntities = true
+        let context = viewContext
+        context.perform {
+            for objectID in objectIDs {
+                if let event = try? context.existingObject(with: objectID) as? CalendarEventEntity {
+                    _ = event.title
+                    _ = event.startDate
+                    _ = event.endDate
+                    _ = event.location
+                    _ = event.notes
+                    if event.entity.attributesByName["descriptionMarkdown"] != nil {
+                        _ = event.value(forKey: "descriptionMarkdown") as? String
+                    }
+                    if event.entity.attributesByName["conferenceURL"] != nil {
+                        _ = event.value(forKey: "conferenceURL") as? String
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func rebuildCachesAsync() async {
+        let signpostID = OSSignpostID(log: Self.performanceLog)
+        os_signpost(.begin, log: Self.performanceLog, name: "CalendarCacheRebuild", signpostID: signpostID)
+        defer { os_signpost(.end, log: Self.performanceLog, name: "CalendarCacheRebuild", signpostID: signpostID) }
+
+        let eventSnapshots: [CalendarEventSnapshot] = events.compactMap { ev in
+            guard calendarManager.shouldDisplayEvent(ev) else { return nil }
+            guard let start = ev.startDate else { return nil }
+            let end = ev.endDate ?? start.addingTimeInterval(3600)
+            let explicitAllDay: Bool? = {
+                if ev.entity.attributesByName["allDay"] != nil { return ev.allDay }
+                if ev.entity.attributesByName["isAllDay"] != nil { return ev.value(forKey: "isAllDay") as? Bool }
+                return nil
+            }()
+            return CalendarEventSnapshot(
+                title: ev.title ?? "Event",
+                start: start,
+                end: end,
+                explicitAllDay: explicitAllDay,
+                calendarEventID: ev.id,
+                calendarObjectURI: ev.objectID.uriRepresentation().absoluteString
+            )
+        }
+
+        let taskSnapshots: [CalendarTaskSnapshot] = tasks.compactMap { t in
+            guard let due = t.dueDate else { return nil }
+            return CalendarTaskSnapshot(title: t.title ?? "Task", due: due)
+        }
+
+        var cal = Calendar.current
+        cal.firstWeekday = 1
+        let tzId = TimeZone.current.identifier
+        let firstWeekday = cal.firstWeekday
+
+        let result = await Task.detached(priority: .userInitiated) {
+            var c = Calendar(identifier: .gregorian)
+            c.timeZone = TimeZone(identifier: tzId) ?? .current
+            c.firstWeekday = firstWeekday
+            return CalendarCacheEngine.buildCaches(events: eventSnapshots, tasks: taskSnapshots, calendar: c)
+        }.value
+
+        cacheStore.dayEventsByDate = result.dayEventsByDate
+        cacheStore.timedLayoutsByDate = result.timedLayoutsByDate
+    }
+    
+    private func getDaysForCurrentView() -> [Date] {
+        switch activeViewMode {
+        case .month:
+            guard let monthInterval = calendar.dateInterval(of: .month, for: currentDate) else { return [] }
+            guard let monthFirstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start) else { return [] }
+            guard let monthLastWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.end - 1) else { return [] }
+            
+            let start = monthFirstWeek.start
+            let end = monthLastWeek.end
+            
+            var dates: [Date] = []
+            var d = start
+            while d < end {
+                dates.append(d)
+                if let next = calendar.date(byAdding: .day, value: 1, to: d) {
+                    d = next
+                } else {
+                    break
+                }
+            }
+            return dates
+            
+        case .week:
+            guard let weekInterval = calendar.dateInterval(of: .weekOfYear, for: currentDate) else { return [] }
+            var dates: [Date] = []
+            var d = weekInterval.start
+            while d < weekInterval.end {
+                dates.append(d)
+                if let next = calendar.date(byAdding: .day, value: 1, to: d) {
+                    d = next
+                } else {
+                    break
+                }
+            }
+            return dates
+            
+        case .day:
+            return [calendar.startOfDay(for: currentDate)]
+        }
+    }
+    
+    private func getEvents(for date: Date) -> [CalEvent] {
+        cacheStore.dayEventsByDate[normalizeDay(date)] ?? []
+    }
+
+    private func timedLayouts(for date: Date) -> [EventLayoutSegment] {
+        cacheStore.timedLayoutsByDate[normalizeDay(date)] ?? []
+    }
+    
+    private func isEventPassed(_ event: CalEvent, referenceDate: Date = Date()) -> Bool {
+        if event.isAllDay {
+            guard let end = event.endDate else { return false }
+            return end < calendar.startOfDay(for: referenceDate)
+        }
+
+        let end = event.endDate ?? event.startDate
+        guard let end else { return false }
+        return end < referenceDate
+    }
+
+    private struct ConnectedServiceLogo: Identifiable {
+        enum Mark {
+            case symbol(String)
+            case letter(String)
+        }
+
+        let id: String
+        let name: String
+        let mark: Mark
+        let foreground: Color
+        let background: Color
+        let border: Color
+    }
+
+    private struct IntegrationServiceStatus: Identifiable {
+        let id: String
+        let name: String
+        let logo: ConnectedServiceLogo
+        let isConnected: Bool
+    }
+
+    private var connectedCalendarCount: Int {
+        calendarManager.connectedCalendars.count
+    }
+
+    private var connectedServices: [ConnectedServiceLogo] {
+        var services: [ConnectedServiceLogo] = []
+
+        if calendarManager.appleStatus == .connected {
+            services.append(
+                ConnectedServiceLogo(
+                    id: "apple",
+                    name: "Apple Calendar",
+                    mark: .symbol("apple.logo"),
+                    foreground: .primary,
+                    background: DesignSystem.Colors.glassCardBase,
+                    border: DesignSystem.Colors.chromeStroke
+                )
+            )
+        }
+
+        if calendarManager.googleStatus == .connected {
+            services.append(
+                ConnectedServiceLogo(
+                    id: "google",
+                    name: "Google Calendar",
+                    mark: .letter("G"),
+                    foreground: .white,
+                    background: .accentColor,
+                    border: Color.clear
+                )
+            )
+        }
+
+        if calendarManager.outlookStatus == .connected {
+            services.append(
+                ConnectedServiceLogo(
+                    id: "outlook",
+                    name: "Outlook Calendar",
+                    mark: .symbol("envelope.fill"),
+                    foreground: .white,
+                    background: .blue,
+                    border: Color.clear
+                )
+            )
+        }
+
+        if calendarManager.iCloudStatus == .connected {
+            services.append(
+                ConnectedServiceLogo(
+                    id: "icloud",
+                    name: "iCloud Calendar",
+                    mark: .symbol("icloud.fill"),
+                    foreground: .white,
+                    background: .teal,
+                    border: Color.clear
+                )
+            )
+        }
+
+        return services
+    }
+
+    private var connectedServiceCount: Int {
+        connectedServices.count
+    }
+
+    private var primaryIntegrationServices: [IntegrationServiceStatus] {
+        [
+            IntegrationServiceStatus(
+                id: "apple",
+                name: "Apple Calendar",
+                logo: ConnectedServiceLogo(
+                    id: "apple",
+                    name: "Apple Calendar",
+                    mark: .symbol("apple.logo"),
+                    foreground: .primary,
+                    background: DesignSystem.Colors.glassCardBase,
+                    border: DesignSystem.Colors.chromeStroke
+                ),
+                isConnected: calendarManager.appleStatus == .connected
+            ),
+            IntegrationServiceStatus(
+                id: "google",
+                name: "Google Calendar",
+                logo: ConnectedServiceLogo(
+                    id: "google",
+                    name: "Google Calendar",
+                    mark: .letter("G"),
+                    foreground: .white,
+                    background: .accentColor,
+                    border: Color.clear
+                ),
+                isConnected: calendarManager.googleStatus == .connected
+            ),
+            IntegrationServiceStatus(
+                id: "outlook",
+                name: "Outlook Calendar",
+                logo: ConnectedServiceLogo(
+                    id: "outlook",
+                    name: "Outlook Calendar",
+                    mark: .symbol("envelope.fill"),
+                    foreground: .white,
+                    background: .blue,
+                    border: Color.clear
+                ),
+                isConnected: calendarManager.outlookStatus == .connected
+            )
+        ]
+    }
+
+    private var connectedCalendarsByService: [(serviceName: String, calendars: [ConnectedCalendar])] {
+        let grouped = Dictionary(grouping: calendarManager.connectedCalendars) { calendar in
+            calendarGroupName(for: calendar)
+        }
+
+        return grouped
+            .map { key, value in
+                (serviceName: key, calendars: value.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+            }
+            .sorted { $0.serviceName.localizedCaseInsensitiveCompare($1.serviceName) == .orderedAscending }
+    }
+
+    private func calendarGroupName(for calendar: ConnectedCalendar) -> String {
+        if calendar.id == "Apple:Home" || calendar.name == "College App" {
+            return "College App"
+        }
+        return serviceDisplayName(for: calendar.source)
+    }
+
+    private func serviceDisplayName(for source: String) -> String {
+        switch source {
+        case "Google":
+            return "Google Calendar"
+        case "Outlook":
+            return "Outlook Calendar"
+        case "iCloudCalDAV":
+            return "iCloud Calendar"
+        case "Apple", "AppleSystem":
+            return "Apple Calendar"
+        default:
+            return source
+        }
+    }
+
+    private func connectedServiceLogo(for serviceName: String) -> ConnectedServiceLogo? {
+        if serviceName == "College App" {
+            return ConnectedServiceLogo(
+                id: "college-app",
+                name: "College App",
+                mark: .symbol("graduationcap.fill"),
+                foreground: .white,
+                background: .indigo,
+                border: Color.clear
+            )
+        }
+        return connectedServices.first { $0.name == serviceName }
+    }
+
+    private func toggleServiceCalendarsExpansion(_ serviceName: String) {
+        if expandedCalendarServiceNames.contains(serviceName) {
+            expandedCalendarServiceNames.remove(serviceName)
+        } else {
+            expandedCalendarServiceNames.insert(serviceName)
+        }
+    }
+
+    private func setServiceCalendars(_ calendars: [ConnectedCalendar], enabled: Bool) {
+        for calendar in calendars {
+            let currentlyEnabled = calendarManager.isCalendarEnabled(calendar)
+            if currentlyEnabled != enabled {
+                calendarManager.toggleCalendarEnabled(calendar)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func connectedServiceLogoView(_ service: ConnectedServiceLogo) -> some View {
+        ZStack {
+            Circle()
+                .fill(service.background)
+
+            switch service.mark {
+            case .symbol(let symbol):
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(service.foreground)
+            case .letter(let letter):
+                Text(letter)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(service.foreground)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .overlay(
+            Circle()
+                .stroke(service.border, lineWidth: 1)
+        )
+        .accessibilityLabel(service.name)
+    }
+
+    private var calendarConnectionSummaryBar: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(localized: "calendar.status.title"))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+
+                    HStack(spacing: 8) {
+                        Text(String(format: String(localized: "calendar.status.calendars_format"), connectedCalendarCount))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.primary)
+
+                        Text("•")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.tertiary)
+
+                        Group {
+                            if connectedServiceCount == 1 {
+                                Text(String(localized: "calendar.status.service_singular"))
+                            } else {
+                                Text(String(format: String(localized: "calendar.status.services_format"), connectedServiceCount))
+                            }
+                        }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    }
+                }
+
+                Spacer(minLength: 10)
+
+                if connectedServices.isEmpty {
+                    Text(String(localized: "calendar.status.no_integration"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                } else {
+                    HStack(spacing: 8) {
+                        ForEach(connectedServices) { service in
+                            connectedServiceLogoView(service)
+                        }
+                    }
+                }
+
+                Image(systemName: isCalendarStatusExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if isCalendarStatusExpanded {
+                VStack(alignment: .leading, spacing: 10) {
+                    Divider()
+
+                    Text("Connected Services")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    ForEach(primaryIntegrationServices) { service in
+                        HStack(spacing: 10) {
+                            connectedServiceLogoView(service.logo)
+                                .opacity(service.isConnected ? 1.0 : 0.5)
+
+                            Text(service.name)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.primary)
+
+                            Spacer(minLength: 8)
+
+                            Text(service.isConnected ? "Connected" : "Not Connected")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(service.isConnected ? .secondary : .tertiary)
+                        }
+                    }
+
+                    Text("Connected Calendars")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+
+                    if connectedCalendarsByService.isEmpty {
+                        Text("No calendars connected yet")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        ForEach(connectedCalendarsByService, id: \.serviceName) { group in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Button {
+                                    toggleServiceCalendarsExpansion(group.serviceName)
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        if let logo = connectedServiceLogo(for: group.serviceName) {
+                                            connectedServiceLogoView(logo)
+                                        }
+
+                                        Text("\(group.serviceName) (\(group.calendars.count))")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(.secondary)
+
+                                        Spacer(minLength: 8)
+
+                                        Image(systemName: expandedCalendarServiceNames.contains(group.serviceName) ? "chevron.up" : "chevron.down")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+
+                                if expandedCalendarServiceNames.contains(group.serviceName) {
+                                    HStack(spacing: 12) {
+                                        Button("Select All") {
+                                            setServiceCalendars(group.calendars, enabled: true)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+
+                                        Button("Deselect All") {
+                                            setServiceCalendars(group.calendars, enabled: false)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.leading, 36)
+                                    .padding(.top, 2)
+
+                                    ForEach(group.calendars, id: \.id) { calendar in
+                                        Toggle(
+                                            isOn: Binding(
+                                                get: {
+                                                    calendarManager.isCalendarEnabled(calendar)
+                                                },
+                                                set: { shouldEnable in
+                                                    let currentlyEnabled = calendarManager.isCalendarEnabled(calendar)
+                                                    if currentlyEnabled != shouldEnable {
+                                                        calendarManager.toggleCalendarEnabled(calendar)
+                                                    }
+                                                }
+                                            )
+                                        ) {
+                                            HStack(spacing: 8) {
+                                                Circle()
+                                                    .fill(calendar.color)
+                                                    .frame(width: 8, height: 8)
+
+                                                Text(calendar.name)
+                                                    .font(.system(size: 13, weight: .regular))
+                                                    .foregroundStyle(.primary)
+                                            }
+                                        }
+                                        .toggleStyle(.checkbox)
+                                        .padding(.leading, 36)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .background(isCalendarStatusHovering ? Color.primary.opacity(0.04) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .animation(.easeInOut(duration: 0.18), value: isCalendarStatusExpanded)
+        .animation(.easeInOut(duration: 0.18), value: expandedCalendarServiceNames)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            GeometryReader { proxy in
+                calendarMainScroll(proxy: proxy)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(1)
+
+            if isEventListSidebarShown {
+                Group {
+                    if sidebarPanel == .eventList {
+                        academicEventsSidebar
+                            .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    } else {
+                        tasksSidebar
+                            .transition(.opacity.combined(with: .move(edge: .trailing)))
+                    }
+                }
+                .id(sidebarPanel)
+                    .frame(width: 296)
+                    .layoutPriority(0)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isEventListSidebarShown)
+        .animation(.spring(response: 0.34, dampingFraction: 0.88), value: sidebarPanel)
+        .sheet(isPresented: isAddCalendarSheetPresented) {
+            AddCalendarItemOverlay(
+                isPresented: isAddCalendarSheetPresented,
+                semester: addCalendarSheetSemester,
+                initialTitle: addCalendarSheetTitle,
+                initialStartDateTime: addCalendarSheetStart,
+                initialEndDateTime: addCalendarSheetEnd,
+                eventToEdit: nil,
+                presentationStyle: .anchoredPanel
+            )
+            .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
+            .environmentObject(coreDataManager)
+            .presentationBackground(.thinMaterial)
+            .dismissOnOutsideClickForSheet()
+        }
+        .sheet(isPresented: isEditCalendarSheetPresented) {
+            AddCalendarItemOverlay(
+                isPresented: isEditCalendarSheetPresented,
+                semester: editCalendarSheetEvent?.semester,
+                initialStartDateTime: editCalendarSheetEvent?.startDate,
+                initialEndDateTime: editCalendarSheetEvent?.endDate,
+                eventToEdit: editCalendarSheetEvent,
+                presentationStyle: .anchoredPanel
+            )
+            .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
+            .environmentObject(coreDataManager)
+            .presentationBackground(.thinMaterial)
+            .dismissOnOutsideClickForSheet()
+        }
+        .opacity(hasAnimatedIn ? 1 : 0)
+        .offset(y: hasAnimatedIn ? 0 : (motionReduced ? 0 : 12))
+        .animation(
+            motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88),
+            value: hasAnimatedIn
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.windowBackground)
+        .onAppear {
+            scheduleCacheRebuild(delay: 0)
+            prewarmEventEntitiesIfNeeded()
+            #if os(macOS)
+            syncToolbarState()
+            toolbarCoordinator.onCalPrev    = { [self] in shiftDate(by: -1) }
+            toolbarCoordinator.onCalNext    = { [self] in shiftDate(by: 1) }
+            toolbarCoordinator.onCalModeChange = { [self] mode in activeViewMode = mode }
+            toolbarCoordinator.onCalSidebarToggle = { [self] in
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+                    isEventListSidebarShown.toggle()
+                }
+            }
+            toolbarCoordinator.onCalSidebarPanelChange = { [self] panel in
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                    sidebarPanel = panel
+                    if !isEventListSidebarShown {
+                        isEventListSidebarShown = true
+                    }
+                }
+            }
+            #endif
+            guard !hasAnimatedIn else { return }
+            withAnimation(motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88)) {
+                hasAnimatedIn = true
+            }
+        }
+        .onChange(of: events.count) { _, _ in
+            scheduleCacheRebuild()
+            prewarmEventEntitiesIfNeeded()
+        }
+        .onChange(of: tasks.count) { _, _ in
+            scheduleCacheRebuild()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSManagedObjectContext.didSaveObjectsNotification)) { notification in
+            let updatedTypes  = (notification.userInfo?[NSUpdatedObjectsKey] as? Set<NSManagedObject>)?.map { type(of: $0).entity().name ?? "" } ?? []
+            let insertedTypes = (notification.userInfo?[NSInsertedObjectsKey] as? Set<NSManagedObject>)?.map { type(of: $0).entity().name ?? "" } ?? []
+            let deletedTypes  = (notification.userInfo?[NSDeletedObjectsKey] as? Set<NSManagedObject>)?.map { type(of: $0).entity().name ?? "" } ?? []
+            let changed = Set(updatedTypes + insertedTypes + deletedTypes)
+            let relevant: Set<String> = ["CalendarEventEntity", "TaskEntity"]
+            guard !changed.isDisjoint(with: relevant) else { return }
+            scheduleCacheRebuild()
+        }
+        .onChange(of: coreDataManager.calendarDidChangeToken) { _, _ in
+            scheduleCacheRebuild()
+        }
+        .onChange(of: calendarManager.calendarVisibilityToken) { _, _ in
+            scheduleCacheRebuild(delay: 0)
+        }
+        #if os(macOS)
+        .onChange(of: headerDateString) { _, text in
+            toolbarCoordinator.calHeaderDate = text
+        }
+        .onChange(of: activeViewMode) { _, mode in
+            toolbarCoordinator.calViewMode = mode
+        }
+        .onChange(of: isEventListSidebarShown) { _, shown in
+            toolbarCoordinator.calSidebarShown = shown
+        }
+        .onChange(of: sidebarPanel) { _, panel in
+            toolbarCoordinator.calSidebarPanel = panel
+        }
+        .onChange(of: calendarToolbarInitials) { _, initials in
+            toolbarCoordinator.profileInitials = initials
+        }
+        .onChange(of: calendarSearchText) { _, query in
+            scheduleToolbarCalendarSearch(query)
+        }
+        #endif
+        .onDisappear {
+            cacheRebuildTask?.cancel()
+            cacheRebuildTask = nil
+            #if os(macOS)
+            toolbarCalendarSearchTask?.cancel()
+            toolbarCalendarSearchTask = nil
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    private func syncToolbarState() {
+        toolbarCoordinator.calHeaderDate    = headerDateString
+        toolbarCoordinator.calViewMode      = activeViewMode
+        toolbarCoordinator.calSidebarShown  = isEventListSidebarShown
+        toolbarCoordinator.calSidebarPanel  = sidebarPanel
+        toolbarCoordinator.profileInitials  = calendarToolbarInitials
+    }
+
+    #endif
+
+    private func calendarMainScroll(proxy: GeometryProxy) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 16) {
+                UnifiedActionHeader(
+                    title: AppPage.calendar.displayTitle,
+                    topPadding: 0,
+                    horizontalPadding: 0,
+                    bottomPadding: 0,
+                    titleToContentSpacing: 0
+                )
+
+                mainCalendarContent
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: max(560, proxy.size.height - 48))
+
+                Button(action: {
+                    isCalendarStatusExpanded.toggle()
+                    if isCalendarStatusExpanded {
+                        expandedCalendarServiceNames = Set(connectedCalendarsByService.map(\.serviceName))
+                    }
+                }) {
+                    calendarConnectionSummaryBar
+                }
+                .buttonStyle(.plain)
+                .onHover { hovering in
+                    isCalendarStatusHovering = hovering
+                }
+            }
+            .padding(.vertical, 24)
+            .padding(.horizontal, 24)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private var isAddCalendarSheetPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .addCalendarItem = modalCoordinator.activeModal { return true }
+                return false
+            },
+            set: { isPresented in
+                if !isPresented, case .addCalendarItem = modalCoordinator.activeModal {
+                    modalCoordinator.activeModal = nil
+                }
+            }
+        )
+    }
+
+    private var isEditCalendarSheetPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .editCalendarItem = modalCoordinator.activeModal { return true }
+                return false
+            },
+            set: { isPresented in
+                if !isPresented, case .editCalendarItem = modalCoordinator.activeModal {
+                    modalCoordinator.activeModal = nil
+                }
+            }
+        )
+    }
+
+    private var addCalendarSheetSemester: SemesterEntity? {
+        guard case .addCalendarItem(let semesterID, _, _, _) = modalCoordinator.activeModal else { return nil }
+        guard let semesterID else { return nil }
+        return coreDataManager.semester(with: semesterID)
+    }
+
+    private var addCalendarSheetTitle: String? {
+        guard case .addCalendarItem(_, let initialTitle, _, _) = modalCoordinator.activeModal else { return nil }
+        return initialTitle
+    }
+
+    private var addCalendarSheetStart: Date? {
+        guard case .addCalendarItem(_, _, let initialStart, _) = modalCoordinator.activeModal else { return nil }
+        return initialStart
+    }
+
+    private var addCalendarSheetEnd: Date? {
+        guard case .addCalendarItem(_, _, _, let initialEnd) = modalCoordinator.activeModal else { return nil }
+        return initialEnd
+    }
+
+    private var editCalendarSheetEvent: CalendarEventEntity? {
+        guard case .editCalendarItem(let objectID) = modalCoordinator.activeModal else { return nil }
+        return (try? coreDataManager.viewContext.existingObject(with: objectID)) as? CalendarEventEntity
+    }
+
+    private func presentAddEventFromSidebar() {
+        let start = defaultSidebarStartDate()
+        let end = Calendar.current.date(byAdding: .hour, value: 1, to: start) ?? start.addingTimeInterval(3600)
+        modalCoordinator.activeModal = .addCalendarItem(
+            semesterID: nil,
+            initialTitle: nil,
+            initialStart: start,
+            initialEnd: end
+        )
+    }
+
+    private func presentAddTaskFromSidebar() {
+        modalCoordinator.activeModal = .addTask(semesterID: nil, prefillCourseObjectID: nil)
+    }
+
+    private func defaultSidebarStartDate() -> Date {
+        let cal = Calendar.current
+        if cal.isDateInToday(sidebarDate) {
+            return Date().addingTimeInterval(300)
+        }
+
+        var components = cal.dateComponents([.year, .month, .day], from: sidebarDate)
+        components.hour = 10
+        components.minute = 0
+        return cal.date(from: components) ?? sidebarDate
+    }
+
+    @ViewBuilder
+    private var mainCalendarContent: some View {
+        VStack(spacing: 0) {
+            if activeViewMode == .month {
+                monthGridView
+                    .id(currentDate)
+                    .transition(navigationDirection >= 0
+                        ? .push(from: .trailing)
+                        : .push(from: .leading))
+            } else {
+                timeGridView
+                    .id(currentDate)
+                    .transition(navigationDirection >= 0
+                        ? .push(from: .trailing)
+                        : .push(from: .leading))
+            }
+        }
+        .id(activeViewMode)
+        .transition(.opacity.animation(motionReduced ? .easeOut(duration: 0.08) : .easeInOut(duration: 0.22)))
+        .frame(maxWidth: .infinity, alignment: .top)
+        .background(DesignSystem.Colors.glassCardBase.background(.thinMaterial))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 10, y: 4)
+        .gesture(
+            motionReduced ? nil :
+            DragGesture(minimumDistance: 40)
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    let direction = value.translation.width < 0 ? 1 : -1
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) {
+                        shiftDate(by: direction)
+                    }
+                }
+        )
+        .sensoryFeedback(.selection, trigger: currentDate)
+        // Two-finger trackpad swipe: installs an NSEvent monitor for phase-tracked scroll events.
+        .background(
+            TrackpadSwipeCapture(
+                onNavigateForward: {
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) { shiftDate(by: 1) }
+                },
+                onNavigateBackward: {
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.86)) { shiftDate(by: -1) }
+                },
+                onProgress: { p in
+                    withAnimation(.interactiveSpring(response: 0.18, dampingFraction: 0.75)) {
+                        swipeNavProgress = p
+                    }
+                },
+                disabled: motionReduced || activePage != .calendar
+            )
+            .allowsHitTesting(false)
+        )
+        .overlay { calendarSwipeHint }
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// Subtle circular pill that appears mid-swipe to confirm the gesture direction before navigation fires.
+    @ViewBuilder
+    private var calendarSwipeHint: some View {
+        let abs = abs(swipeNavProgress)
+        if abs > 0.25 {
+            let isBackward = swipeNavProgress > 0
+            let opacity = min(1.0, (abs - 0.25) / 0.75)
+            let scale   = 0.55 + 0.45 * min(1.0, abs)
+            Image(systemName: isBackward ? "chevron.left" : "chevron.right")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 52, height: 52)
+                .background(.thinMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(.primary.opacity(0.08), lineWidth: 1))
+                .shadow(color: .black.opacity(0.12), radius: 10, y: 4)
+                .opacity(opacity)
+                .scaleEffect(scale)
+                .animation(.interactiveSpring(response: 0.2, dampingFraction: 0.7), value: swipeNavProgress)
+        }
+    }
+
+    private var monthGridView: some View {
+        let days = getDaysForCurrentView()
+        return VStack(spacing: 0) {
+            // Header Row (Days)
+            HStack(spacing: 0) {
+                let headers = days.prefix(7).map { $0 }
+                ForEach(headers, id: \.timeIntervalSince1970) { date in
+                    let dayString = CalendarFormatters.weekday.string(from: date).uppercased()
+                    Text(dayString)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
+            }
+            
+            Divider().background(Color.primary.opacity(0.08))
+
+            let rows = max(1, days.count / 7)
+            
+            if !days.isEmpty {
+                ForEach(0..<rows, id: \.self) { rowIndex in
+                    let startIdx = rowIndex * 7
+                    let endIdx = min(startIdx + 7, days.count)
+                    let rowDays = (startIdx..<endIdx).map { colIndex -> (Int, [CalEvent]?, Bool) in
+                        let date = days[colIndex]
+                        let dayNum = calendar.component(.day, from: date)
+                        let evs = getEvents(for: date)
+                        let isCurrent = calendar.isDateInToday(date)
+                        return (dayNum, evs.isEmpty ? nil : evs, isCurrent)
+                    }
+                    
+                    MonthCalendarRow(days: rowDays, isLast: rowIndex == rows - 1)
+                }
+            }
+        }
+    }
+    
+    // Y-Axis Time Grid
+    private var timeGridView: some View {
+        VStack(spacing: 0) {
+            // Headers and all-day shelf
+            let days = getDaysForCurrentView()
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    // Time column header spacer
+                    Spacer().frame(width: 58)
+                    ForEach(days, id: \.self) { date in
+                        dayHeaderColumn(for: date)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                    }
+                }
+                .padding(.vertical, 8)
+
+                HStack(spacing: 0) {
+                    // Time column header spacer
+                    Spacer().frame(width: 58)
+                    ForEach(days, id: \.self) { date in
+                        allDayEventsColumn(for: date)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+            .background(DesignSystem.Colors.glassCardBase.background(.thinMaterial))
+            // Removed custom overlay border lines to let whitespace dictate.
+            
+            // Time Grid Scroll
+            ScrollViewReader { proxy in
+                ScrollView {
+                    ZStack(alignment: .topLeading) {
+                        // Hour markers and grid lines
+                        VStack(spacing: 0) {
+                            ForEach(0...24, id: \.self) { hour in
+                                HStack(alignment: .top, spacing: 0) {
+                                    Text(hourString(for: hour))
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(Color.secondary.opacity(0.55))
+                                        .frame(width: 50, alignment: .trailing)
+                                        .padding(.trailing, 8)
+                                        .offset(y: -6)
+
+                                    Rectangle()
+                                        .fill(Color.primary.opacity(0.06))
+                                        .frame(height: 0.5)
+                                        .frame(maxHeight: .infinity, alignment: .top)
+                                }
+                                .frame(height: hourHeight)
+                                .id(hour)
+                            }
+                        }
+                    
+
+                    // Events
+                    HStack(spacing: 0) {
+                        Spacer().frame(width: 58)
+                        ForEach(days, id: \.self) { date in
+                            let layouts = timedLayouts(for: date)
+                            GeometryReader { geo in
+                                ZStack(alignment: .topLeading) {
+                                    ForEach(layouts) { layout in
+                                        let event = layout.event
+                                        let columnWidth = (geo.size.width - 8) / CGFloat(layout.columnCount)
+                                        let gap: CGFloat = layout.columnCount > 1 ? 3 : 0
+                                        let eventWidth = columnWidth - gap
+                                        let eventX = CGFloat(layout.columnIndex) * columnWidth
+                                        
+                                        TimeEventBlock(event: event, eventWidth: eventWidth)
+                                            .frame(width: eventWidth, height: height(for: event))
+                                            .offset(x: eventX + gap/2, y: offset(for: event))
+                                    }
+
+                                    if let firstDay = days.first,
+                                       calendar.isDate(date, inSameDayAs: firstDay) {
+                                        Rectangle()
+                                            .fill(Color.primary.opacity(0.08))
+                                            .frame(width: 0.5, height: 24 * hourHeight)
+                                            .offset(x: 0, y: 0)
+                                    }
+
+                                    Rectangle()
+                                        .fill(Color.primary.opacity(0.08))
+                                        .frame(width: 0.5, height: 24 * hourHeight)
+                                        .offset(x: max(0, geo.size.width - 0.5), y: 0)
+                                    
+                                    // Current Time Indicator
+                                    if calendar.isDateInToday(date) {
+                                        TimelineView(.animation(minimumInterval: 60)) { context in
+                                            let now = context.date
+                                            let c = calendar.dateComponents([.hour, .minute], from: now)
+                                            let currentOffset = (CGFloat(c.hour ?? 0) * 60.0 + CGFloat(c.minute ?? 0)) * (hourHeight / 60.0)
+
+                                            if currentOffset > 0 {
+                                                ZStack(alignment: .leading) {
+                                                    Rectangle()
+                                                        .fill(Color.red)
+                                                        .frame(width: geo.size.width, height: 1)
+                                                    Circle()
+                                                        .fill(Color.red)
+                                                        .frame(width: 6, height: 6)
+                                                        .offset(x: -3)
+                                                }
+                                                .offset(y: currentOffset - 3)
+                                                .allowsHitTesting(false)
+                                                .zIndex(1)
+                                                .transition(.opacity)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+
+                    // Current time label in the left time column.
+                    if days.contains(where: { calendar.isDateInToday($0) }) {
+                        TimelineView(.animation(minimumInterval: 60)) { context in
+                            let now = context.date
+                            let c = calendar.dateComponents([.hour, .minute], from: now)
+                            let currentOffset = (CGFloat(c.hour ?? 0) * 60.0 + CGFloat(c.minute ?? 0)) * (hourHeight / 60.0)
+
+                            if currentOffset > 0 {
+                                HStack(spacing: 0) {
+                                    Text(currentTimeString(for: now))
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.red)
+                                        .frame(width: 50, alignment: .trailing)
+                                        .padding(.trailing, 8)
+                                    Spacer(minLength: 0)
+                                }
+                                .offset(y: currentOffset - 10)
+                                .allowsHitTesting(false)
+                                .zIndex(2)
+                            }
+                        }
+                    }
+                }
+                .frame(height: 24 * hourHeight) // 24 hours * hourHeight
+                .padding(.bottom, 80) // Prevent 11:59PM cutoff
+            } // Close ScrollView
+            .scrollBounceBehavior(.basedOnSize)
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    proxy.scrollTo(8, anchor: .top)
+                }
+            }
+            } // Close ScrollViewReader
+        }
+        .gesture(
+            motionReduced ? nil :
+            MagnifyGesture()
+                .onChanged { value in
+                    let proposed = 60.0 * value.magnification
+                    hourHeight = min(max(proposed, 36), 120)
+                }
+                .onEnded { value in
+                    withAnimation(.interactiveSpring(response: 0.32, dampingFraction: 0.82)) {
+                        let proposed = 60.0 * value.magnification
+                        hourHeight = min(max(proposed, 36), 120)
+                    }
+                }
+        )
+    }
+
+    @ViewBuilder
+    private func dayHeaderColumn(for date: Date) -> some View {
+        let isToday = calendar.isDateInToday(date)
+
+        VStack(spacing: 4) {
+            Text(dayHeader(for: date))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(isToday ? .accentColor : .secondary)
+
+            Text("\(calendar.component(.day, from: date))")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(isToday ? .white : .primary)
+                .frame(width: 32, height: 32)
+                .background(isToday ? Color.accentColor : Color.clear)
+                .clipShape(Circle())
+        }
+    }
+
+    @ViewBuilder
+    private func allDayEventsColumn(for date: Date) -> some View {
+        let allDay = getEvents(for: date).filter { $0.isAllDay }
+
+        if !allDay.isEmpty {
+            VStack(spacing: 4) {
+                ForEach(allDay) { event in
+                    let isInfo = isInformationalAllDay(event)
+                    Text(event.title)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(isInfo ? .accentColor : .white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity)
+                        .background(isInfo ? Color.accentColor.opacity(0.15) : Color.red.opacity(0.8))
+                        .cornerRadius(4)
+                }
+            }
+            .padding(6)
+            .background(DesignSystem.Colors.glassCardBase.opacity(0.8))
+            .cornerRadius(6)
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+            )
+            .padding(.horizontal, 4)
+        } else {
+            // Keep a stable all-day shelf height even when a day has no all-day events.
+            Color.clear
+                .frame(height: 10)
+        }
+    }
+
+    private func hourString(for hour: Int) -> String {
+        let normalizedHour = (hour == 0 || hour == 24) ? 12 : (hour > 12 ? hour - 12 : hour)
+        let suffix = (hour == 24) ? "AM" : ((hour >= 12) ? "PM" : "AM")
+        return "\(normalizedHour) \(suffix)"
+    }
+
+    private func currentTimeString(for date: Date) -> String {
+        CalendarFormatters.currentTime.string(from: date)
+    }
+
+    private func isInformationalAllDay(_ event: CalEvent) -> Bool {
+        event.type == .classEvent || event.type == .management || event.type == .computerScience
+    }
+    
+    private func dayHeader(for date: Date) -> String {
+        CalendarFormatters.weekday.string(from: date).uppercased()
+    }
+
+    private func offset(for event: CalEvent) -> CGFloat {
+        guard let start = event.startDate else { return 0 }
+        let c = calendar.dateComponents([.hour, .minute], from: start)
+        let totalMinutes = CGFloat(c.hour ?? 0) * 60.0 + CGFloat(c.minute ?? 0)
+        return totalMinutes * (hourHeight / 60.0)
+    }
+    
+    private func height(for event: CalEvent) -> CGFloat {
+        guard let start = event.startDate, let end = event.endDate else { return hourHeight }
+        let duration = end.timeIntervalSince(start) / 60.0
+        return max(24, CGFloat(duration) * (hourHeight / 60.0))
+    }
+
+    /// Right sidebar: column title is pinned to the **top** of the sidebar (not vertically centered).
+    private var academicEventsSidebar: some View {
+        let now = Date()
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Event List")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text(sidebarDateString)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    isFilterPopoverShown.toggle()
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .foregroundColor(activeCalendarFilters.isEmpty ? Color.secondary.opacity(0.55) : .accentColor)
+                        .font(.system(size: 15, weight: .medium))
+                        .padding(6)
+                        .background(
+                            activeCalendarFilters.isEmpty
+                                ? Color.clear
+                                : Color.accentColor.opacity(0.1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $isFilterPopoverShown, arrowEdge: .top) {
+                    CalendarFilterPopoverContent(
+                        sidebarDate: $sidebarDate,
+                        activeCalendarFilters: $activeCalendarFilters,
+                        availableCalendars: uniqueCalendarNames
+                    )
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 16) {
+                    if orderedSidebarEvents.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "calendar.badge.checkmark")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.tertiary)
+                            Text("No events")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                    } else {
+                        ForEach(orderedSidebarEvents) { event in
+                            let isPast = isEventPassed(event, referenceDate: now)
+                            let timeString: String = {
+                                if event.isAllDay { return "All-Day" }
+                                guard let start = event.startDate else { return "" }
+                                return CalendarFormatters.shortTime.string(from: start)
+                            }()
+                            let matchedEntity = entity(for: event)
+                            let pillColor = eventColor(for: event.type)
+                            let calendarTint = matchedEntity.flatMap { calendarManager.sourceCalendarColor(for: $0) } ?? pillColor.base
+                            let calName = calendarNameForEvent(event)
+
+                            SideEventCard(
+                                badge: courseCode(for: event.title),
+                                badgeColor: calendarTint.opacity(0.85),
+                                time: timeString,
+                                title: event.title,
+                                calendarName: calName,
+                                iconColor: calendarTint,
+                                isAllDay: event.isAllDay,
+                                isPast: isPast,
+                                entity: matchedEntity
+                            )
+                            .scrollTransition { content, phase in
+                                content
+                                    .opacity(phase.isIdentity ? 1 : 0.6)
+                                    .scaleEffect(phase.isIdentity ? 1 : 0.96, anchor: .top)
+                                    .offset(y: phase.isIdentity ? 0 : 6)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scrollBounceBehavior(.basedOnSize)
+
+            Button(action: {
+                presentAddEventFromSidebar()
+            }) {
+                Text("Add Event")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(PressableCardStyle(reduceMotion: motionReduced))
+            .pointerStyle(.link)
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 20)
+            .sensoryFeedback(.impact(weight: .light), trigger: isAddCalendarSheetPresented.wrappedValue)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.clear)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.12))
+                .frame(width: 1)
+        }
+        .sensoryFeedback(.selection, trigger: sidebarDate)
+    }
+
+    private var tasksSidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tasks")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text(sidebarDateString)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 12) {
+                    if orderedSidebarTasks.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 28))
+                                .foregroundStyle(.tertiary)
+                            Text("No tasks")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 24)
+                    } else {
+                        ForEach(orderedSidebarTasks, id: \.objectID) { task in
+                            SideTaskCard(
+                                title: task.title ?? "Untitled Task",
+                                dueDate: task.dueDate
+                            )
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .scrollBounceBehavior(.basedOnSize)
+
+            Button(action: {
+                presentAddTaskFromSidebar()
+            }) {
+                Text("Add Task")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+                    )
+            }
+            .buttonStyle(PressableCardStyle(reduceMotion: motionReduced))
+            .pointerStyle(.link)
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 20)
+        }
+        .background(Color.clear)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(width: 1)
+        }
+    }
+    
+    private func courseCode(for title: String) -> String {
+        let parts = title.components(separatedBy: " ")
+        if parts.count >= 2 {
+            let first = parts[0]
+            if first == first.uppercased() && first.count <= 4 {
+                return "\(first) \(parts[1])".uppercased()
+            }
+        }
+        return "SCHEDULED"
+    }
+
+    private func eventColor(for type: EventType) -> (base: Color, text: Color) {
+        switch type {
+        case .deadline: return (.red, .red.opacity(0.8))
+        case .lecture, .classEvent: return (.accentColor, .accentColor.opacity(0.8))
+        case .lab: return (.purple, .purple.opacity(0.8))
+        case .extracurricular, .club: return (.green, .green.opacity(0.8))
+        default: return (.secondary, .secondary)
+        }
+    }
+}
+
+// Block for Time Grid
+fileprivate struct TimeEventBlock: View {
+    let event: CalEvent
+    let eventWidth: CGFloat
+
+    @EnvironmentObject private var coreDataManager: CoreDataManager
+    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var isHovering = false
+    @GestureState private var isPressed = false
+    @State private var selectedEntity: CalendarEventEntity?
+    @State private var selectedEntityObjectID: NSManagedObjectID?
+    @State private var showDetail = false
+    @State private var resolveTask: Task<Void, Never>? = nil
+
+    private var resolvedObjectID: NSManagedObjectID? {
+        guard let uriString = event.calendarObjectURI,
+              let uri = URL(string: uriString) else {
+            return nil
+        }
+        return coreDataManager.container.persistentStoreCoordinator.managedObjectID(
+            forURIRepresentation: uri
+        )
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }()
+    
+    var body: some View {
+        HStack(spacing: 0) {
+            // Leading Edge Bar
+            Rectangle()
+                .fill(baseColor)
+                .frame(width: 4)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.title)
+                    .font(.system(size: 11, weight: .bold))
+                    .minimumScaleFactor(0.75)
+                    .foregroundColor(textColor)
+                
+                // Truncation logic: only show extra info if it's tall enough
+                GeometryReader { geo in
+                    if geo.size.height > 25 && eventWidth >= 100 {
+                        Text(timeString)
+                            .lineLimit(1)
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(textColor.opacity(0.8))
+                    }
+                }
+            }
+            .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .clipped()
+        }
+        .background(
+            ZStack {
+                DesignSystem.Colors.glassCardBase
+                baseColor.opacity(isHovering ? 0.25 : 0.15)
+            }
+        )
+        .padding(.trailing, 2)
+        .cornerRadius(4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 4)
+                .stroke(baseColor.opacity(0.3), lineWidth: 0.5)
+        )
+        .clipped()
+        .scaleEffect(isPressed ? 0.97 : 1.0)
+        .animation(.spring(response: 0.10, dampingFraction: 0.72), value: isPressed)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0).updating($isPressed) { _, state, _ in state = true }
+        )
+        .pointerStyle(.link)
+        .onHover { hover in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovering = hover
+            }
+        }
+        .onTapGesture {
+            guard let objectID = resolvedObjectID else { return }
+            selectedEntityObjectID = objectID
+            selectedEntity = resolveEntity(for: objectID)
+
+            if selectedEntity != nil {
+                if reduceMotion {
+                    showDetail = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        showDetail = true
+                    }
+                }
+                return
+            }
+
+            // New events can briefly race with context merges; retry before showing fallback.
+            resolveTask?.cancel()
+            resolveTask = Task { @MainActor in
+                for _ in 0..<12 {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard !Task.isCancelled else { return }
+                    if let resolved = resolveEntity(for: objectID) {
+                        selectedEntity = resolved
+                        if reduceMotion {
+                            showDetail = true
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                showDetail = true
+                            }
+                        }
+                        return
+                    }
+                }
+
+                if reduceMotion {
+                    showDetail = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        showDetail = true
+                    }
+                }
+            }
+        }
+        .popover(isPresented: $showDetail, arrowEdge: .trailing) {
+            if let selectedEntity {
+                EventDetailPopoverContent(entity: selectedEntity)
+                    .environment(\.managedObjectContext, viewContext)
+            } else {
+                Text("Event unavailable")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(20)
+            }
+        }
+        .onChange(of: showDetail) { _, isPresented in
+            if !isPresented {
+                resolveTask?.cancel()
+            }
+        }
+    }
+
+    private func resolveEntity(for objectID: NSManagedObjectID) -> CalendarEventEntity? {
+        if let registered = coreDataManager.viewContext.registeredObject(for: objectID) as? CalendarEventEntity,
+           !registered.isDeleted {
+            return registered
+        }
+        if let existing = try? coreDataManager.viewContext.existingObject(with: objectID) as? CalendarEventEntity,
+           !existing.isDeleted {
+            return existing
+        }
+        return nil
+    }
+    
+    private var baseColor: Color {
+        if let objectID = resolvedObjectID,
+           let entity = resolveEntity(for: objectID),
+           let color = calendarManager.sourceCalendarColor(for: entity) {
+            return color
+        }
+
+        switch event.type {
+        case .lecture: return .accentColor
+        case .lab: return .purple
+        case .deadline: return .red
+        case .extracurricular: return .green
+        case .management: return Color.orange
+        case .computerScience: return Color.blue
+        default: return .indigo
+        }
+    }
+    
+    private var textColor: Color {
+        return .primary
+    }
+    
+    private var timeString: String {
+        guard let s = event.startDate, let e = event.endDate else { return "" }
+        return "\(Self.timeFormatter.string(from: s)) - \(Self.timeFormatter.string(from: e))"
+    }
+}
+
+fileprivate struct MonthCalendarRow: View {
+    let days: [(Int, [CalEvent]?, Bool)]
+    let isLast: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(0..<days.count, id: \.self) { index in
+                    let day = days[index]
+                    MonthCalendarCell(dayNumber: day.0, events: day.1 ?? [], isCurrentDay: day.2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                    if index < days.count - 1 {
+                        Divider().background(Color.primary.opacity(0.08))
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity)
+            
+            if !isLast {
+                Divider().background(Color.primary.opacity(0.08))
+            }
+        }
+    }
+}
+
+fileprivate struct MonthCalendarCell: View {
+    let dayNumber: Int
+    let events: [CalEvent]
+    let isCurrentDay: Bool
+
+    @State private var isHovered = false
+
+    // Tuned to the current day header + pill styling so overflow appears only when needed.
+    private let headerApproxHeight: CGFloat = 36
+    private let eventRowApproxHeight: CGFloat = 18
+    private let moreLabelApproxHeight: CGFloat = 16
+    
+    var body: some View {
+        GeometryReader { geo in
+            let availableEventHeight = max(0, geo.size.height - headerApproxHeight)
+            let rawCapacity = Int(floor(availableEventHeight / eventRowApproxHeight))
+            let eventCapacity = max(0, rawCapacity)
+            let hasOverflow = events.count > eventCapacity
+            let adjustedCapacity: Int = {
+                guard hasOverflow else { return eventCapacity }
+                if availableEventHeight < moreLabelApproxHeight { return 0 }
+                let withMore = Int(floor((availableEventHeight - moreLabelApproxHeight) / eventRowApproxHeight))
+                return max(0, withMore)
+            }()
+            let displayedEvents = Array(events.prefix(adjustedCapacity))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    if isCurrentDay {
+                        Text("\(dayNumber)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 24, height: 24)
+                            .background(Color.accentColor)
+                            .clipShape(Circle())
+                            .shadow(color: Color.accentColor.opacity(isHovered ? 0.5 : 0), radius: 6)
+                    } else {
+                        Text("\(dayNumber)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(events.isEmpty ? Color.secondary.opacity(0.55) : Color.primary.opacity(0.8))
+                            .frame(width: 24, height: 24)
+                            .background(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                            .clipShape(Circle())
+                            .padding(.leading, 2)
+                            .padding(.top, 2)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 6)
+                .padding(.horizontal, 6)
+                .animation(.easeInOut(duration: 0.15), value: isHovered)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(displayedEvents) { event in
+                        EventPill(event: event)
+                    }
+
+                    if events.count > adjustedCapacity {
+                        Text("+ \(events.count - adjustedCapacity) more")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 6)
+                            .padding(.top, 2)
+                    }
+                }
+                .padding(.horizontal, 6)
+
+                Spacer(minLength: 0)
+            }
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovering }
+            }
+        }
+    }
+}
+
+fileprivate struct EventPill: View {
+    let event: CalEvent
+    
+    @EnvironmentObject private var coreDataManager: CoreDataManager
+    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    @Environment(\.managedObjectContext) private var viewContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+    @State private var selectedEntity: CalendarEventEntity?
+    @State private var selectedEntityObjectID: NSManagedObjectID?
+    @State private var showDetail = false
+    @State private var resolveTask: Task<Void, Never>? = nil
+
+    private var resolvedObjectID: NSManagedObjectID? {
+        guard let uriString = event.calendarObjectURI,
+              let uri = URL(string: uriString) else {
+            return nil
+        }
+        return coreDataManager.container.persistentStoreCoordinator.managedObjectID(
+            forURIRepresentation: uri
+        )
+    }
+    
+    var body: some View {
+        Button(action: {
+            guard let objectID = resolvedObjectID else { return }
+            selectedEntityObjectID = objectID
+            selectedEntity = resolveEntity(for: objectID)
+
+            if selectedEntity != nil {
+                if reduceMotion {
+                    showDetail = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        showDetail = true
+                    }
+                }
+                return
+            }
+
+            resolveTask?.cancel()
+            resolveTask = Task { @MainActor in
+                for _ in 0..<12 {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                    guard !Task.isCancelled else { return }
+                    if let resolved = resolveEntity(for: objectID) {
+                        selectedEntity = resolved
+                        if reduceMotion {
+                            showDetail = true
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.16)) {
+                                showDetail = true
+                            }
+                        }
+                        return
+                    }
+                }
+
+                if reduceMotion {
+                    showDetail = true
+                } else {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        showDetail = true
+                    }
+                }
+            }
+        }) {
+            HStack(spacing: 4) {
+                // 3pt vertical accent line
+                Rectangle()
+                    .fill(baseColor)
+                    .frame(width: 3)
+                
+                if event.isImportant {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 8))
+                } else if event.type == .lecture || event.type == .classEvent {
+                    Image(systemName: "book.fill")
+                        .font(.system(size: 8))
+                } else if event.type == .lab {
+                    Image(systemName: "flask.fill")
+                        .font(.system(size: 8))
+                }
+                
+                Text(event.title)
+                    .font(.system(size: 9, weight: event.isImportant ? .bold : .medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(textColor)
+            .padding(.trailing, 6)
+            .frame(height: 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(baseColor.opacity(isHovering ? 0.3 : 0.15))
+            .cornerRadius(4)
+            .clipped()
+        }
+        .buttonStyle(PressableCardStyle(reduceMotion: reduceMotion))
+        .pointerStyle(.link)
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovering = hovering
+            }
+        }
+        .popover(isPresented: $showDetail, arrowEdge: .trailing) {
+            if let selectedEntity {
+                EventDetailPopoverContent(entity: selectedEntity)
+                    .environment(\.managedObjectContext, viewContext)
+            } else {
+                Text("Event unavailable")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(20)
+            }
+        }
+        .onChange(of: showDetail) { _, isPresented in
+            if !isPresented {
+                resolveTask?.cancel()
+            }
+        }
+    }
+
+    private func resolveEntity(for objectID: NSManagedObjectID) -> CalendarEventEntity? {
+        if let registered = coreDataManager.viewContext.registeredObject(for: objectID) as? CalendarEventEntity,
+           !registered.isDeleted {
+            return registered
+        }
+        if let existing = try? coreDataManager.viewContext.existingObject(with: objectID) as? CalendarEventEntity,
+           !existing.isDeleted {
+            return existing
+        }
+        return nil
+    }
+    
+    private var baseColor: Color {
+        if let objectID = resolvedObjectID,
+           let entity = resolveEntity(for: objectID),
+           let color = calendarManager.sourceCalendarColor(for: entity) {
+            return color
+        }
+
+        switch event.type {
+        case .deadline: return .red
+        case .lecture, .classEvent: return .accentColor
+        case .lab: return .purple
+        case .extracurricular, .club: return .green
+        default: return .secondary
+        }
+    }
+    
+    private var textColor: Color {
+        if let objectID = resolvedObjectID,
+           let entity = resolveEntity(for: objectID),
+           calendarManager.sourceCalendarColor(for: entity) != nil {
+            return baseColor.opacity(0.9)
+        }
+
+        switch event.type {
+        case .deadline: return .red.opacity(0.8)
+        case .lecture, .classEvent: return .accentColor.opacity(0.8)
+        case .lab: return .purple.opacity(0.8)
+        case .extracurricular, .club: return .green.opacity(0.8)
+        default: return .secondary
+        }
+    }
+}
+
+fileprivate struct SideEventCard: View {
+    let badge: String
+    let badgeColor: Color
+    let time: String
+    let title: String
+    let calendarName: String
+    let iconColor: Color
+    let isAllDay: Bool
+    let isPast: Bool
+    let entity: CalendarEventEntity?
+
+    @Environment(\.managedObjectContext) private var viewContext
+
+    @State private var isHovering = false
+    @State private var hoverLocation: CGPoint = .zero
+    @State private var showDetail = false
+
+    private var mutedTextColor: Color { .secondary.opacity(0.6) }
+    private var strikeColor: Color { .secondary.opacity(0.45) }
+
+    var body: some View {
+        let liveBadgeColor = isPast ? mutedTextColor : badgeColor
+        let liveAllDayColor = isPast ? mutedTextColor : Color.accentColor.opacity(0.8)
+        let liveTimeColor = isPast ? mutedTextColor : Color.secondary.opacity(0.55)
+        let liveTitleColor = isPast ? mutedTextColor : Color.primary
+        let liveMetaColor = isPast ? mutedTextColor : Color.secondary
+        let liveIconColor = isPast ? mutedTextColor : iconColor.opacity(0.8)
+
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(badge)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(liveBadgeColor)
+                    .strikethrough(isPast, color: strikeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.clear)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(liveBadgeColor.opacity(0.45), lineWidth: 1)
+                    )
+
+                if isAllDay {
+                    Text("ALL-DAY")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(liveAllDayColor)
+                        .strikethrough(isPast, color: strikeColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.clear)
+                        .clipShape(Capsule())
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.accentColor.opacity(isPast ? 0.25 : 0.45), lineWidth: 1)
+                        )
+                }
+
+                Spacer()
+
+                Text(time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(liveTimeColor)
+                    .strikethrough(isPast, color: strikeColor)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(liveTitleColor)
+                    .strikethrough(isPast, color: strikeColor)
+
+                HStack(spacing: 4) {
+                    Image(systemName: isAllDay ? "calendar" : "clock")
+                        .font(.system(size: 11))
+                        .foregroundColor(liveIconColor)
+                    Text(calendarName)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(liveMetaColor)
+                        .strikethrough(isPast, color: strikeColor)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(20)
+        .background(DesignSystem.Colors.glassCardBase.background(.thinMaterial))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+        )
+        .shadow(
+            color: Color.black.opacity(isHovering ? 0.13 : 0.05),
+            radius: isHovering ? 18 : 8,
+            y: isHovering ? 5 : 2
+        )
+        .scaleEffect(isHovering ? 1.025 : 1.0)
+        .offset(y: isHovering ? -2 : 0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isHovering)
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let location):
+                hoverLocation = location
+                isHovering = true
+            case .ended:
+                isHovering = false
+            }
+        }
+        .onTapGesture {
+            if entity != nil { showDetail = true }
+        }
+        .popover(isPresented: $showDetail, arrowEdge: .leading) {
+            if let entity {
+                EventDetailPopoverContent(entity: entity)
+                    .environment(\.managedObjectContext, viewContext)
+            }
+        }
+        #if os(macOS)
+        .cursor(.pointingHand)
+        #endif
+    }
+}
+
+fileprivate struct SideTaskCard: View {
+    let title: String
+    let dueDate: Date?
+
+    @State private var isHovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("TASK")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color.accentColor.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.accentColor.opacity(0.4), lineWidth: 1)
+                    )
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 5) {
+                    Image(systemName: "checklist")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(dueTimeText)
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundStyle(.secondary)
+            }
+
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(isHovering ? 0.06 : 0.035))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+        )
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) {
+                isHovering = hovering
+            }
+        }
+        .scaleEffect(isHovering ? 1.02 : 1.0)
+        .animation(.spring(response: 0.22, dampingFraction: 0.80), value: isHovering)
+    }
+
+    private var dueTimeText: String {
+        guard let dueDate else { return "No Due Time" }
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter.string(from: dueDate)
+    }
+}
+
+// MARK: - Event Detail Popover
+
+private struct EventDetailPopoverContent: View {
+    let entity: CalendarEventEntity
+
+    @Environment(\.dismiss) private var dismiss
+    private var isPresentedBinding: Binding<Bool> {
+        Binding(
+            get: { true },
+            set: { isPresented in
+                if !isPresented {
+                    dismiss()
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        AddCalendarItemOverlay(
+            isPresented: isPresentedBinding,
+            semester: entity.semester,
+            initialTitle: entity.title,
+            initialStartDateTime: entity.startDate,
+            initialEndDateTime: entity.endDate,
+            eventToEdit: entity,
+            presentationStyle: .anchoredPanel
+        )
+        .frame(width: 507)
+        .frame(minHeight: 333, idealHeight: 373, maxHeight: 413)
+        .background(Color.clear)
+    }
+}
+
+// MARK: - Calendar Filter Popover
+
+private struct CalendarFilterPopoverContent: View {
+    @Binding var sidebarDate: Date
+    @Binding var activeCalendarFilters: Set<String>
+    let availableCalendars: [String]
+
+    private static let shortDate: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        return f
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Filter Events")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
+            Divider()
+
+            // Day picker
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Day")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+
+                HStack(spacing: 8) {
+                    dayChip("Today", date: Date())
+                    dayChip("Tomorrow", date: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date())
+                }
+                .padding(.horizontal, 16)
+
+                DatePicker("", selection: $sidebarDate, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
+            }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            // Calendar filter
+            if !availableCalendars.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Calendar")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.tertiary)
+                        .textCase(.uppercase)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+
+                    ForEach(availableCalendars, id: \.self) { calName in
+                        let isActive = activeCalendarFilters.contains(calName)
+                        HStack {
+                            Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 14))
+                                .foregroundColor(isActive ? .accentColor : Color.secondary.opacity(0.55))
+                                .contentTransition(.symbolEffect(.replace.offUp))
+                                .animation(.spring(response: 0.26, dampingFraction: 0.80), value: isActive)
+                            Text(calName)
+                                .font(.system(size: 13))
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.80)) {
+                                if isActive {
+                                    activeCalendarFilters.remove(calName)
+                                } else {
+                                    activeCalendarFilters.insert(calName)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 4)
+                    }
+                }
+                .padding(.bottom, 12)
+            }
+
+            if !activeCalendarFilters.isEmpty || !Calendar.current.isDateInToday(sidebarDate) {
+                Divider()
+                Button {
+                    sidebarDate = Date()
+                    activeCalendarFilters = []
+                } label: {
+                    HStack {
+                        Spacer()
+                        Text("Clear Filters")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(width: 280)
+        .background(.regularMaterial)
+    }
+
+    @ViewBuilder
+    private func dayChip(_ label: String, date: Date) -> some View {
+        let isSelected = Calendar.current.isDate(sidebarDate, inSameDayAs: date)
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { sidebarDate = date }
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.08)))
+                .clipShape(Capsule())
+                .animation(.spring(response: 0.26, dampingFraction: 0.80), value: isSelected)
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+    }
+}
+
+fileprivate extension View {
+    func border(_ color: Color, width: CGFloat, edges: [Edge]) -> some View {
+        overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+    }
+
+    #if os(macOS)
+    @ViewBuilder
+    func cursor(_ cursor: NSCursor) -> some View {
+        // Keep API compatibility for existing call sites without mutating NSCursor stack.
+        self
+    }
+    #endif
+}
+
+
+// MARK: – Trackpad Swipe Navigation
+
+/// An invisible NSViewRepresentable that installs a local NSEvent monitor for phase-tracked
+/// scroll wheel events. When the user performs a two-finger horizontal swipe on the trackpad,
+/// horizontal delta accumulates until a threshold is reached, then the appropriate navigation
+/// callback fires. All events are returned unmodified so the enclosing ScrollView continues
+/// to work normally.
+///
+/// Thread-safety: NSEvent.addLocalMonitorForEvents fires on the main thread, and all
+/// callbacks are dispatched via DispatchQueue.main.async, so Coordinator access is
+/// effectively single-threaded.
+@available(macOS 14, *)
+private struct TrackpadSwipeCapture: NSViewRepresentable {
+    let onNavigateForward:  () -> Void   // swipe left  → next period
+    let onNavigateBackward: () -> Void   // swipe right → previous period
+    let onProgress: (CGFloat) -> Void    // -1...1: negative=forward, positive=backward
+    let disabled: Bool
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.wantsLayer = true
+        context.coordinator.install(
+            onForward: onNavigateForward,
+            onBackward: onNavigateBackward,
+            onProgress: onProgress,
+            disabled: disabled
+        )
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.update(
+            onForward: onNavigateForward,
+            onBackward: onNavigateBackward,
+            onProgress: onProgress,
+            disabled: disabled
+        )
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.teardown()
+    }
+
+    // MARK: Coordinator
+
+    // @unchecked Sendable: NSEvent monitor fires on the main thread;
+    // all callback invocations are safe single-threaded accesses.
+    final class Coordinator: @unchecked Sendable {
+        private var onForward:  (() -> Void)?
+        private var onBackward: (() -> Void)?
+        private var onProgress: ((CGFloat) -> Void)?
+        private var isDisabled = true
+
+        private var token: Any?
+        private var accumX: CGFloat = 0
+        private var fired  = false
+
+        // Direction lock: determined on first significant delta each gesture.
+        private var isTrackingHorizontal = false
+        private var directionLocked      = false
+
+        /// Horizontal delta required to trigger navigation.
+        private let kThreshold: CGFloat = 80
+        /// Horizontal delta before the visual hint begins appearing.
+        private let kHintStart: CGFloat = 18
+        /// Minimum combined delta before the axis is locked in.
+        private let kAxisLockThreshold: CGFloat = 5
+
+        func install(
+            onForward: @escaping () -> Void,
+            onBackward: @escaping () -> Void,
+            onProgress: @escaping (CGFloat) -> Void,
+            disabled: Bool
+        ) {
+            update(onForward: onForward, onBackward: onBackward, onProgress: onProgress, disabled: disabled)
+            guard token == nil else { return }
+            // Returns nil to suppress horizontal-swipe events so the vertical
+            // ScrollView doesn't bounce while we're handling a horizontal gesture.
+            token = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self = self else { return event }
+                let suppress = self.processScrollEvent(event)
+                return suppress ? nil : event
+            }
+        }
+
+        func update(
+            onForward: @escaping () -> Void,
+            onBackward: @escaping () -> Void,
+            onProgress: @escaping (CGFloat) -> Void,
+            disabled: Bool
+        ) {
+            self.onForward = onForward
+            self.onBackward = onBackward
+            self.onProgress = onProgress
+            isDisabled = disabled
+        }
+
+        func teardown() {
+            if let t = token { NSEvent.removeMonitor(t) }
+            token = nil
+        }
+
+        /// Returns true when the event should be suppressed (not forwarded to the ScrollView).
+        @discardableResult
+        private func processScrollEvent(_ event: NSEvent) -> Bool {
+            // Non-phase-tracked events (old mouse wheels, momentum) — pass through.
+            guard !isDisabled, event.phase != [] else { return false }
+
+            switch event.phase {
+            case .began:
+                accumX = 0
+                fired  = false
+                isTrackingHorizontal = false
+                directionLocked      = false
+                send(progress: 0)
+                return false   // always let the .began event through
+
+            case .changed:
+                // Lock the scroll axis on the first significant movement.
+                if !directionLocked {
+                    let dx = abs(event.scrollingDeltaX)
+                    let dy = abs(event.scrollingDeltaY)
+                    if dx + dy >= kAxisLockThreshold {
+                        isTrackingHorizontal = dx > dy
+                        directionLocked = true
+                    }
+                }
+
+                guard isTrackingHorizontal else { return false }
+                guard !fired else { return true }   // still suppress during cool-down
+
+                accumX += event.scrollingDeltaX
+                if abs(accumX) > kHintStart {
+                    let clamped = max(-1, min(1, accumX / kThreshold))
+                    send(progress: clamped)
+                }
+                if accumX > kThreshold {
+                    fired = true; send(progress: 0); fire(onBackward)
+                } else if accumX < -kThreshold {
+                    fired = true; send(progress: 0); fire(onForward)
+                }
+                return true   // suppress: keep ScrollView still during horizontal swipe
+
+            case .ended, .cancelled:
+                let wasH = isTrackingHorizontal
+                accumX = 0; fired = false
+                isTrackingHorizontal = false; directionLocked = false
+                send(progress: 0)
+                return wasH   // suppress the ending event if we owned this gesture
+
+            default:
+                return false
+            }
+        }
+
+        // NSEvent monitor runs on the main thread, so direct invocation is safe.
+        private func send(progress: CGFloat) { onProgress?(progress) }
+        private func fire(_ action: (() -> Void)?) { action?() }
+    }
+}
+
+fileprivate struct EdgeBorder: Shape {
+    var width: CGFloat
+    var edges: [Edge]
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        for edge in edges {
+            var x: CGFloat = 0, y: CGFloat = 0, w: CGFloat = rect.width, h: CGFloat = rect.height
+            switch edge {
+            case .top:    h = width
+            case .bottom: y = rect.maxY - width; h = width
+            case .leading:  w = width
+            case .trailing: x = rect.maxX - width; w = width
+            }
+            path.addRect(CGRect(x: x, y: y, width: w, height: h))
+        }
+        return path
+    }
+}
+
+enum CalendarFeaturePreloadRegistration {
+    @MainActor
+    static func register() {
+        LaunchPreloadCoordinator.registerFeaturePreload(
+            .init(
+                id: "calendar",
+                title: "Calendar mappings",
+                criticality: .bestEffort,
+                timeoutSeconds: 2.2,
+                retryLimit: 0,
+                run: { context, onProgress, onDetail in
+                    try await context.calendarManager.preloadForLaunch(
+                        progress: { onProgress($0) },
+                        detail: { onDetail($0) }
+                    )
+                    onProgress(1)
+                }
+            )
+        )
+    }
+}

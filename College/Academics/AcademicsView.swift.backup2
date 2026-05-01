@@ -1,0 +1,1957 @@
+// AcademicsView.swift
+// Semester Planner — the "Academics" tab.  Matches the same card-shell pattern used by
+// ProfileView and ResourcesView (gradient bg + floating AppNavBar + rounded white card).
+
+import SwiftUI
+import CoreData
+
+// MARK: - AcademicsView
+
+struct AcademicsView: View {
+    @Binding var activePage: AppPage
+
+    @EnvironmentObject var coreDataManager: CoreDataManager
+    @EnvironmentObject private var modalCoordinator: ModalCoordinator
+
+    @FetchRequest(fetchRequest: AcademicsView.profileRequest)
+    private var profiles: FetchedResults<ProfileEntity>
+
+    @FetchRequest(
+        sortDescriptors: [
+            NSSortDescriptor(key: "year", ascending: false),
+            NSSortDescriptor(key: "seasonOrder", ascending: false),
+        ]
+    ) private var semesters: FetchedResults<SemesterEntity>
+
+    private static var profileRequest: NSFetchRequest<ProfileEntity> {
+        let r = NSFetchRequest<ProfileEntity>(entityName: "ProfileEntity")
+        r.fetchLimit = 1
+        r.sortDescriptors = []
+        return r
+    }
+
+    private var profile: ProfileEntity? { profiles.first }
+
+    @State private var primaryProgress  = CoreDataManager.CreditsProgressSummary(completed: 0, required: 0, fraction: 0)
+    @State private var secondaryProgress = CoreDataManager.CreditsProgressSummary(completed: 0, required: 0, fraction: 0)
+    @State private var minorProgress    = CoreDataManager.CreditsProgressSummary(completed: 0, required: 0, fraction: 0)
+    @State private var showAddSemester  = false
+    @StateObject private var linker = CalendarCourseLinker.shared
+
+    // MARK: - Body
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LandscapeDashboard(
+                profile: profile,
+                semesters: Array(semesters),
+                primaryProgress: primaryProgress,
+                secondaryProgress: secondaryProgress,
+                minorProgress: minorProgress,
+                activePage: $activePage
+            )
+            .padding(.horizontal, 16)
+        }
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "F8FAFC"), Color(hex: "E2E8F0")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .task(id: "\(profile?.major ?? "")|\(profile?.secondaryMajor ?? "")|\(profile?.minor ?? "")|\(profile?.objectID.uriRepresentation().absoluteString ?? "")") { loadProgress() }
+        .onReceive(NotificationCenter.default.publisher(for: NSManagedObjectContext.didSaveObjectsNotification)) { notification in
+            let updatedTypes  = (notification.userInfo?[NSUpdatedObjectsKey]  as? Set<NSManagedObject>).map { $0.map { type(of: $0).entity().name ?? "" } } ?? []
+            let insertedTypes = (notification.userInfo?[NSInsertedObjectsKey] as? Set<NSManagedObject>).map { $0.map { type(of: $0).entity().name ?? "" } } ?? []
+            let deletedTypes  = (notification.userInfo?[NSDeletedObjectsKey]  as? Set<NSManagedObject>).map { $0.map { type(of: $0).entity().name ?? "" } } ?? []
+            let relevantEntities: Set<String> = ["ProfileEntity", "SemesterEntity", "CourseEntity"]
+            let affected = Set(updatedTypes + insertedTypes + deletedTypes)
+            guard !affected.isDisjoint(with: relevantEntities) else { return }
+            loadProgress()
+        }
+        .overlay {
+            if showAddSemester, let plan = coreDataManager.getActivePlan() ?? coreDataManager.plans.first {
+                AddSemesterView(isPresented: $showAddSemester, plan: plan)
+                    .environmentObject(coreDataManager)
+            }
+        }
+    }
+
+    private func loadProgress() {
+        let major     = (profile?.major            ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let secondary = (profile?.secondaryMajor   ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let minor     = (profile?.minor            ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !major.isEmpty {
+            primaryProgress = coreDataManager.majorRequirementsCreditsProgress(forMajorDisplay: major)
+        }
+        if !secondary.isEmpty {
+            secondaryProgress = coreDataManager.majorRequirementsCreditsProgress(forMajorDisplay: secondary)
+        }
+        if !minor.isEmpty {
+            minorProgress = coreDataManager.minorRequirementsCreditsProgress(forMinorDisplay: minor)
+        }
+    }
+
+    // MARK: - Semester GPA helper
+
+    private func semesterGPA(_ semester: SemesterEntity) -> Double? {
+        func gradePoints(_ grade: String) -> Double? {
+            let g = grade.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            let excluded: Set<String> = ["P","PASS","S","SAT","W","WD","I","INC","AU","NG","NR"]
+            if excluded.contains(g) { return nil }
+            switch g {
+            case "A+","A": return 4.0
+            case "A-": return 3.7
+            case "B+": return 3.3
+            case "B": return 3.0
+            case "B-": return 2.7
+            case "C+": return 2.3
+            case "C": return 2.0
+            case "C-": return 1.7
+            case "D+": return 1.3
+            case "D": return 1.0
+            case "D-": return 0.7
+            case "F": return 0.0
+            default:
+                let stripped = g.replacingOccurrences(of: "%", with: "")
+                if let pct = Double(stripped) {
+                    switch pct {
+                    case 93...: return 4.0
+                    case 90..<93: return 3.7
+                    case 87..<90: return 3.3
+                    case 83..<87: return 3.0
+                    case 80..<83: return 2.7
+                    case 77..<80: return 2.3
+                    case 73..<77: return 2.0
+                    case 70..<73: return 1.7
+                    case 67..<70: return 1.3
+                    case 63..<67: return 1.0
+                    case 60..<63: return 0.7
+                    default: return 0.0
+                    }
+                }
+                return nil
+            }
+        }
+        var qp = 0.0; var cr = 0.0
+        for c in semester.coursesArray {
+            guard c.isCompleted, let g = c.grade, !g.isEmpty,
+                  let pts = gradePoints(g) else { continue }
+            qp += pts * Double(c.credits); cr += Double(c.credits)
+        }
+        return cr > 0 ? (qp / cr * 100).rounded() / 100 : nil
+    }
+
+    // MARK: - Legend dot helper
+
+    @ViewBuilder
+    private func legendDot(color: String, label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(Color(hex: color)).frame(width: 8, height: 8)
+            Text(label).font(DesignSystem.Fonts.main(size: 10)).foregroundColor(Color(hex: "6b7280"))
+        }
+    }
+
+    // MARK: - Main card
+
+    private var mainCard: some View {
+        VStack(spacing: 0) {
+            cardInnerHeader
+            // Auto-linked banner
+            if !linker.newCoursesFound.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(hex: "7c3aed"))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Auto-linked from your calendar")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                            .foregroundColor(Color(hex: "7c3aed"))
+                        Text(linker.newCoursesFound.joined(separator: ", "))
+                            .font(DesignSystem.Fonts.main(size: 11))
+                            .foregroundColor(Color(hex: "a78bfa"))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button { linker.newCoursesFound.removeAll() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color(hex: "a78bfa"))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(Color(hex: "f5f3ff"))
+            }
+            Rectangle().fill(Color(hex: "f3f4f6")).frame(height: 1)
+            splitContent
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.white.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(Color.white, lineWidth: 1.5)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 40, x: 0, y: 10)
+    }
+
+    // MARK: - Card inner header
+
+    private var cardInnerHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Academic Journey")
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "6b7280"))
+                Text("Semester Planner")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(Color(hex: "1f2937"))
+            }
+
+            Spacer()
+
+            Button {} label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 13))
+                    Text("History")
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
+                }
+                .foregroundColor(Color(hex: "6b7280"))
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(hex: "e5e7eb"), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Button {} label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.system(size: 13, weight: .medium))
+                    Text("Save Plan")
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 20).padding(.vertical, 9)
+                .background(Color(hex: "4f46e5"))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: Color(hex: "4f46e5").opacity(0.3), radius: 8, x: 0, y: 4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 16)
+        .background(Color(hex: "f9fafb"))
+    }
+
+    // MARK: - Split: left scroll + right audit panel
+
+    private var splitContent: some View {
+        HStack(alignment: .top, spacing: 0) {
+            // ── Left: scrollable main content ────────────────────────────
+            ScrollView {
+                VStack(alignment: .leading, spacing: 32) {
+                    degreeCardsSection
+                    semesterListSection
+                }
+                .padding(28)
+            }
+
+            // ── Divider ───────────────────────────────────────────────────
+            Rectangle()
+                .fill(Color(hex: "f3f4f6"))
+                .frame(width: 1)
+
+            // ── Right: audit sidebar ──────────────────────────────────────
+            AcademicsAuditPanel(
+                primaryMajor:   profile?.major            ?? "",
+                secondaryMajor: profile?.secondaryMajor,
+                minor:          profile?.minor,
+                activePage:     $activePage
+            )
+            .frame(width: 296)
+        }
+    }
+
+    // MARK: - Degree cards section
+
+    @ViewBuilder
+    private var degreeCardsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Section heading
+            HStack(spacing: 10) {
+                Text("Current Degrees")
+                    .font(.system(size: 17, weight: .bold, design: .serif))
+                    .foregroundColor(Color(hex: "111827"))
+
+                let sec = (profile?.secondaryMajor ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sec.isEmpty {
+                    Text("DUAL DEGREE")
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "2563eb"))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color(hex: "eff6ff"))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                }
+            }
+
+            // Cards
+            HStack(alignment: .top, spacing: 16) {
+                let major = (profile?.major ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                let minor = (profile?.minor ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Primary degree
+                AcademicsDegreeCard(
+                    badge: "DEGREE 1",
+                    badgeColor: Color(hex: "6366f1"),
+                    title: major.isEmpty ? "Add Your Major" : major,
+                    circleColor: Color(hex: "6366f1"),
+                    progress: primaryProgress,
+                    rows: major.isEmpty ? [] : [
+                        AcademicsDegreeCard.BarRow(
+                            label: "Major: \(major)",
+                            progress: primaryProgress,
+                            color: Color(hex: "6366f1")
+                        ),
+                    ] + (minor.isEmpty ? [] : [
+                        AcademicsDegreeCard.BarRow(
+                            label: "Minor: \(minor)",
+                            progress: minorProgress,
+                            color: Color(hex: "06b6d4")
+                        ),
+                    ])
+                )
+
+                // Secondary degree or credits fallback
+                let sec = (profile?.secondaryMajor ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sec.isEmpty {
+                    AcademicsDegreeCard(
+                        badge: "DEGREE 2",
+                        badgeColor: Color(hex: "10b981"),
+                        title: sec,
+                        circleColor: Color(hex: "10b981"),
+                        progress: secondaryProgress,
+                        rows: [
+                            AcademicsDegreeCard.BarRow(
+                                label: "Major: \(sec)",
+                                progress: secondaryProgress,
+                                color: Color(hex: "10b981")
+                            ),
+                        ]
+                    )
+                } else {
+                    let earned   = Double(semesters.reduce(0) { $0 + $1.totalCredits })
+                    let required = max(Double(profile?.creditsRequired ?? 120), 1)
+                    let credProg = CoreDataManager.CreditsProgressSummary(
+                        completed: earned, required: required,
+                        fraction: min(earned / required, 1)
+                    )
+                    AcademicsDegreeCard(
+                        badge: "CREDITS",
+                        badgeColor: Color(hex: "10b981"),
+                        title: "Credits Progress",
+                        circleColor: Color(hex: "10b981"),
+                        progress: credProg,
+                        rows: [
+                            AcademicsDegreeCard.BarRow(
+                                label: "Credits Earned",
+                                progress: credProg,
+                                color: Color(hex: "10b981")
+                            ),
+                        ]
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Semester list section
+
+    @ViewBuilder
+    private var semesterListSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // ── Cumulative stats bar ──────────────────────────────────────
+            if let prof = profile {
+                CumulativeStatsBar(profile: prof, semesters: Array(semesters), sapStats: coreDataManager.sapStats())
+            }
+
+            ForEach(semesters) { semester in
+                AcademicsSemesterSection(semester: semester) {
+                    modalCoordinator.activeModal = .addCatalogCourse(semesterObjectID: semester.objectID)
+                }
+            }
+
+            // Add Semester
+            Button { showAddSemester = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 16))
+                    Text("Add Semester")
+                        .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
+                }
+                .foregroundColor(Color(hex: "6b7280"))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(Color.white.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(style: StrokeStyle(lineWidth: 2, dash: [6]))
+                        .foregroundColor(Color(hex: "d1d5db"))
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+// MARK: - Degree Progress Card
+
+private struct AcademicsDegreeCard: View {
+    struct BarRow {
+        let label: String
+        let progress: CoreDataManager.CreditsProgressSummary
+        let color: Color
+    }
+
+    let badge: String
+    let badgeColor: Color
+    let title: String
+    let circleColor: Color
+    let progress: CoreDataManager.CreditsProgressSummary
+    let rows: [BarRow]
+
+    private var pct: Int { Int((progress.fraction * 100).rounded()) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Title row + progress circle
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(badge)
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundColor(badgeColor)
+                        .tracking(0.8)
+                    Text(title)
+                        .font(.system(size: 19, weight: .bold, design: .serif))
+                        .foregroundColor(Color(hex: "111827"))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 12)
+                // Circular progress indicator
+                ZStack {
+                    Circle()
+                        .stroke(Color(hex: "f3f4f6"), lineWidth: 4)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(progress.fraction))
+                        .stroke(circleColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text("\(pct)%")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "374151"))
+                }
+                .frame(width: 48, height: 48)
+                .animation(.easeInOut(duration: 0.5), value: progress.fraction)
+            }
+
+            Spacer(minLength: 0)
+
+            // Progress bars
+            VStack(spacing: 10) {
+                ForEach(rows.indices, id: \.self) { i in
+                    let row = rows[i]
+                    VStack(spacing: 4) {
+                        HStack {
+                            Text(row.label)
+                                .font(DesignSystem.Fonts.main(size: 11))
+                                .foregroundColor(Color(hex: "6b7280"))
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(row.progress.completedRoundedInt)/\(row.progress.requiredRoundedInt) Cr")
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                                .foregroundColor(Color(hex: "374151"))
+                        }
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color(hex: "f3f4f6"))
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(row.color)
+                                    .frame(
+                                        width: max(0, geo.size.width * CGFloat(row.progress.fraction)),
+                                        height: 6
+                                    )
+                                    .animation(.easeInOut(duration: 0.5), value: row.progress.fraction)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, minHeight: 160, alignment: .topLeading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color(hex: "f3f4f6"), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 4)
+    }
+}
+
+// MARK: - Cumulative Stats Bar
+
+private struct CumulativeStatsBar: View {
+    let profile: ProfileEntity
+    let semesters: [SemesterEntity]
+    let sapStats: (attempted: Int, completed: Int, rate: Double)
+
+    private var completedCr: Int {
+        var total = 0
+        for s in semesters { for c in s.coursesArray where c.isCompleted { total += Int(c.credits) } }
+        return total
+    }
+    private var inProgressCr: Int {
+        var total = 0
+        for s in semesters {
+            for c in s.coursesArray {
+                let st = c.status ?? ""
+                if st == "In Progress" || st == "In-Progress" { total += Int(c.credits) }
+            }
+        }
+        return total
+    }
+    private var plannedCr: Int {
+        var total = 0
+        for s in semesters {
+            for c in s.coursesArray where (c.status ?? "") == "Planned" { total += Int(c.credits) }
+        }
+        return total
+    }
+    private var required: Int {
+        profile.creditsRequired > 0 ? Int(profile.creditsRequired) : 120
+    }
+    private var remaining: Int { max(0, required - completedCr - inProgressCr - plannedCr) }
+    private var gpa: Double { profile.gpa }
+
+    private var gpaColor: Color {
+        if gpa >= 3.5 { return Color(hex: "22c55e") }
+        if gpa >= 2.0 { return Color(hex: "6366f1") }
+        return Color(hex: "ef4444")
+    }
+    private var gpaText: String { gpa > 0 ? String(format: "%.2f", gpa) : "—" }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cumulative GPA")
+                        .font(DesignSystem.Fonts.main(size: 10))
+                        .foregroundColor(Color(hex: "9ca3af"))
+                    Text(gpaText)
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                        .foregroundColor(gpaColor)
+                }
+                Divider().frame(height: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Credits Earned")
+                        .font(DesignSystem.Fonts.main(size: 10))
+                        .foregroundColor(Color(hex: "9ca3af"))
+                    Text("\(completedCr) / \(required)")
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                        .foregroundColor(Color(hex: "374151"))
+                }
+                Spacer()
+                if sapStats.attempted > 0 {
+                    let sapColor: Color = sapStats.rate >= 0.67 ? Color(hex: "22c55e") : Color(hex: "ef4444")
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("SAP Rate")
+                            .font(DesignSystem.Fonts.main(size: 10))
+                            .foregroundColor(Color(hex: "9ca3af"))
+                        Text(String(format: "%.0f%%", sapStats.rate * 100))
+                            .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
+                            .foregroundColor(sapColor)
+                    }
+                }
+            }
+            // Credits path bar
+            CumulativeProgressBar(completedCr: completedCr, inProgressCr: inProgressCr,
+                                   plannedCr: plannedCr, required: required)
+            HStack(spacing: 12) {
+                legendDot(color: "22c55e", label: "Completed \(completedCr) cr")
+                legendDot(color: "6366f1", label: "In Progress \(inProgressCr) cr")
+                legendDot(color: "a5b4fc", label: "Planned \(plannedCr) cr")
+                legendDot(color: "e5e7eb", label: "Remaining \(remaining) cr")
+            }
+        }
+        .padding(16)
+        .background(Color(hex: "ffffff"))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color(hex: "e5e7eb"), lineWidth: 1))
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func legendDot(color: String, label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(Color(hex: color)).frame(width: 8, height: 8)
+            Text(label).font(DesignSystem.Fonts.main(size: 10)).foregroundColor(Color(hex: "6b7280"))
+        }
+    }
+}
+
+private struct CumulativeProgressBar: View {
+    let completedCr: Int
+    let inProgressCr: Int
+    let plannedCr: Int
+    let required: Int
+
+    var body: some View {
+        GeometryReader { geo in
+            HStack(spacing: 2) {
+                let total = max(Double(required), 1.0)
+                let cFrac = min(Double(completedCr) / total, 1.0)
+                let iFrac = min(Double(inProgressCr) / total, 1.0 - cFrac)
+                let pFrac = min(Double(plannedCr) / total, 1.0 - cFrac - iFrac)
+                let rFrac = max(0.0, 1.0 - cFrac - iFrac - pFrac)
+                if cFrac > 0 { Rectangle().fill(Color(hex: "22c55e")).frame(width: geo.size.width * cFrac) }
+                if iFrac > 0 { Rectangle().fill(Color(hex: "6366f1")).frame(width: geo.size.width * iFrac) }
+                if pFrac > 0 { Rectangle().fill(Color(hex: "a5b4fc")).frame(width: geo.size.width * pFrac) }
+                if rFrac > 0 { Rectangle().fill(Color(hex: "f3f4f6")).frame(width: geo.size.width * rFrac) }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+        .frame(height: 8)
+    }
+}
+
+// MARK: - Semester Section
+
+private struct AcademicsSemesterSection: View {
+    @ObservedObject var semester: SemesterEntity
+    let onAddCourse: () -> Void
+
+    private var season: String {
+        (semester.season ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private var year: Int { Int(semester.year) }
+
+    private var accentColor: Color {
+        switch season.lowercased() {
+        case "spring": return Color(hex: "4f46e5")
+        case "summer": return Color(hex: "10b981")
+        case "fall":   return Color(hex: "f97316")
+        case "winter": return Color(hex: "0ea5e9")
+        default: return Color(hex: "4f46e5")
+        }
+    }
+
+    private var badgeBg: Color {
+        switch season.lowercased() {
+        case "spring": return Color(hex: "eef2ff")
+        case "summer": return Color(hex: "ecfdf5")
+        case "fall":   return Color(hex: "fff7ed")
+        case "winter": return Color(hex: "f0f9ff")
+        default: return Color(hex: "eef2ff")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Section header
+            HStack(alignment: .center, spacing: 12) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(accentColor)
+                    .frame(width: 4, height: 36)
+
+                Text(season.isEmpty ? "Semester \(String(year))" : "\(season) \(String(year))")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(Color(hex: "1f2937"))
+
+                Text("\(semester.totalCredits) Credits")
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                    .foregroundColor(accentColor)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(badgeBg)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(accentColor.opacity(0.25), lineWidth: 1))
+
+                let semGPA: Double? = {
+                    func gp(_ g: String) -> Double? {
+                        let e: Set<String> = ["P","PASS","W","WD","I","INC","AU"]
+                        let u = g.uppercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                        if e.contains(u) { return nil }
+                        switch u {
+                        case "A+","A": return 4.0; case "A-": return 3.7; case "B+": return 3.3
+                        case "B": return 3.0; case "B-": return 2.7; case "C+": return 2.3
+                        case "C": return 2.0; case "C-": return 1.7; case "D+": return 1.3
+                        case "D": return 1.0; case "D-": return 0.7; case "F": return 0.0
+                        default: return nil
+                        }
+                    }
+                    var qp = 0.0, cr = 0.0
+                    for c in semester.coursesArray where c.isCompleted {
+                        guard let g = c.grade, !g.isEmpty, let pts = gp(g) else { continue }
+                        qp += pts * Double(c.credits); cr += Double(c.credits)
+                    }
+                    return cr > 0 ? (qp/cr*100).rounded()/100 : nil
+                }()
+                if let gpa = semGPA {
+                    Text(String(format: "%.2f GPA", gpa))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                        .foregroundColor(gpa >= 3.0 ? Color(hex: "22c55e") : gpa >= 2.0 ? Color(hex: "f59e0b") : Color(hex: "ef4444"))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Color(hex: gpa >= 3.0 ? "dcfce7" : gpa >= 2.0 ? "fef3c7" : "fee2e2"))
+                        .clipShape(Capsule())
+                }
+
+                Spacer()
+
+                Button {} label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(hex: "9ca3af"))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Course rows + add button
+            VStack(spacing: 8) {
+                ForEach(semester.coursesArray) { course in
+                    AcademicsCourseRow(course: course)
+                }
+
+                Button(action: onAddCourse) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .medium))
+                        Text("Add Course")
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
+                    }
+                    .foregroundColor(Color(hex: "9ca3af"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [5]))
+                            .foregroundColor(Color(hex: "e5e7eb"))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(20)
+        .background(Color.white.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.white.opacity(0.9), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
+    }
+}
+
+// MARK: - Course Row
+
+private struct AcademicsCourseRow: View {
+    @ObservedObject var course: CourseEntity
+    @EnvironmentObject private var modalCoordinator: ModalCoordinator
+    @EnvironmentObject private var coreDataManager: CoreDataManager
+
+    /// Set by the async catalog scour when no title is available on the entity.
+    @State private var scouredTitle: String? = nil
+
+    private var code: String        { course.code   ?? "" }
+    private var name: String        { course.name   ?? "" }
+    private var credits: Int        { Int(course.credits) }
+    private var status: String      { course.status ?? "Draft" }
+    /// Prefers the verified catalog title; falls back to scoured result, then stored name.
+    private var catalogTitle: String {
+        let c = code.replacingOccurrences(of: " ", with: "").uppercased()
+        if let t = course.catalogCourse?.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !t.isEmpty,
+           t.replacingOccurrences(of: " ", with: "").uppercased() != c { return t }
+        if let t = scouredTitle, !t.isEmpty,
+           t.replacingOccurrences(of: " ", with: "").uppercased() != c { return t }
+        // Only show stored name if it's genuinely different from the code
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !n.isEmpty, n.replacingOccurrences(of: " ", with: "").uppercased() != c { return n }
+        return code.isEmpty ? "Untitled" : code
+    }
+
+    /// True when the course's semester ended before today.
+    private var isPastSemester: Bool {
+        guard let sem = course.semester else { return false }
+        let yr = Int(sem.year)
+        let month: Int
+        switch (sem.season ?? "").lowercased() {
+        case "winter": month = 1
+        case "spring": month = 5
+        case "summer": month = 8
+        default:       month = 12  // fall / unknown
+        }
+        let end = Calendar.current.date(from: DateComponents(year: yr, month: month, day: 28)) ?? .distantPast
+        return end < Date()
+    }
+    /// Shows "Completed" for past-semester courses regardless of stored status.
+    private var displayStatus: String {
+        if isPastSemester && !status.lowercased().contains("complet") { return "Completed" }
+        return status
+    }
+    /// True when the semester has passed but the user never marked the course completed.
+    private var needsInfoFill: Bool {
+        isPastSemester && !status.lowercased().contains("complet")
+    }
+
+    private var dept: String { String(code.prefix(while: { $0.isLetter })) }
+
+    private var abbr: String {
+        String(dept.prefix(3)).uppercased()
+    }
+
+    private var subjectColor: Color {
+        let p = dept.lowercased()
+        switch p {
+        case "cs", "cse":        return Color(hex: "4f46e5")
+        case "mat", "math", "mth": return Color(hex: "0ea5e9")
+        case "phy", "phys":      return Color(hex: "7c3aed")
+        case "che", "chem":      return Color(hex: "dc2626")
+        case "bio":              return Color(hex: "059669")
+        case "eco", "econ":      return Color(hex: "10b981")
+        case "eng", "engl":      return Color(hex: "d97706")
+        case "sta", "stat":      return Color(hex: "f97316")
+        case "psy", "psyc":      return Color(hex: "be185d")
+        case "soc", "socl":      return Color(hex: "7c3aed")
+        case "his", "hist":      return Color(hex: "92400e")
+        default:                 return Color(hex: "6366f1")
+        }
+    }
+
+    private var statusTextColor: Color {
+        let s = displayStatus.lowercased()
+        if s.contains("enroll") || s.contains("in progress") { return Color(hex: "16a34a") }
+        if s.contains("complet")                              { return Color(hex: "2563eb") }
+        if s.contains("waitlist")                            { return Color(hex: "d97706") }
+        return Color(hex: "6b7280")
+    }
+
+    private var statusBgColor: Color {
+        let s = displayStatus.lowercased()
+        if s.contains("enroll") || s.contains("in progress") { return Color(hex: "f0fdf4") }
+        if s.contains("complet")                              { return Color(hex: "eff6ff") }
+        if s.contains("waitlist")                            { return Color(hex: "fffbeb") }
+        return Color(hex: "f9fafb")
+    }
+
+    private var subjectPrefix: String {
+        String(dept.prefix(3)).uppercased()
+    }
+
+    private var majorLabel: String {
+        let p = dept.lowercased()
+        switch p {
+        case "cs", "cse":                  return "Computer Science Major"
+        case "mat", "math", "mth":         return "Mathematics"
+        case "eco", "econ":                return "Economics"
+        case "sta", "stat":                return "Statistics"
+        case "phy", "phys":                return "Physics"
+        case "che", "chem":                return "Chemistry"
+        case "bio", "biol":                return "Biology"
+        case "eng", "engl":                return "English"
+        case "psy", "psyc":                return "Psychology"
+        case "soc", "socl":                return "Sociology"
+        case "his", "hist":                return "History"
+        case "mga", "mgt", "mgm", "mgq", "mis", "mkt", "fin", "acc", "oba", "bus":
+                                           return "Business Administration Major"
+        case "psc", "pol", "pols":         return "Political Science"
+        case "nsg", "nrs":                 return "Nursing Major"
+        case "ams", "aas":                 return "American Studies"
+        case "geo", "geos":                return "Geosciences"
+        case "art":                        return "Art History"
+        case "mus":                        return "Music"
+        default:
+            if p.isEmpty { return "Gen Ed" }
+            return p.prefix(1).uppercased() + p.dropFirst()
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            // Subject badge square
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(subjectColor.opacity(0.12))
+                Text(abbr.isEmpty ? "?" : abbr)
+                    .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                    .foregroundColor(subjectColor)
+            }
+            .frame(width: 40, height: 40)
+
+            // Course info
+            VStack(alignment: .leading, spacing: 3) {
+                let displayText: String = {
+                    if code.isEmpty { return catalogTitle }
+                    // Only append " - title" when catalogTitle is genuinely different from code
+                    let cNorm = code.replacingOccurrences(of: " ", with: "").uppercased()
+                    let tNorm = catalogTitle.replacingOccurrences(of: " ", with: "").uppercased()
+                    return tNorm == cNorm ? code : "\(code) - \(catalogTitle)"
+                }()
+                Text(displayText)
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                    .foregroundColor(Color(hex: "1f2937"))
+                    .lineLimit(1)
+
+                HStack(spacing: 5) {
+                    Text("\(credits) Cr")
+                        .font(DesignSystem.Fonts.main(size: 11))
+                        .foregroundColor(Color(hex: "6b7280"))
+
+                    Circle()
+                        .fill(Color(hex: "d1d5db"))
+                        .frame(width: 3, height: 3)
+
+                    if !subjectPrefix.isEmpty {
+                        Text(subjectPrefix)
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                            .foregroundColor(subjectColor)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(subjectColor.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .stroke(subjectColor.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                    Text(majorLabel)
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundColor(subjectColor)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(subjectColor.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .stroke(subjectColor.opacity(0.2), lineWidth: 1)
+                        )
+                }
+            }
+
+            Spacer()
+
+            // Auto-linked badge
+            if course.autoLinked {
+                HStack(spacing: 3) {
+                    Image(systemName: "wand.and.stars")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("Auto")
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                }
+                .foregroundColor(Color(hex: "7c3aed"))
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(Color(hex: "f5f3ff"))
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(Color(hex: "ddd6fe"), lineWidth: 1)
+                )
+                .help("Auto-created from your calendar events")
+            }
+
+            // "Need to fill information" warning tag for past-semester courses
+            if needsInfoFill {
+                HStack(spacing: 3) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 8, weight: .bold))
+                    Text("Need to fill in information")
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                }
+                .foregroundColor(Color(hex: "b45309"))
+                .padding(.horizontal, 6).padding(.vertical, 3)
+                .background(Color(hex: "fffbeb"))
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(Color(hex: "fde68a"), lineWidth: 1)
+                )
+            }
+
+            // Status pill (uses displayStatus so past courses always show Completed)
+            Text(displayStatus)
+                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                .foregroundColor(statusTextColor)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(statusBgColor)
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            // Grade badge
+            if let grade = course.grade, !grade.isEmpty {
+                Text(grade)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundColor(Color(hex: "374151"))
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Color(hex: "f3f4f6"))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+
+            // Season warning badge
+            let offered = course.catalogCourse?.typicallyOffered?.lowercased() ?? ""
+            let semSeason = (course.semester?.season ?? "").lowercased()
+            let hasSeasonConflict: Bool = {
+                if offered.isEmpty || semSeason.isEmpty { return false }
+                let fallOnly = offered.contains("fall") && !offered.contains("spring") && !offered.contains("summer")
+                let springOnly = offered.contains("spring") && !offered.contains("fall") && !offered.contains("summer")
+                if fallOnly && semSeason == "spring" { return true }
+                if springOnly && semSeason == "fall" { return true }
+                return false
+            }()
+            if hasSeasonConflict {
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: "f59e0b"))
+                    .help("Typically offered \(course.catalogCourse?.typicallyOffered ?? "") only")
+            }
+
+            // Course dashboard redirect button
+            Button {
+                let codeStr = code.isEmpty ? name : code
+                let creditsStr = credits > 0 ? "\(credits)" : ""
+                modalCoordinator.activeModal = .courseDashboard(
+                    courseCode: codeStr,
+                    defaultCourseName: name,
+                    defaultCreditsText: creditsStr
+                )
+            } label: {
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(Color(hex: "6366f1"))
+            }
+            .buttonStyle(.plain)
+
+            // Remove course from planner button
+            Button {
+                coreDataManager.deleteCourse(course)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(Color(hex: "9ca3af"))
+            }
+            .buttonStyle(.plain)
+            .help("Remove from planner")
+        }
+        .padding(.horizontal, 14).padding(.vertical, 11)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(hex: "f3f4f6"), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            let codeStr = code.isEmpty ? name : code
+            let creditsStr = credits > 0 ? "\(credits)" : ""
+            modalCoordinator.activeModal = .editCourse(
+                ModalCoordinator.CourseEditSelection(
+                    courseCode: codeStr,
+                    defaultCourseName: name,
+                    defaultCreditsText: creditsStr
+                )
+            )
+        }
+        .task(id: course.objectID) {
+            scouredTitle = nil
+            await scourTitle()
+        }
+    }
+
+    @MainActor
+    private func scourTitle() async {
+        let rawCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawCode.isEmpty else { return }
+        // Skip if we already have a real title.
+        // Normalize spaces+case so "MGS 425" is NOT treated as a real title for code "MGS425".
+        let rawName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nameIsRealTitle = !rawName.isEmpty &&
+            rawName.replacingOccurrences(of: " ", with: "").uppercased() !=
+            rawCode.replacingOccurrences(of: " ", with: "").uppercased()
+        if nameIsRealTitle { return }
+        if let t = course.catalogCourse?.title, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
+
+        let cache = CourseTitleCache.shared
+        await cache.loadIfNeeded()
+
+        var title = cache.resolve(rawCode)
+        if title == nil {
+            // Strip trailing alpha section suffixes: CSE220LEC → CSE220
+            let stripped = rawCode.replacingOccurrences(of: #"(?<=\d)[A-Za-z]+$"#, with: "",
+                                                         options: .regularExpression)
+                                  .trimmingCharacters(in: .whitespacesAndNewlines)
+            if stripped != rawCode { title = cache.resolve(stripped) }
+        }
+
+        guard let found = title, !found.isEmpty else { return }
+        scouredTitle = found
+
+        // Wire the relationship for future loads
+        if course.catalogCourse == nil,
+           let cat = CoreDataManager.shared.fetchCatalogCourseForCodeBroadSearch(rawCode) {
+            course.catalogCourse = cat
+            try? CoreDataManager.shared.viewContext.save()
+        }
+    }
+}
+
+// MARK: - Detailed Audit Panel
+
+struct AcademicsAuditPanel: View {
+    let primaryMajor:   String
+    let secondaryMajor: String?
+    let minor:          String?
+    @Binding var activePage: AppPage
+
+    @EnvironmentObject var coreDataManager: CoreDataManager
+
+    // MARK: Data model
+
+    struct AuditItem: Identifiable {
+        let id = UUID()
+        let code: String
+        let credits: String
+        let isCompleted: Bool
+        let isElective: Bool  // true = from selectFromJSON, false = required
+    }
+
+    struct AuditCategory: Identifiable {
+        let id = UUID()
+        let title: String
+        let items: [AuditItem]
+        let selectCount: Int   // 0 = all required; >0 = "choose N from"
+        let creditsRequired: Int
+    }
+
+    enum AuditDegreeKind { case major, minor }
+
+    struct AuditDegree: Identifiable {
+        let id = UUID()
+        let label: String
+        let rawName: String
+        let kind: AuditDegreeKind
+        let color: Color
+        let categories: [AuditCategory]
+        let programURL: String
+        let degreeType: String
+    }
+
+    // MARK: State
+
+    @State private var auditDegrees: [AuditDegree] = []
+    @State private var expandedCategories: Set<UUID> = []
+    @State private var isLoading = false
+    @State private var selectedDegreeForDetail: AuditDegree? = nil
+
+    // MARK: Body
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Panel header
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Detailed Audit")
+                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .foregroundColor(Color(hex: "1f2937"))
+                Text("Requirements Breakdown")
+                    .font(DesignSystem.Fonts.main(size: 11))
+                    .foregroundColor(Color(hex: "9ca3af"))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20).padding(.vertical, 16)
+            .background(Color(hex: "f9fafb"))
+
+            Rectangle()
+                .fill(Color(hex: "f3f4f6"))
+                .frame(height: 1)
+
+            // Scrollable requirement list
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                    } else if auditDegrees.isEmpty {
+                        Text("Add a major in your Profile to see your requirements breakdown here.")
+                            .font(DesignSystem.Fonts.main(size: 12))
+                            .foregroundColor(Color(hex: "9ca3af"))
+                            .multilineTextAlignment(.center)
+                            .padding(24)
+                    } else {
+                        // On-track / at-risk banner
+                        if !auditDegrees.isEmpty {
+                            let allRequired = auditDegrees.flatMap { $0.categories }.flatMap { $0.items.filter { !$0.isElective } }
+                            let doneCount = allRequired.filter { $0.isCompleted }.count
+                            let onTrack = allRequired.isEmpty || doneCount >= allRequired.count / 2
+                            HStack(spacing: 8) {
+                                Image(systemName: onTrack ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                                    .foregroundColor(onTrack ? Color(hex: "22c55e") : Color(hex: "f59e0b"))
+                                Text("\(doneCount)/\(allRequired.count) requirements met")
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                                    .foregroundColor(Color(hex: "374151"))
+                                Spacer()
+                                if !allRequired.isEmpty && doneCount == allRequired.count {
+                                    Text("Ready to Graduate")
+                                        .font(DesignSystem.Fonts.main(size: 11))
+                                        .foregroundColor(Color(hex: "22c55e"))
+                                }
+                            }
+                            .padding(10)
+                            .background(onTrack ? Color(hex: "f0fdf4") : Color(hex: "fffbeb"))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                        }
+                        ForEach(auditDegrees.indices, id: \.self) { di in
+                            let degree = auditDegrees[di]
+                            if di > 0 {
+                                Rectangle()
+                                    .fill(Color(hex: "f3f4f6"))
+                                    .frame(height: 1)
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 6)
+                            }
+                            // Degree group label + redirect button
+                            HStack(alignment: .center, spacing: 6) {
+                                Text(degree.label.uppercased())
+                                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                                    .foregroundColor(degree.color)
+                                    .tracking(0.8)
+                                Spacer()
+                                Button {
+                                    selectedDegreeForDetail = degree
+                                } label: {
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.system(size: 13, weight: .medium))
+                                        .foregroundColor(degree.color)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 14)
+                            .padding(.bottom, 6)
+
+                            // Expandable categories
+                            ForEach(degree.categories) { cat in
+                                VStack(alignment: .leading, spacing: 0) {
+                                    // Category toggle button
+                                    let requiredItemsList = cat.items.filter { !$0.isElective }
+                                    let electiveItemsList = cat.items.filter { $0.isElective }
+                                    let completedElectivesCount = electiveItemsList.filter { $0.isCompleted }.count
+                                    let completedRequiredCount = requiredItemsList.filter { $0.isCompleted }.count
+                                    let totalRequired = cat.selectCount > 0 ? cat.selectCount : requiredItemsList.count
+                                    let remaining = max(0, totalRequired - (cat.selectCount > 0 ? completedElectivesCount : completedRequiredCount))
+                                    Button {
+                                        withAnimation(.easeInOut(duration: 0.2)) {
+                                            if expandedCategories.contains(cat.id) {
+                                                expandedCategories.remove(cat.id)
+                                            } else {
+                                                expandedCategories.insert(cat.id)
+                                            }
+                                        }
+                                    } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(cat.title)
+                                                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                                    .foregroundColor(Color(hex: "374151"))
+                                                if remaining > 0 {
+                                                    Text("\(remaining) remaining")
+                                                        .font(DesignSystem.Fonts.main(size: 10))
+                                                        .foregroundColor(Color(hex: "f59e0b"))
+                                                } else if !cat.items.isEmpty {
+                                                    Text("Complete")
+                                                        .font(DesignSystem.Fonts.main(size: 10))
+                                                        .foregroundColor(Color(hex: "22c55e"))
+                                                }
+                                            }
+                                            Spacer()
+                                            if cat.selectCount > 0 {
+                                                Text("\(min(completedElectivesCount, cat.selectCount))/\(cat.selectCount) chosen")
+                                                    .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
+                                                    .foregroundColor(Color(hex: "6366f1"))
+                                                    .padding(.trailing, 4)
+                                            }
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(Color(hex: "9ca3af"))
+                                                .rotationEffect(.degrees(
+                                                    expandedCategories.contains(cat.id) ? 180 : 0
+                                                ))
+                                        }
+                                        .padding(.horizontal, 14).padding(.vertical, 10)
+                                        .background(Color(hex: "f9fafb"))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+
+                                    // Expanded items
+                                    if expandedCategories.contains(cat.id) {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            // Required items
+                                            ForEach(requiredItemsList) { item in
+                                                HStack(spacing: 8) {
+                                                    Image(
+                                                        systemName: item.isCompleted
+                                                            ? "checkmark.circle.fill"
+                                                            : "circle"
+                                                    )
+                                                    .font(.system(size: 14))
+                                                    .foregroundColor(
+                                                        item.isCompleted
+                                                            ? Color(hex: "22c55e")
+                                                            : Color(hex: "d1d5db")
+                                                    )
+                                                    Text(item.code)
+                                                        .font(DesignSystem.Fonts.main(size: 12))
+                                                        .foregroundColor(
+                                                            item.isCompleted
+                                                                ? Color(hex: "9ca3af")
+                                                                : Color(hex: "6b7280")
+                                                        )
+                                                        .strikethrough(item.isCompleted, color: Color(hex: "9ca3af"))
+                                                    Spacer()
+                                                    if !item.credits.isEmpty {
+                                                        Text("\(item.credits) cr")
+                                                            .font(DesignSystem.Fonts.main(size: 11))
+                                                            .foregroundColor(Color(hex: "9ca3af"))
+                                                    }
+                                                }
+                                            }
+                                            // Elective / choose-N items
+                                            if !electiveItemsList.isEmpty {
+                                                Text("Choose \(cat.selectCount) of:")
+                                                    .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
+                                                    .foregroundColor(Color(hex: "9ca3af"))
+                                                    .padding(.top, requiredItemsList.isEmpty ? 0 : 4)
+                                                ForEach(electiveItemsList) { item in
+                                                    HStack(spacing: 8) {
+                                                        Image(
+                                                            systemName: item.isCompleted
+                                                                ? "checkmark.circle.fill"
+                                                                : "circle"
+                                                        )
+                                                        .font(.system(size: 14))
+                                                        .foregroundColor(
+                                                            item.isCompleted
+                                                                ? Color(hex: "22c55e")
+                                                                : Color(hex: "e5e7eb")
+                                                        )
+                                                        Text(item.code)
+                                                            .font(DesignSystem.Fonts.main(size: 12))
+                                                            .foregroundColor(
+                                                                item.isCompleted
+                                                                    ? Color(hex: "9ca3af")
+                                                                    : Color(hex: "9ca3af")
+                                                            )
+                                                            .strikethrough(item.isCompleted, color: Color(hex: "9ca3af"))
+                                                        Spacer()
+                                                        if !item.credits.isEmpty {
+                                                            Text("\(item.credits) cr")
+                                                                .font(DesignSystem.Fonts.main(size: 11))
+                                                                .foregroundColor(Color(hex: "d1d5db"))
+                                                        }
+                                                    }
+                                                    .opacity(item.isCompleted ? 1.0 : 0.6)
+                                                }
+                                            }
+                                        }
+                                        .padding(.horizontal, 22).padding(.bottom, 10)
+                                        .transition(.opacity.combined(with: .move(edge: .top)))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Tip card at the bottom
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "6366f1"))
+                        Text("Open the **Overview** tab for your full requirements breakdown and degree audit.")
+                            .font(DesignSystem.Fonts.main(size: 11))
+                            .foregroundColor(Color(hex: "4338ca"))
+                    }
+                    .padding(14)
+                    .background(Color(hex: "eef2ff"))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color(hex: "c7d2fe"), lineWidth: 1)
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                }
+            }
+        }
+        .task(id: "\(primaryMajor)|\(secondaryMajor ?? "")|\(minor ?? "")|\(coreDataManager.plannerChangeToken)") {
+            await loadAudit()
+        }
+        .sheet(item: $selectedDegreeForDetail) { degree in
+            DegreeRequirementsFullView(degree: degree)
+                .environmentObject(coreDataManager)
+        }
+    }
+
+    // MARK: Async data load
+
+    @MainActor
+    private func loadAudit() async {
+        isLoading = true
+
+        // Build set of completed course codes across all semesters.
+        // A course counts as completed when either its stored isCompleted flag is
+        // true (status == "Completed") OR its semester has already ended — matching
+        // the displayStatus logic in AcademicsCourseRow so the audit stays in sync.
+        let today = Date()
+        func semesterHasEnded(_ course: CourseEntity) -> Bool {
+            guard let sem = course.semester else { return false }
+            let yr = Int(sem.year)
+            let month: Int
+            switch (sem.season ?? "").lowercased() {
+            case "winter": month = 1
+            case "spring": month = 5
+            case "summer": month = 8
+            default:       month = 12  // fall / unknown
+            }
+            let end = Calendar.current.date(from: DateComponents(year: yr, month: month, day: 28)) ?? .distantPast
+            return end < today
+        }
+        // Normalise a code by stripping trailing section suffixes (LEC/LAB/…) and spaces
+        // so that enrolled code "CSE191" matches requirement code "CSE 191" or "CSE 191LEC".
+        func normaliseCode(_ raw: String) -> String {
+            raw
+                .replacingOccurrences(of: #"(?<=\d)[A-Za-z]+$"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: " ", with: "")
+                .uppercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let completedCodes: Set<String> = {
+            let all = coreDataManager.semesters.flatMap { $0.coursesArray }
+            return Set(
+                all.filter { $0.isCompleted || semesterHasEnded($0) }
+                    .compactMap { c -> String? in
+                        guard let raw = c.code, !raw.isEmpty else { return nil }
+                        return normaliseCode(raw)
+                    }
+            )
+        }()
+
+        // Resolve requirements via programURL so that:
+        //  • Complex major names like "Business Administration BS - MIS Concentration, BS" resolve correctly.
+        //  • Minor requirements are fetched with degreeType "Minor", not the student's major degree type.
+        func buildDegree(label: String, rawName: String, kind: AuditDegreeKind, color: Color, programURL: String, degreeType: String) -> AuditDegree? {
+            guard !programURL.isEmpty else { return nil }
+
+            let reqs = coreDataManager.getDegreeRequirements(programURL: programURL, degreeType: degreeType)
+            guard !reqs.isEmpty else { return nil }
+
+            // Struct for decoding selectFromDetailedJSON
+            struct SelectDetail: Decodable { let code: String }
+
+            // Group requirements by requirementCategory
+            var orderedKeys: [String] = []
+            struct ReqGroup {
+                var codes: [String] = []
+                var electiveCodes: [String] = []
+                var selectN: Int = 0
+                var creditsRequired: Int = 0
+            }
+            var grouped: [String: ReqGroup] = [:]
+
+            for req in reqs {
+                let cat = (req.requirementCategory ?? "Requirements")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let codes: [String] = {
+                    guard let raw = req.requiredCourses, !raw.isEmpty else { return [] }
+                    return raw.split(separator: ",")
+                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+                        .filter { !$0.isEmpty }
+                }()
+                // Parse selectFrom elective codes
+                let electiveCodes: [String] = {
+                    if let detailed = req.selectFromDetailedJSON, !detailed.isEmpty,
+                       let data = detailed.data(using: .utf8),
+                       let arr = try? JSONDecoder().decode([SelectDetail].self, from: data) {
+                        return arr.map { $0.code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
+                            .filter { !$0.isEmpty }
+                    }
+                    if let raw = req.selectFromJSON, !raw.isEmpty,
+                       let data = raw.data(using: .utf8),
+                       let arr = try? JSONDecoder().decode([String].self, from: data) {
+                        return arr.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }.filter { !$0.isEmpty }
+                    }
+                    return []
+                }()
+                let selectN = Int(req.selectCount)
+                if grouped[cat] == nil {
+                    orderedKeys.append(cat)
+                    grouped[cat] = ReqGroup(
+                        codes: codes,
+                        electiveCodes: electiveCodes,
+                        selectN: selectN,
+                        creditsRequired: Int(req.creditsRequired)
+                    )
+                } else {
+                    grouped[cat]?.codes.append(contentsOf: codes)
+                    grouped[cat]?.electiveCodes.append(contentsOf: electiveCodes)
+                    if selectN > (grouped[cat]?.selectN ?? 0) { grouped[cat]?.selectN = selectN }
+                    if Int(req.creditsRequired) > (grouped[cat]?.creditsRequired ?? 0) {
+                        grouped[cat]?.creditsRequired = Int(req.creditsRequired)
+                    }
+                }
+            }
+
+            let categories: [AuditCategory] = orderedKeys.prefix(8).compactMap { key in
+                guard let group = grouped[key] else { return nil }
+                let shownCodes = Array(group.codes.prefix(7))
+                let electiveShown = Array(group.electiveCodes.prefix(8))
+                guard !shownCodes.isEmpty || !electiveShown.isEmpty else { return nil }
+                let requiredItems = shownCodes.map { code -> AuditItem in
+                    let credits = coreDataManager.getCatalogCourse(code: code)
+                        .map { c -> String in
+                            let t = c.creditsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return t.isEmpty ? "" : t
+                        } ?? ""
+                    return AuditItem(code: code, credits: credits, isCompleted: completedCodes.contains(normaliseCode(code)), isElective: false)
+                }
+                let electiveItems = electiveShown.map { code -> AuditItem in
+                    let credits = coreDataManager.getCatalogCourse(code: code)
+                        .map { c -> String in
+                            let t = c.creditsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            return t.isEmpty ? "" : t
+                        } ?? ""
+                    return AuditItem(code: code, credits: credits, isCompleted: completedCodes.contains(normaliseCode(code)), isElective: true)
+                }
+                let allItems = requiredItems + electiveItems
+                return AuditCategory(title: key, items: allItems, selectCount: group.selectN, creditsRequired: group.creditsRequired)
+            }
+
+            guard !categories.isEmpty else { return nil }
+            return AuditDegree(label: label, rawName: rawName, kind: kind, color: color, categories: categories, programURL: programURL, degreeType: degreeType)
+        }
+
+        let profileDegreeType = (coreDataManager.profile?.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var degrees: [AuditDegree] = []
+
+        // Primary major — use the profile-aware resolver which handles complex display names correctly.
+        if let primaryURL = coreDataManager.resolveSelectedMajorProgramURL() {
+            let name = primaryMajor.isEmpty ? "Primary" : primaryMajor
+            if let d = buildDegree(
+                label: name,
+                rawName: name,
+                kind: .major,
+                color: Color(hex: "6366f1"),
+                programURL: primaryURL,
+                degreeType: profileDegreeType
+            ) { degrees.append(d) }
+        }
+
+        // Secondary major — use the same robust resolver as the progress bar so both stay in sync.
+        if let sec = secondaryMajor?.trimmingCharacters(in: .whitespacesAndNewlines), !sec.isEmpty,
+           let secURL = coreDataManager.resolveNonMinorMajorProgramURL(display: sec) {
+            if let d = buildDegree(label: sec, rawName: sec, kind: .major, color: Color(hex: "10b981"), programURL: secURL, degreeType: profileDegreeType) {
+                degrees.append(d)
+            }
+        }
+
+        // Minor
+        if let min = minor?.trimmingCharacters(in: .whitespacesAndNewlines), !min.isEmpty,
+           let minURL = coreDataManager.resolveProgramProgramURL(programDisplay: min, isMinor: true) {
+            if let d = buildDegree(label: "Minor: \(min)", rawName: min, kind: .minor, color: Color(hex: "06b6d4"), programURL: minURL, degreeType: "Minor") {
+                degrees.append(d)
+            }
+        }
+
+        // Auto-expand first category of each degree on first load
+        if auditDegrees.isEmpty, !degrees.isEmpty {
+            for degree in degrees {
+                if let first = degree.categories.first {
+                    expandedCategories.insert(first.id)
+                }
+            }
+        }
+
+        // GenEd section
+        let allCoursesFlat = coreDataManager.semesters.flatMap { $0.coursesArray }
+        let genEdCourses = allCoursesFlat.filter { $0.countsTowardGenEd }
+        if !genEdCourses.isEmpty {
+            let genEdItems = genEdCourses.map { c -> AuditItem in
+                AuditItem(
+                    code: c.code ?? "—",
+                    credits: "\(c.credits)",
+                    isCompleted: c.isCompleted,
+                    isElective: false
+                )
+            }
+            let genEdCategory = AuditCategory(
+                title: "General Education Courses",
+                items: genEdItems,
+                selectCount: 0,
+                creditsRequired: 0
+            )
+            let genEdDegree = AuditDegree(
+                label: "General Education",
+                rawName: "General Education",
+                kind: .major,
+                color: Color(hex: "f59e0b"),
+                categories: [genEdCategory],
+                programURL: "",
+                degreeType: ""
+            )
+            degrees.append(genEdDegree)
+        }
+
+        auditDegrees = degrees
+        isLoading = false
+    }
+}
+
+
+// MARK: - Academic Landscape UI Extensions
+
+struct LandscapeDashboard: View {
+    let profile: ProfileEntity?
+    let semesters: [SemesterEntity]
+    let primaryProgress: CoreDataManager.CreditsProgressSummary
+    let secondaryProgress: CoreDataManager.CreditsProgressSummary
+    let minorProgress: CoreDataManager.CreditsProgressSummary
+    @Binding var activePage: AppPage
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 24) {
+            // Left content
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Academic Landscape")
+                            .font(.system(size: 28, weight: .heavy))
+                            .foregroundColor(Color(hex: "1F2937"))
+                        Text("Real-time tracking of dual-major and minor degree progression")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(hex: "6B7280"))
+                    }
+                    Spacer()
+                    Button(action: {}) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 12, weight: .bold))
+                            Text("Export Report")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color(hex: "3B82F6"))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 24)
+
+                // 3 Cards
+                HStack(spacing: 16) {
+                    LandscapeMajorCard(
+                        type: "PRIMARY MAJOR",
+                        name: (profile?.major?.isEmpty == false) ? profile!.major! : "Undeclared",
+                        gpa: "3.92",
+                        progress: primaryProgress,
+                        color: Color(hex: "3B82F6"),
+                        barColor: Color(hex: "3B82F6")
+                    )
+
+                    LandscapeMajorCard(
+                        type: "SECONDARY MAJOR",
+                        name: (profile?.secondaryMajor?.isEmpty == false) ? profile!.secondaryMajor! : "None",
+                        gpa: "3.88",
+                        progress: secondaryProgress,
+                        color: Color(hex: "B45309"),
+                        barColor: Color(hex: "D97706")
+                    )
+
+                    LandscapeMajorCard(
+                        type: "ACADEMIC MINOR",
+                        name: (profile?.minor?.isEmpty == false) ? profile!.minor! : "None",
+                        gpa: "4.0",
+                        progress: minorProgress,
+                        color: Color(hex: "4338CA"),
+                        barColor: Color(hex: "4F46E5")
+                    )
+                }
+
+                // Graduation Timeline
+                LandscapeTimelineCard(
+                    totalCredits: primaryProgress.completed + secondaryProgress.completed + minorProgress.completed,
+                    requiredCredits: 120
+                )
+
+                // Curriculum
+                if let currentSemester = semesters.first {
+                    LandscapeCurriculumCard(semester: currentSemester)
+                } else {
+                    Spacer()
+                }
+            }
+
+            // Right Sidebar (Audit)
+            AcademicsAuditPanel(
+                primaryMajor: profile?.major ?? "",
+                secondaryMajor: profile?.secondaryMajor ?? "",
+                minor: profile?.minor ?? "",
+                activePage: $activePage
+            )
+            .frame(width: 380)
+            .padding(.top, 24)
+        }
+        .padding(.vertical, 24)
+    }
+}
+
+struct LandscapeMajorCard: View {
+    let type: String
+    let name: String
+    let gpa: String
+    let progress: CoreDataManager.CreditsProgressSummary
+    let color: Color
+    let barColor: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top) {
+                Text(type)
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundColor(color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(color.opacity(0.12))
+                    .clipShape(Capsule())
+                Spacer()
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("GPA")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Color(hex: "9CA3AF"))
+                    Text(gpa)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(Color(hex: "1F2937"))
+                }
+            }
+
+            Text(name)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(Color(hex: "111827"))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 48, alignment: .topLeading)
+
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(Color(hex: "E5E7EB"), lineWidth: 4)
+                    Circle()
+                        .trim(from: 0, to: CGFloat(progress.fraction > 0 ? progress.fraction : 0.0))
+                        .stroke(barColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                    Text(String(format: "%.0f%%", progress.fraction * 100))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "1F2937"))
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Completion")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(Color(hex: "6B7280"))
+                    Text("\(min(Int(progress.fraction*30), 30))/30 Courses")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: "111827"))
+                }
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, y: 4)
+    }
+}
+
+struct LandscapeTimelineCard: View {
+    let totalCredits: Double
+    let requiredCredits: Double
+
+    var body: some View {
+        HStack(spacing: 20) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(hex: "F3F4F6"))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "graduationcap.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(Color(hex: "3B82F6"))
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Text("Graduation Timeline")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(Color(hex: "1F2937"))
+                    Text("T-MINUS 1 SEMESTER")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "059669"))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: "D1FAE5"))
+                        .clipShape(Capsule())
+                }
+                Text("Combined progress across all declared majors and minors")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "6B7280"))
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 4) {
+                    Text("TOTAL CREDIT PROGRESS")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "6B7280"))
+                    Text("\(totalCredits) / \(requiredCredits) hrs")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(hex: "1F2937"))
+                }
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color(hex: "E5E7EB"))
+                        .frame(width: 200, height: 8)
+                    Capsule()
+                        .fill(Color(hex: "3B82F6"))
+                        .frame(width: CGFloat(min(1.0, totalCredits/requiredCredits) * 200), height: 8)
+                }
+            }
+        }
+        .padding(20)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, y: 4)
+    }
+}
+
+struct LandscapeCurriculumCard: View {
+    let semester: SemesterEntity
+
+    var totalSemesterCredits: Int {
+        Int(semester.coursesArray.compactMap { Double($0.credits) }.reduce(0, +))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("\(semester.name ?? "Current") Curriculum")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(Color(hex: "1F2937"))
+                Spacer()
+                HStack(spacing: 6) {
+                    Circle().fill(Color(hex: "10B981")).frame(width: 6, height: 6)
+                    Text("\(totalSemesterCredits) Total Credits")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color(hex: "6B7280"))
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .foregroundColor(Color(hex: "9CA3AF"))
+                }
+            }
+            .padding(24)
+
+            // Header row
+            HStack {
+                Text("COURSE CODE & NAME")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("CREDIT HOURS")
+                    .frame(width: 100, alignment: .leading)
+                Text("REQUIREMENT TAG")
+                    .frame(width: 130, alignment: .leading)
+                Text("STATUS")
+                    .frame(width: 100, alignment: .trailing)
+            }
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(Color(hex: "9CA3AF"))
+            .padding(.horizontal, 24)
+            .padding(.bottom, 12)
+
+            Divider()
+
+            // Course Rows
+            ForEach(semester.coursesArray) { course in
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(course.code ?? "")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color(hex: "1F2937"))
+                        Text(course.name ?? "")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(Color(hex: "6B7280"))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text(String(Int(course.credits)) + " hr")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(hex: "4B5563"))
+                        .frame(width: 100, alignment: .leading)
+
+                    Text(course.status?.uppercased() ?? "CORE")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(Color(hex: "3B82F6"))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(hex: "DBEAFE"))
+                        .clipShape(Capsule())
+                        .frame(width: 130, alignment: .leading)
+
+                    Text(course.isCompleted ? "Completed" : "Active")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(course.isCompleted ? Color(hex: "059669") : Color(hex: "3B82F6"))
+                        .frame(width: 100, alignment: .trailing)
+                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+
+                Divider()
+            }
+        }
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, y: 4)
+        .overlay(
+            Button(action: {}) {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 56, height: 56)
+            .background(Color(hex: "2563EB"))
+            .clipShape(Circle())
+            .shadow(color: Color(hex: "2563EB").opacity(0.3), radius: 8, y: 4)
+            .padding(24)
+            , alignment: .bottomTrailing
+        )
+    }
+}

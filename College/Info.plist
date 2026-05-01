@@ -2,8 +2,28 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSContactsUsageDescription</key>
+	<string>College uses your contacts to let you invite guests to calendar events.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>College uses your calendars to sync events with Apple Calendar.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>College needs full calendar access to read and write events for two-way sync with Apple Calendar.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>College needs write-only calendar access to add and update events in Apple Calendar.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>College uses your location to estimate travel time to event locations.</string>
+	<key>GOOGLE_CLIENT_ID</key>
+	<string>500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st.apps.googleusercontent.com</string>
+	<key>GOOGLE_REDIRECT_URI</key>
+	<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st:/oauth2redirect</string>
+	<key>MICROSOFT_CLIENT_ID</key>
+	<string>YOUR_AZURE_CLIENT_ID_HERE</string>
+	<key>MICROSOFT_REDIRECT_URI</key>
+	<string>msauth.edu.buffalo.College://auth</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>College controls Spotify and Apple Music to show what's playing in your dashboard.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>College reads your Apple Music playback state to show the current song in your dashboard.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -12,12 +32,10 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st</string>
+				<string>college</string>
+				<string>msauth.edu.buffalo.College</string>
 			</array>
 		</dict>
 	</array>
-	<key>GOOGLE_CLIENT_ID</key>
-	<string>500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st.apps.googleusercontent.com</string>
-	<key>GOOGLE_REDIRECT_URI</key>
-	<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st:/oauth2redirect</string>
 </dict>
 </plist>

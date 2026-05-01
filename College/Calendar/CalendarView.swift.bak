@@ -1,0 +1,453 @@
+import SwiftUI
+import CoreData
+
+struct CalendarView: View {
+    @Binding var activePage: AppPage
+    
+    @Environment(\.managedObjectContext) private var viewContext
+    
+    @FetchRequest(
+        entity: CalendarEventEntity.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \CalendarEventEntity.startDate, ascending: true)],
+        animation: .default)
+    private var events: FetchedResults<CalendarEventEntity>
+    
+    @FetchRequest(
+        entity: TaskEntity.entity(),
+        sortDescriptors: [NSSortDescriptor(keyPath: \TaskEntity.dueDate, ascending: true)],
+        animation: .default)
+    private var tasks: FetchedResults<TaskEntity>
+    
+    @State private var currentDate: Date = Date()
+    @State private var activeViewMode: ViewMode = .month
+    
+    enum ViewMode: String, CaseIterable {
+        case month = "Month"
+        case week = "Week"
+        case day = "Day"
+    }
+    
+    private var calendar: Calendar {
+        var cal = Calendar.current
+        cal.firstWeekday = 1 // Sunday
+        return cal
+    }
+    
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: currentDate).uppercased()
+    }
+    
+    private var todayString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return "TODAY • " + formatter.string(from: Date()).uppercased()
+    }
+    
+    private func getDaysForCurrentMonth() -> [Date] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: currentDate) else { return [] }
+        guard let monthFirstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start) else { return [] }
+        guard let monthLastWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.end - 1) else { return [] }
+        
+        let start = monthFirstWeek.start
+        let end = monthLastWeek.end
+        
+        var dates: [Date] = []
+        var d = start
+        while d < end {
+            dates.append(d)
+            if let next = calendar.date(byAdding: .day, value: 1, to: d) {
+                d = next
+            } else {
+                break
+            }
+        }
+        return dates
+    }
+    
+    private func getEvents(for date: Date) -> [CalEvent] {
+        var dayEvents: [CalEvent] = []
+        
+        // Filter CalendarEvents
+        let dayCalendarEvents = events.filter { event in
+            guard let start = event.startDate else { return false }
+            return calendar.isDate(start, inSameDayAs: date)
+        }
+        
+        // Group by title to merge
+        let groupedCalendarEvents = Dictionary(grouping: dayCalendarEvents) { $0.title ?? "Event" }
+        
+        for (title, evs) in groupedCalendarEvents {
+            let finalTitle = evs.count > 1 ? "\(title) (\(evs.count) Sessions)" : title
+            let type: EventType = .classEvent
+            dayEvents.append(CalEvent(title: finalTitle, type: type, isImportant: false))
+        }
+        
+        // Filter Tasks
+        let dayTasks = tasks.filter { task in
+            guard let due = task.dueDate else { return false }
+            return calendar.isDate(due, inSameDayAs: date)
+        }
+        
+        for task in dayTasks {
+            dayEvents.append(CalEvent(title: task.title ?? "Task", type: .deadline, isImportant: true))
+        }
+        
+        // Default sort priority
+        dayEvents.sort {
+            if $0.isImportant && !$1.isImportant { return true }
+            if !$0.isImportant && $1.isImportant { return false }
+            return $0.title < $1.title
+        }
+        
+        return dayEvents
+    }
+    
+    private var todayEvents: [CalendarEventEntity] {
+        events.filter { event in
+            guard let start = event.startDate else { return false }
+            return calendar.isDate(start, inSameDayAs: Date())
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 24) {
+            monthCalendarView
+            sidePanel
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(hex: "F4F5F7"))
+    }
+
+    private var monthCalendarView: some View {
+        VStack(spacing: 0) {
+            // Header Row (Month & Year) and View Switcher
+            HStack {
+                HStack(spacing: 4) {
+                    ForEach(ViewMode.allCases, id: \.self) { mode in
+                        Button(action: { activeViewMode = mode }) {
+                            Text(mode.rawValue)
+                                .font(.system(size: 12, weight: activeViewMode == mode ? .bold : .medium))
+                                .foregroundColor(activeViewMode == mode ? .white : Color(hex: "6B7280"))
+                                .padding(.vertical, 6)
+                                .padding(.horizontal, 12)
+                                .background(activeViewMode == mode ? Color(hex: "3B82F6") : Color.clear)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(4)
+                .background(Color(hex: "F3F4F6"))
+                .clipShape(Capsule())
+                
+                Spacer()
+                
+                HStack(spacing: 16) {
+                    Button(action: { currentDate = calendar.date(byAdding: .month, value: -1, to: currentDate) ?? currentDate }) {
+                        Image(systemName: "chevron.left")
+                    }
+                    Text(monthYearString)
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(minWidth: 140)
+                    Button(action: { currentDate = calendar.date(byAdding: .month, value: 1, to: currentDate) ?? currentDate }) {
+                        Image(systemName: "chevron.right")
+                    }
+                }
+                .foregroundColor(Color(hex: "111827"))
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            
+            // Header Row (Days)
+            HStack(spacing: 0) {
+                ForEach(["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"], id: \.self) { day in
+                    Text(day)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: "9CA3AF"))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
+            }
+            
+            // Grid wrapper
+            VStack(spacing: 0) {
+                Divider().background(Color(hex: "E5E7EB"))
+                
+                let days = getDaysForCurrentMonth()
+                let rows = max(1, days.count / 7)
+                if rows > 0 {
+                    ForEach(0..<rows, id: \.self) { rowIndex in
+                        let startIdx = rowIndex * 7
+                        let rowDays = (0..<7).map { colIndex -> (Int, [CalEvent]?, Bool) in
+                            let date = days[startIdx + colIndex]
+                            let dayNum = calendar.component(.day, from: date)
+                            let evs = getEvents(for: date)
+                            let isCurrent = calendar.isDateInToday(date)
+                            return (dayNum, evs.isEmpty ? nil : evs, isCurrent)
+                        }
+                        
+                        CalendarRow(days: rowDays, isLast: rowIndex == rows - 1)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: Color.black.opacity(0.03), radius: 10, y: 4)
+        .padding(.vertical, 24)
+        .padding(.leading, 24)
+        .padding(.trailing, 0)
+    }
+
+    private var sidePanel: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Academic Events")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Color(hex: "111827"))
+                    Text(todayString)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: "9CA3AF"))
+                }
+                Spacer()
+                Image(systemName: "ellipsis")
+                    .foregroundColor(Color(hex: "9CA3AF"))
+                    .font(.system(size: 18))
+            }
+            .padding(.top, 32)
+            
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 16) {
+                    let todaysContent = todayEvents
+                    if todaysContent.isEmpty {
+                        Text("No events today")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Color(hex: "9CA3AF"))
+                            .padding(.top, 24)
+                    } else {
+                        ForEach(todaysContent, id: \.objectID) { event in
+                            let timeString: String = {
+                                guard let start = event.startDate else { return "" }
+                                let formatter = DateFormatter()
+                                formatter.timeStyle = .short
+                                return formatter.string(from: start)
+                            }()
+                            
+                            SideEventCard(
+                                badge: "EVENT", badgeColor: .white, badgeBg: Color(hex: "3B82F6"),
+                                time: timeString, title: event.title ?? "Event",
+                                icon: "mappin.and.ellipse", iconText: "Scheduled", iconColor: Color(hex: "3B82F6")
+                            )
+                        }
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            Button(action: {}) {
+                Text("View Full Timeline")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(hex: "111827"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(Color(hex: "F3F4F6"))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 24)
+        }
+        .frame(width: 320)
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+    }
+}
+
+// Data Models & Subcomponents
+
+fileprivate enum EventType {
+    case deadline
+    case classEvent
+    case club
+    case personal
+}
+
+fileprivate struct CalEvent: Identifiable {
+    let id = UUID()
+    let title: String
+    let type: EventType
+    let isImportant: Bool
+}
+
+fileprivate struct CalendarRow: View {
+    let days: [(Int, [CalEvent]?, Bool)]
+    let isLast: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                ForEach(0..<7, id: \.self) { index in
+                    let day = days[index]
+                    CalendarCell(dayNumber: day.0, events: day.1 ?? [], isCurrentDay: day.2)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    
+                    if index < 6 {
+                        Divider().background(Color(hex: "E5E7EB"))
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity)
+            
+            if !isLast {
+                Divider().background(Color(hex: "E5E7EB"))
+            }
+        }
+    }
+}
+
+fileprivate struct CalendarCell: View {
+    let dayNumber: Int
+    let events: [CalEvent]
+    let isCurrentDay: Bool
+    let maxVisibleEvents = 3
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                if isCurrentDay {
+                    Text("\(dayNumber)")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 24, height: 24)
+                        .background(Color(hex: "3B82F6"))
+                        .clipShape(Circle())
+                } else {
+                    Text("\(dayNumber)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(dayNumber > 20 && events.isEmpty ? Color(hex: "D1D5DB") : Color(hex: "374151"))
+                        .padding(.leading, 4)
+                        .padding(.top, 4)
+                }
+                Spacer()
+            }
+            .padding(.top, 6)
+            .padding(.horizontal, 6)
+            
+            VStack(alignment: .leading, spacing: 3) {
+                let displayedEvents = Array(events.prefix(maxVisibleEvents))
+                ForEach(displayedEvents) { event in
+                    EventPill(event: event)
+                }
+                
+                if events.count > maxVisibleEvents {
+                    Text("+ \(events.count - maxVisibleEvents) more")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color(hex: "6B7280"))
+                        .padding(.leading, 6)
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.horizontal, 6)
+            
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+fileprivate struct EventPill: View {
+    let event: CalEvent
+    
+    var body: some View {
+        HStack(spacing: 4) {
+            if event.isImportant {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 8))
+            } else if event.type == .classEvent {
+                Image(systemName: "book.fill")
+                    .font(.system(size: 8))
+            }
+            
+            Text(event.title)
+                .font(.system(size: 9, weight: event.isImportant ? .bold : .medium))
+                .lineLimit(1)
+        }
+        .foregroundColor(textColor)
+        .padding(.horizontal, 6)
+        .frame(height: 18) // Reduced height
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundColor)
+        .cornerRadius(4)
+    }
+    
+    private var textColor: Color {
+        switch event.type {
+        case .deadline: return .white
+        case .classEvent: return .white
+        case .club: return .white
+        case .personal: return Color(hex: "4B5563")
+        }
+    }
+    
+    private var backgroundColor: Color {
+        switch event.type {
+        case .deadline: return Color(hex: "EF4444") // Red
+        case .classEvent: return Color(hex: "3B82F6") // Blue
+        case .club: return Color(hex: "8B5CF6") // Purple
+        case .personal: return Color(hex: "F3F4F6") // Soft Gray
+        }
+    }
+}
+
+fileprivate struct SideEventCard: View {
+    let badge: String
+    let badgeColor: Color
+    let badgeBg: Color
+    let time: String
+    let title: String
+    let icon: String
+    let iconText: String
+    let iconColor: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(badge)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(badgeColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(badgeBg)
+                    .clipShape(Capsule())
+                
+                Spacer()
+                
+                Text(time)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(Color(hex: "9CA3AF"))
+            }
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(Color(hex: "111827"))
+                
+                HStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11))
+                        .foregroundColor(iconColor)
+                    Text(iconText)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(iconColor == Color(hex: "9CA3AF") ? Color(hex: "6B7280") : iconColor)
+                }
+            }
+        }
+        .padding(20)
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.02), radius: 8, y: 2)
+    }
+}

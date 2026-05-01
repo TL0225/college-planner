@@ -1,0 +1,32 @@
+[
+  {
+    "id": "swift-transformers",
+    "title": "swift-transformers",
+    "currentVersion": "1.1.6",
+    "repositoryURL": "https://github.com/huggingface/swift-transformers"
+  },
+  {
+    "id": "swift-collections",
+    "title": "swift-collections",
+    "currentVersion": "1.3.0",
+    "repositoryURL": "https://github.com/apple/swift-collections"
+  },
+  {
+    "id": "swift-atomics",
+    "title": "swift-atomics",
+    "currentVersion": "1.3.0",
+    "repositoryURL": "https://github.com/apple/swift-atomics"
+  },
+  {
+    "id": "swiftsoup",
+    "title": "SwiftSoup",
+    "currentVersion": "2.11.3",
+    "repositoryURL": "https://github.com/scinfu/SwiftSoup"
+  },
+  {
+    "id": "mlx-swift",
+    "title": "mlx-swift",
+    "currentVersion": "0.30.3",
+    "repositoryURL": "https://github.com/ml-explore/mlx-swift"
+  }
+]
