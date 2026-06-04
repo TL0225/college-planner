@@ -1,7 +1,0 @@
-payload_bytes=857101
-legacy_60x_encode_ms_mean=210.465
-coalesced_9x_encode_ms_mean=30.159
-persistence_encode_time_reduction_percent=85.67
-single_encode_ms_mean=3.508
-single_decode_ms_mean=2.915
-encode_count_reduction_percent=85.00
