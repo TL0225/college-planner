@@ -1,4 +1,8 @@
-#if os(macOS)
+// MLXGlobalErrorHandler.swift
+// Feature: Core
+// Purpose: Core module — MLXGlobalErrorHandler.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import MLX
 import Cmlx
@@ -31,4 +35,3 @@ enum MLXGlobalErrorHandler {
 
     private static let log = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "College", category: "MLX")
 }
-#endif

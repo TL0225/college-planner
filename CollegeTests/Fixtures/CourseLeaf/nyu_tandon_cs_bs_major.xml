@@ -1,0 +1,259 @@
+<?xml version="1.0"?>
+<courseleaf>
+
+<title>Computer Science (BS)</title>
+
+
+<text>
+<![CDATA[  
+<div class="notinpdf onthispage" name="otp1"><div class="otp-title">On This Page</div><ul><li><a href="#text" nav-id="0" otp-id="1" onClick="showSection('text', this);">Program Description</a></li><li><a href="#text" nav-id="1" otp-id="1" onClick="showSection('text', this);">Admissions</a></li></ul></div>
+<h2 headerid="0" name="text" tabindex="-1">Program Description</h2>
+<p>Computer science focuses on how to design, build, and effectively use the computers and systems that we interact with every day from the smart phones in our hands to the complex databases in our banks and hospitals. Because computer technology powers the most essential functions of business, industry, government and entertainment, computer scientists have tremendous opportunities for growth and exploration.</p>
+<p>In addition to the BS degree in Computer Science, the Computer Science and Engineering department offers minors in Computer Science, Cybersecurity, and Game Engineering.</p>
+<p>The program provides research labs for specialized study in areas such as cybersecurity, game engineering, and big data, areas in which our department has a distinctive strength. In addition, the program’s close ties to our graduate division immerse students in a vibrant, intellectual atmosphere.</p>
+ <h2 headerid="1" name="text" tabindex="-1">Admissions</h2> <p>New York University's Office of Undergraduate Admissions supports the application process for all undergraduate programs at NYU. For additional information about undergraduate admissions, including application requirements, see <a href="https://www.nyu.edu/admissions/undergraduate-admissions/how-to-apply.html" target="_blank">How to Apply</a>. </p>
+  
+]]>
+</text>
+<curriculumtext name="Curriculum">
+<![CDATA[
+<h2>Program Requirements</h2>
+<p>The program requires the completion of 128 credits, comprised of the following:</p>
+<table class="sc_courselist">
+<caption class="hidden noscript">Course List</caption>
+<colgroup>
+<col class="codecol"/>
+<col class="titlecol"/>
+<col align="char" char="." class="hourscol"/>
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Course</th>
+<th scope="col">Title</th>
+<th scope="col" class="hourscol">Credits</th>
+</tr>
+</thead>
+<tbody>
+<tr class="even areaheader  firstrow"><td colspan="2"><span class="courselistcomment areaheader ">Major Requirements</span></td><td class="hourscol"></td></tr>
+<tr class="odd areasubheader undefined"><td colspan="2"><span class="courselistcomment areasubheader undefined">Computer Science</span></td><td class="hourscol"></td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 1114">CS-UY 1114</span></td><td>Intro To Programming &amp; Problem Solving</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 1134">CS-UY 1134</span></td><td>Data Structures and Algorithms</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 2124">CS-UY 2124</span></td><td>Object Oriented Programming</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 1122">CS-UY 1122</span></td><td>Introduction to Computer Science</td><td class="hourscol">2</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 2214">CS-UY 2214</span></td><td>Computer Architecture and Organization</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 3224">CS-UY 3224</span></td><td>Intro to Operating Systm</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 2413">CS-UY 2413</span></td><td>Design &amp; Analysis of Algorithms</td><td class="hourscol">3</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 4513">CS-UY 4513</span></td><td>Software Engineering</td><td class="hourscol">3</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 4523">CS-UY 4523</span></td><td>Design Project</td><td class="hourscol">3</td></tr>
+<tr class="odd areasubheader undefined"><td colspan="2"><span class="courselistcomment areasubheader undefined">Mathematics</span> <sup>1</sup></td><td class="hourscol"></td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 1024">MA-UY 1024</span></td><td>Calculus I for Engineers</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 1124">MA-UY 1124</span></td><td>Calculus II for Engineers</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 2314">MA-UY 2314</span></td><td>Discrete Mathematics</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 2224">MA-UY 2224</span></td><td>Probability and Statistics for Engineers</td><td class="hourscol">4</td></tr>
+<tr class="even areasubheader undefined"><td colspan="2"><span class="courselistcomment areasubheader undefined">Engineering</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="EG-UY 1004">EG-UY 1004</span></td><td>Introduction to Engineering and Design</td><td class="hourscol">4</td></tr>
+<tr class="even areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Science Requirement</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Select three of the following:</span> <sup>2</sup></td><td class="hourscol">9-12</td></tr>
+<tr class="even"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="CM-UY 1003">CM-UY 1003</span></div></td><td>General Chemistry for Engineers</td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="CM-UY 1013">CM-UY 1013</span></div></td><td>General Chemistry I</td><td class="hourscol"></td></tr>
+<tr class="even"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="BMS-UY 1003">BMS-UY 1003</span></div></td><td>Introduction to Cell and Molecular Biology</td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="PH-UY 1013">PH-UY 1013</span></div></td><td>Mechanics</td><td class="hourscol"></td></tr>
+<tr class="even"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="PH-UY 2023">PH-UY 2023</span></div></td><td>Electricity, Magnetism, &amp; Fluids</td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="PH-UY 2033">PH-UY 2033</span></div></td><td>Waves, Optics, &amp; Thermodynamics</td><td class="hourscol"></td></tr>
+<tr class="even areasubheader undefined"><td colspan="2"><span class="courselistcomment areasubheader undefined">Humanities and Social Sciences</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="EXPOS-UA 1">EXPOS-UA 1</span></td><td>Writing as Inquiry</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="EXPOS-UA 22">EXPOS-UA 22</span></td><td>Advanced Writing for Engineers</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Select one Ethics course</span></td><td class="hourscol">4</td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Select three humanities and social sciences courses</span> <sup>3</sup></td><td class="hourscol">12</td></tr>
+<tr class="odd areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Electives</span></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Select 18 additional credits in computer science electives</span> <sup>4</sup></td><td class="hourscol">18</td></tr>
+<tr class="odd lastrow"><td colspan="2"><span class="courselistcomment">Select 26 credits of free electives</span> <sup>4,5</sup></td><td class="hourscol">26</td></tr>
+<tr class="listsum"><td colspan="2">Total Credits</td><td class="hourscol">128</td></tr></tbody>
+</table>
+
+<dl class="sc_footnotes" aria-label="Footnotes"><dt> <sup> 1 </sup> </dt><dd><p class="noindent"><span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="MA-UY 914">MA-UY 914</span> Precalculus for Engineers</span></span></span>does not count toward the Math requirement.</p> <p class="noindent"><span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="MA-UY 2034">MA-UY 2034</span> Linear Algebra and Differential Equations</span></span></span> or another linear algebra course is recommended, but not required. Some CS electives have knowledge of linear algebra as a prerequisite. Students planning to take such electives should plan accordingly.</p></dd><dt> <sup> 2 </sup> </dt><dd><p class="noindent">Students may choose any three natural science courses (each at least 3 credits) offered by the NYU Tandon School of Engineering, provided that they meet pre-requisites and co-requisites. Other natural science courses may be approved by the CSE department.</p></dd><dt> <sup> 3 </sup> </dt><dd><p class="noindent">One must be an Advanced Seminar course.</p></dd><dt> <sup> 4 </sup> </dt><dd><p class="noindent">With approval of the CSE department, certain closely related courses in EE, Math or other related disciplines may be substituted for CS electives. A list of approved substitutions is available in the CSE department.</p></dd><dt> <sup> 5 </sup> </dt><dd><p class="noindent">NYU SPS courses are not accepted as free electives.</p></dd></dl>
+]]>
+</curriculumtext>
+<sampleplanofstudytext name="Sample Plan of Study">
+<![CDATA[
+<h2>Sample Plan of Study</h2>
+<table pdfnorepeatheader="true" class="sc_plangrid">
+<caption>Plan of Study Grid</caption><colgroup>
+	<col pdfwidth="28" class="codecol"/>
+	<col pdfwidth="57" class="titlecol"/>
+	<col pdfwidth="15" class="hourscol"/>
+</colgroup>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_0" class="year" colspan="2">1st Semester/Term</th><th id="BHiyh9_plangrid1_hoursheader" scope="col" class="hourscol">Credits</th></tr>
+<tr class="even"><td headers="BHiyh9_plangrid1_0 " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 1114">CS-UY 1114</span></td>
+<td headers="BHiyh9_plangrid1_0 " class="titlecol">Intro To Programming &amp; Problem Solving <sup>1</sup></td>
+<td headers="BHiyh9_plangrid1_0  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers="BHiyh9_plangrid1_0 " class="codecol"><span class="code_bubble" data-code-bubble="EG-UY 1004">EG-UY 1004</span></td>
+<td headers="BHiyh9_plangrid1_0 " class="titlecol">Introduction to Engineering and Design</td>
+<td headers="BHiyh9_plangrid1_0  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers="BHiyh9_plangrid1_0 " class="codecol"><span class="code_bubble" data-code-bubble="EXPOS-UA 1">EXPOS-UA 1</span></td>
+<td headers="BHiyh9_plangrid1_0 " class="titlecol">Writing as Inquiry</td>
+<td headers="BHiyh9_plangrid1_0  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers="BHiyh9_plangrid1_0 " class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 1024">MA-UY 1024</span></td>
+<td headers="BHiyh9_plangrid1_0 " class="titlecol">Calculus I for Engineers <sup>2</sup></td>
+<td headers="BHiyh9_plangrid1_0  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers="BHiyh9_plangrid1_0 " class="titlecol">Credits</td><td headers="BHiyh9_plangrid1_0  BHiyh9_plangrid1_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_1" class="year" colspan="3">2nd Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 1134">CS-UY 1134</span></td>
+<td headers=" " class="titlecol">Data Structures and Algorithms <sup>1</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 1122">CS-UY 1122</span></td>
+<td headers=" " class="titlecol">Introduction to Computer Science</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">2</td>
+</tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 1124">MA-UY 1124</span></td>
+<td headers=" " class="titlecol">Calculus II for Engineers</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="EXPOS-UA 22">EXPOS-UA 22</span></td>
+<td headers=" " class="titlecol">Advanced Writing for Engineers</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Science Elective</span> <sup>3</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">17</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_2" class="year" colspan="3">3rd Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 2124">CS-UY 2124</span></td>
+<td headers=" " class="titlecol">Object Oriented Programming <sup>1</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 2314">MA-UY 2314</span></td>
+<td headers=" " class="titlecol">Discrete Mathematics</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Science Elective</span> <sup>3</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Humanities and Social Sciences Elective</span> <sup>4</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum odd"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">15</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_3" class="year" colspan="3">4th Semester/Term</th></tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 2214">CS-UY 2214</span></td>
+<td headers=" " class="titlecol">Computer Architecture and Organization</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 2413">CS-UY 2413</span></td>
+<td headers=" " class="titlecol">Design &amp; Analysis of Algorithms</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="MA-UY 2224">MA-UY 2224</span></td>
+<td headers=" " class="titlecol">Probability and Statistics for Engineers</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Humanities and Social Sciences Elective</span> <sup>4</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">15</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_4" class="year" colspan="3">5th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 3224">CS-UY 3224</span></td>
+<td headers=" " class="titlecol">Intro to Operating Systm</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">CS Elective</span> <sup>5</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Humanities and Social Sciences Elective</span> <sup>4</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Science Elective</span> <sup>3</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">17</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_5" class="year" colspan="3">6th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">CS Elective</span> <sup>5</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">CS Elective</span> <sup>5</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Humanities and Social Sciences Elective</span> <sup>4</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_6" class="year" colspan="3">7th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 4513">CS-UY 4513</span></td>
+<td headers=" " class="titlecol">Software Engineering</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">CS Elective</span> <sup>5</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">CS Elective</span> <sup>5</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="BHiyh9_plangrid1_7" class="year" colspan="3">8th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UY 4523">CS-UY 4523</span></td>
+<td headers=" " class="titlecol">Design Project</td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">CS Elective</span> <sup>5</sup></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Free Elective</span></td>
+<td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  BHiyh9_plangrid1_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridtotal lastrow odd"><td> </td><td>Total Credits</td><td headers="BHiyh9_plangrid1_hoursheader" class="hourscol">128</td></tr>
+</table>
+<dl class="sc_footnotes" aria-label="Footnotes"><dt> <sup> 1 </sup> </dt><dd><p class="noindent">Grade of C- or better is required in <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UY 1114">CS-UY 1114</span> Intro To Programming &amp; Problem Solving</span></span></span>, <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UY 1134">CS-UY 1134</span> Data Structures and Algorithms</span></span></span>, and <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UY 2124">CS-UY 2124</span> Object Oriented Programming</span></span></span>. Students who take <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UY 1113">CS-UY 1113</span> Problem Solving and Programming I</span></span></span> and <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UY 1121">CS-UY 1121</span> Problem Solving via Programming</span></span></span> may count four credits toward the CS requirements of the major, in lieu of <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UY 1114">CS-UY 1114</span> Intro To Programming &amp; Problem Solving</span></span></span>.</p></dd><dt> <sup> 2 </sup> </dt><dd><p class="noindent">Students who are placed by examination or by an adviser into <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="MA-UY 914">MA-UY 914</span> Precalculus for Engineers</span></span></span> must defer registration for <span class="markedContent"><span dir="ltr" role="presentation"><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="MA-UY 1024">MA-UY 1024</span> Calculus I for Engineers</span></span></span>.</p></dd><dt> <sup> 3 </sup> </dt><dd><p class="noindent">The Science electives may be chosen from any of the following natural sciences (Physics, Biology, and Chemistry).</p></dd><dt> <sup> 4 </sup> </dt><dd><p class="noindent">Please see the <a href="https://engineering.nyu.edu/academics/departments/technology-culture-and-society/general-education-requirements">NYU Tandon General Education Requirements</a> for further information about the Humanities and Social Sciences (HUSS) electives.</p></dd><dt> <sup> 5 </sup> </dt><dd><p class="noindent">With approval of the CSE department, certain closely related courses in EE, Math or other related disciplines may be substituted for CS electives. A list of approved substitutions is available in the CSE department.</p></dd></dl>
+]]>
+</sampleplanofstudytext>
+<outcomestext name="Outcomes">
+<![CDATA[
+<h2>Learning Outcomes</h2>
+<p>Upon successful completion of the program, graduates will:</p>
+<ol>
+	<li>Learn fundamentals of computer science theory and practice in order to contribute to industry, academic, and government activities.</li>
+	<li>Learn modern design and development techniques.</li>
+	<li>Enhance their base of knowledge with appropriate electives.</li>
+	<li>Develop laboratory and software skills for advanced project development and research activity.</li>
+</ol>
+]]>
+</outcomestext>
+<policiestext name="Policies">
+<![CDATA[
+<h2>Policies</h2>
+<div class="notinpdf onthispage" name="otp2"><div class="otp-title">On This Page</div><ul><ul><li><a href="#policiestext" nav-id="0" otp-id="2" onClick="showSection('policiestext', this);">NYU Policies</a></li><li><a href="#policiestext" nav-id="1" otp-id="2" onClick="showSection('policiestext', this);"><span>Tandon Policies</span></a></li></ul></ul></div>
+ <h3 headerid="0" name="policiestext" tabindex="-1">NYU Policies</h3> <p>University-wide policies can be found on the <a href="/nyu/policies/">New York University Policy pages</a>.</p>
+ <h3 headerid="1" name="policiestext" tabindex="-1"><span>Tandon Policies</span></h3> <p>Additional academic policies can be found on the <a href="/undergraduate/engineering/academic-policies/">Tandon academic policy page</a>. </p>
+]]>
+</policiestext>
+<faculty>
+<![CDATA[
+]]>
+</faculty>
+</courseleaf>
+

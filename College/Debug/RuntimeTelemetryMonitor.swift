@@ -1,3 +1,8 @@
+// RuntimeTelemetryMonitor.swift
+// Feature: Debug
+// Purpose: Debug module — RuntimeTelemetryMonitor.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import Darwin.Mach
 

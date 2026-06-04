@@ -1,4 +1,9 @@
 // CollegeCoreSwift.swift
+// Feature: Rust
+// Purpose: Rust module — CollegeCore.
+// Data: CollegePersistence / repositories when applicable.
+
+// CollegeCoreSwift.swift
 //
 // Swift-friendly wrappers around the Rust `college-core` C API.
 //
@@ -10,6 +15,7 @@
 // used so the Swift target continues to compile and run without Rust.
 
 import Foundation
+import os
 
 /// Namespace for high-performance Rust-backed string and HTML utilities.
 ///
@@ -17,6 +23,7 @@ import Foundation
 /// `libcollege_core.a` has not been linked yet, so you can integrate
 /// incrementally without breaking the build.
 enum CollegeCore {
+    private static let performanceLog = OSLog(subsystem: "Timothy.College", category: .pointsOfInterest)
 
     // MARK: - Prerequisite parsing
 
@@ -44,6 +51,9 @@ enum CollegeCore {
     ///
     /// Returns an array of normalized codes, e.g. `["CSE 116", "MTH 142"]`.
     static func extractCourseCodes(from text: String) -> [String] {
+        let signpostID = OSSignpostID(log: performanceLog)
+        os_signpost(.begin, log: performanceLog, name: "CollegeCore.ExtractCourseCodes", signpostID: signpostID)
+        defer { os_signpost(.end, log: performanceLog, name: "CollegeCore.ExtractCourseCodes", signpostID: signpostID) }
         #if COLLEGE_CORE_RUST_LINKED
         return text.withCString { ptr in
             let result = college_core_extract_course_codes(ptr)!
@@ -59,6 +69,9 @@ enum CollegeCore {
 
     /// Normalizes a course code string (upper-case, collapse whitespace).
     static func normalizeCourseCode(_ raw: String) -> String {
+        let signpostID = OSSignpostID(log: performanceLog)
+        os_signpost(.begin, log: performanceLog, name: "CollegeCore.NormalizeCourseCode", signpostID: signpostID)
+        defer { os_signpost(.end, log: performanceLog, name: "CollegeCore.NormalizeCourseCode", signpostID: signpostID) }
         #if COLLEGE_CORE_RUST_LINKED
         return raw.withCString { ptr in
             let result = college_core_normalize_course_code(ptr)!

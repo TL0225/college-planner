@@ -17,13 +17,9 @@
 	<key>GOOGLE_REDIRECT_URI</key>
 	<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st:/oauth2redirect</string>
 	<key>MICROSOFT_CLIENT_ID</key>
-	<string>YOUR_AZURE_CLIENT_ID_HERE</string>
+	<string>$(MICROSOFT_CLIENT_ID)</string>
 	<key>MICROSOFT_REDIRECT_URI</key>
 	<string>msauth.edu.buffalo.College://auth</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>College controls Spotify and Apple Music to show what's playing in your dashboard.</string>
-	<key>NSAppleMusicUsageDescription</key>
-	<string>College reads your Apple Music playback state to show the current song in your dashboard.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -33,7 +29,71 @@
 			<array>
 				<string>com.googleusercontent.apps.500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st</string>
 				<string>college</string>
+				<string>liquidglass</string>
 				<string>msauth.edu.buffalo.College</string>
+			</array>
+		</dict>
+	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Academic Vault Backup</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.timothy.college.portal</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>portal</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>College Catalog Bundle</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.timothy.college.catalogbundle</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>collegecatalog</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>coursecatalog.web.cmu.edu</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>College Catalog Bundle</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.timothy.college.catalogbundle</string>
 			</array>
 		</dict>
 	</array>

@@ -1,5 +1,9 @@
+// OnboardingRootView.swift
+// Feature: App
+// Purpose: App module — OnboardingAcademicDraft.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
-import CoreData
 import Observation
 
 private enum OnboardingCatalogSyncPhase {
@@ -106,6 +110,21 @@ private struct OnboardingMajorSection: Identifiable, Hashable {
     var id: String { title }
 }
 
+private enum OnboardingCatalogScrapeStatus: Equatable {
+    case pending
+    case scraping
+    case completed
+    case failed
+}
+
+private struct OnboardingCatalogScrapeProgressItem: Identifiable, Equatable {
+    let catoid: String
+    let title: String
+    var status: OnboardingCatalogScrapeStatus
+
+    var id: String { catoid }
+}
+
 private struct OnboardingDraft {
     var name: String = ""
     var email: String = ""
@@ -177,7 +196,7 @@ private final class OnboardingCoordinator {
 }
 
 struct OnboardingRootView: View {
-    @EnvironmentObject private var coreDataManager: CoreDataManager
+    @EnvironmentObject private var collegePersistence: CollegePersistence
     @EnvironmentObject private var notifications: AppNotificationCenter
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -193,6 +212,8 @@ struct OnboardingRootView: View {
     @State private var majorOptions: [String] = []
     @State private var majorOptionsBySection: [OnboardingMajorSection] = []
     @State private var minorOptions: [String] = []
+    @State private var minorOptionsBySection: [OnboardingMajorSection] = []
+    @State private var courseLeafCatalogNeedsRefresh = false
     @State private var isLoadingUniversityOptions = false
     @State private var isLoadingCatalogTypeOptions = false
     @State private var universityOptionsLoadError: String?
@@ -207,7 +228,10 @@ struct OnboardingRootView: View {
     @State private var catalogSyncStartDate: Date?
     @State private var catalogSyncTask: Task<Void, Never>?
     @State private var handoffThresholdTask: Task<Void, Never>?
-    @State private var lastScrapeAuditPath: String?
+    @State private var catalogScrapeProgress: [OnboardingCatalogScrapeProgressItem] = []
+    @State private var reloadContextOptionsTask: Task<Void, Never>?
+    @State private var reloadContextOptionsToken = UUID()
+    @State private var lastAppliedContextOptionsKey = ""
 
     private let githubService = GitHubDataService()
 
@@ -226,12 +250,14 @@ struct OnboardingRootView: View {
         .frame(minWidth: 980, minHeight: 640)
         .background(.regularMaterial)
         .onAppear {
-            reloadContextOptions()
+            scheduleReloadContextOptions()
             draft.reconcileCounts()
             bootstrapUniversityOptionsIfNeeded()
             refreshCatalogTypeOptionsForSelectedSchool()
         }
         .onDisappear {
+            reloadContextOptionsTask?.cancel()
+            reloadContextOptionsTask = nil
             catalogSyncTask?.cancel()
             catalogSyncTask = nil
             handoffThresholdTask?.cancel()
@@ -423,7 +449,7 @@ struct OnboardingRootView: View {
                             resetCatalogTypeState()
                             refreshCatalogTypeOptionsForSelectedSchool()
                         }
-                        reloadContextOptions()
+                        scheduleReloadContextOptions()
                     }
                 )) {
                     Text("Select a school").tag("")
@@ -452,6 +478,28 @@ struct OnboardingRootView: View {
                         }
                     }
                 }
+
+                if !draft.schoolName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Divider()
+
+                    Text("Catalogs at this school")
+                        .font(.system(size: 12, weight: .bold))
+
+                    if isLoadingCatalogTypeOptions {
+                        ProgressView("Discovering catalogs…")
+                            .controlSize(.small)
+                    } else if catalogTypeOptions.isEmpty {
+                        Text("No catalogs discovered yet. Continue to import your school catalog, or pick another school.")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Names match your school's catalog site. Continue to run a fast program index for each.")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.secondary)
+
+                        catalogDiscoveryOrScrapeList
+                    }
+                }
             }
             .padding(.top, 6)
         }
@@ -466,6 +514,9 @@ struct OnboardingRootView: View {
                         case .idle, .inProgress:
                             ProgressView("Preparing school catalog for majors/minors...")
                                 .controlSize(.small)
+                            if !catalogScrapeProgress.isEmpty {
+                                catalogDiscoveryOrScrapeList
+                            }
                             Text(catalogSyncMessage)
                                 .font(.system(size: 11, weight: .regular))
                                 .foregroundStyle(.secondary)
@@ -481,14 +532,39 @@ struct OnboardingRootView: View {
                             .help("Retry scraping/importing catalog for this school")
                         case .succeeded:
                             VStack(alignment: .leading, spacing: 6) {
-                                Label("Catalog sync completed", systemImage: "checkmark.circle.fill")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundStyle(.green)
-                                ProgressView(value: 1, total: 1)
-                                    .progressViewStyle(.linear)
-                                    .tint(.green)
+                                if courseLeafCatalogNeedsRefresh {
+                                    Label("Program list needs a full refresh", systemImage: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.orange)
+                                    Text("A quick sync reused old cached programs. Refresh re-indexes the full bulletin (a few minutes).")
+                                        .font(.system(size: 11, weight: .regular))
+                                        .foregroundStyle(.secondary)
+                                    Button("Refresh program list") {
+                                        refreshCourseLeafProgramIndex()
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.tint)
+                                } else {
+                                    Label("Catalog sync completed", systemImage: "checkmark.circle.fill")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.green)
+                                    ProgressView(value: 1, total: 1)
+                                        .progressViewStyle(.linear)
+                                        .tint(.green)
+                                }
                             }
                         }
+                    }
+                } else if courseLeafCatalogNeedsRefresh {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your program list looks incomplete. Refresh to index the full school bulletin.")
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.orange)
+                        Button("Refresh program list") {
+                            refreshCourseLeafProgramIndex()
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tint)
                     }
                 }
 
@@ -533,7 +609,7 @@ struct OnboardingRootView: View {
                             if let matched = catalogTypeOptions.first(where: { $0.label == newValue || $0.catoid == newValue }) {
                                 draft.selectedCatalogCatoid = matched.catoid
                             }
-                            reloadContextOptions()
+                            scheduleReloadContextOptions()
                         }
                     )) {
                         Text("Select degree level").tag("")
@@ -603,19 +679,19 @@ struct OnboardingRootView: View {
                 Text("Minors")
                     .font(.system(size: 12, weight: .bold))
                 ForEach(draft.selectedMinors.indices, id: \.self) { index in
-                    if catalogSyncRequired && catalogSyncPhase != .succeeded && minorOptions.isEmpty {
+                    if catalogSyncRequired && catalogSyncPhase != .succeeded && minorOptions.isEmpty && minorOptionsBySection.isEmpty {
                         Text("Minors/certificates will appear after catalog sync completes.")
                             .font(.system(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
-                    } else if catalogSyncPhase == .succeeded && minorOptions.isEmpty {
+                    } else if catalogSyncPhase == .succeeded && minorOptions.isEmpty && minorOptionsBySection.isEmpty {
                         Text("No minors or certificates found for this Degree Level in the selected catalog.")
                             .font(.system(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
-                    } else if minorOptions.isEmpty {
+                    } else if minorOptions.isEmpty && minorOptionsBySection.isEmpty {
                         TextField("Minor \(index + 1)", text: Binding(
                             get: { draft.selectedMinors[index] },
                             set: { draft.selectedMinors[index] = $0 }
@@ -627,8 +703,18 @@ struct OnboardingRootView: View {
                             set: { draft.selectedMinors[index] = $0 }
                         )) {
                             Text("Select minor").tag("")
-                            ForEach(minorOptions, id: \.self) { minor in
-                                Text(minor).tag(minor)
+                            if !minorOptionsBySection.isEmpty {
+                                ForEach(minorOptionsBySection) { section in
+                                    Section(section.title) {
+                                        ForEach(section.majors, id: \.self) { minor in
+                                            Text(minor).tag(minor)
+                                        }
+                                    }
+                                }
+                            } else {
+                                ForEach(minorOptions, id: \.self) { minor in
+                                    Text(minor).tag(minor)
+                                }
                             }
                         }
                         .pickerStyle(.menu)
@@ -802,7 +888,64 @@ struct OnboardingRootView: View {
     private var catalogSyncRequired: Bool {
         let school = draft.schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !school.isEmpty else { return false }
-        return !coreDataManager.hasUniversityCatalog(name: school)
+        if catalogSyncPhase == .succeeded { return false }
+        if isModernCampusBackedSchoolSelection(school) { return true }
+        return !CatalogAvailability.hasUniversityCatalog(name: school)
+    }
+
+    @ViewBuilder
+    private var catalogDiscoveryOrScrapeList: some View {
+        let rows = catalogScrapeProgress.isEmpty
+            ? catalogTypeOptions.map {
+                OnboardingCatalogScrapeProgressItem(
+                    catoid: $0.catoid,
+                    title: $0.label,
+                    status: .pending
+                )
+            }
+            : catalogScrapeProgress
+
+        ForEach(rows) { item in
+            HStack(spacing: 10) {
+                catalogScrapeStatusIcon(item.status)
+                    .frame(width: 18, height: 18)
+                Text(item.title)
+                    .font(.system(size: 12, weight: .medium))
+                Spacer()
+                if catalogSyncPhase == .inProgress, item.status == .scraping {
+                    Text("Indexing…")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func catalogScrapeStatusIcon(_ status: OnboardingCatalogScrapeStatus) -> some View {
+        switch status {
+        case .pending:
+            Image(systemName: "circle")
+                .foregroundStyle(.tertiary)
+        case .scraping:
+            ProgressView()
+                .controlSize(.small)
+        case .completed:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private func isModernCampusBackedSchoolSelection(_ schoolName: String) -> Bool {
+        let schools = githubService.loadResolvedSchoolsList()
+        guard let manifest = CatalogBackgroundSyncRunner.matchSchoolManifest(named: schoolName, in: schools) else {
+            return false
+        }
+        let format = manifest.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: format)
     }
 
     private var catalogSyncDetailText: String {
@@ -907,6 +1050,45 @@ struct OnboardingRootView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
+    private func contextOptionsInputsKey() -> String {
+        let school = draft.schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let degreeLevel = draft.selectedDegreeLevels.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let catoid = draft.selectedCatalogCatoid.trimmingCharacters(in: .whitespacesAndNewlines)
+        return [
+            school,
+            degreeLevel,
+            catoid,
+            String(catalogTypeOptions.count),
+            String(catalogSyncPhase == .succeeded),
+        ].joined(separator: "\u{1f}")
+    }
+
+    private func scheduleReloadContextOptions() {
+        reloadContextOptionsTask?.cancel()
+        let token = UUID()
+        reloadContextOptionsToken = token
+        reloadContextOptionsTask = Task {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled, reloadContextOptionsToken == token else { return }
+
+            let key = contextOptionsInputsKey()
+            guard key != lastAppliedContextOptionsKey else { return }
+
+            await Task.yield()
+            guard !Task.isCancelled, reloadContextOptionsToken == token else { return }
+            guard contextOptionsInputsKey() == key else { return }
+
+            reloadContextOptions()
+            lastAppliedContextOptionsKey = key
+        }
+    }
+
+    private func reloadContextOptionsImmediately() {
+        reloadContextOptionsTask?.cancel()
+        reloadContextOptions()
+        lastAppliedContextOptionsKey = contextOptionsInputsKey()
+    }
+
     private func reloadContextOptions() {
         // Onboarding should use the scraper-backed school manifest first so the
         // picker mirrors the schools that are implemented in the catalog scraper flow.
@@ -964,7 +1146,7 @@ struct OnboardingRootView: View {
             var collected: [String] = []
             var seen = Set<String>()
             for level in levelsToQuery {
-                let majors = coreDataManager.fetchMajors(
+                let majors = CatalogProgramReadBridge.fetchMajors(
                     for: school,
                     degreeLevel: level,
                     department: department,
@@ -980,7 +1162,7 @@ struct OnboardingRootView: View {
             // Fallback for legacy/imported rows missing source catoid provenance.
             if collected.isEmpty, !selectedCatoid.isEmpty, allowCatoidFallback, useLegacyCatoidFallback {
                 for level in levelsToQuery {
-                    let majors = coreDataManager.fetchMajors(
+                    let majors = CatalogProgramReadBridge.fetchMajors(
                         for: school,
                         degreeLevel: level,
                         department: department,
@@ -1002,13 +1184,15 @@ struct OnboardingRootView: View {
         let filteredMajors = resolvedMajors.filter(isSelectableMajorLabel(_:))
         majorOptions = Array(Set(filteredMajors)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
 
+        let includeCollegeBuckets = isCourseLeafBackedSchoolSelection(school)
         var departmentGroups: [(group: String, departments: [String])] = []
         var seenDepartmentGroupKeys = Set<String>()
         for level in levelsToQuery {
-            let groupsForLevel = coreDataManager.fetchDepartmentGroups(
+            let groupsForLevel = collegePersistence.fetchDepartmentGroups(
                 for: school,
                 degreeLevel: level,
-                sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid
+                sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid,
+                includeCollegeBuckets: includeCollegeBuckets
             )
             for group in groupsForLevel {
                 let key = group.group.lowercased() + "|" + group.departments.joined(separator: "|").lowercased()
@@ -1017,53 +1201,114 @@ struct OnboardingRootView: View {
                 }
             }
         }
-        var groupedSections: [OnboardingMajorSection] = []
-
-        for group in departmentGroups {
-            for department in group.departments {
-                let majorsForDepartment = fetchMajorUniverse(department: department, allowCatoidFallback: false)
-                .filter(isSelectableMajorLabel(_:))
-
-                if majorsForDepartment.isEmpty { continue }
-                let unique = Array(Set(majorsForDepartment)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-                groupedSections.append(OnboardingMajorSection(title: "\(group.group) > \(department)", majors: unique))
-            }
-        }
-        majorOptionsBySection = groupedSections
-
-        var minors: [String] = []
-        var seenMinors = Set<String>()
-        for level in levelsToQuery {
-            let fetchedMinors = coreDataManager.fetchMinors(
+        if includeCollegeBuckets {
+            majorOptionsBySection = collegePersistence.fetchProgramPickerSections(
                 for: school,
-                degreeLevel: level,
-                sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid
+                degreeLevels: levelsToQuery,
+                sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid,
+                includeMinors: false,
+                includeCollegeBuckets: true,
+                allowLegacyCatoidFallback: useLegacyCatoidFallback
             )
-            for minor in fetchedMinors where seenMinors.insert(minor).inserted {
-                minors.append(minor)
+            .compactMap { section in
+                let majors = section.labels.filter(isSelectableMajorLabel(_:))
+                guard !majors.isEmpty else { return nil }
+                return OnboardingMajorSection(title: section.title, majors: majors)
+            }
+        } else {
+            majorOptionsBySection = buildProgramSections(
+                from: departmentGroups,
+                programFetcher: { department in
+                    fetchMajorUniverse(department: department, allowCatoidFallback: true)
+                }
+            )
+        }
+
+        if majorOptionsBySection.isEmpty, !majorOptions.isEmpty, includeCollegeBuckets {
+            majorOptionsBySection = collegePersistence.fetchProgramPickerSections(
+                for: school,
+                degreeLevels: levelsToQuery,
+                sourceCatoid: nil,
+                includeMinors: false,
+                includeCollegeBuckets: true,
+                allowLegacyCatoidFallback: false
+            )
+            .compactMap { section in
+                let majors = section.labels.filter(isSelectableMajorLabel(_:))
+                guard !majors.isEmpty else { return nil }
+                return OnboardingMajorSection(title: section.title, majors: majors)
             }
         }
 
-        if minors.isEmpty, !selectedCatoid.isEmpty, useLegacyCatoidFallback {
+        func fetchMinorUniverse(department: String? = nil, allowCatoidFallback: Bool = true) -> [String] {
+            var collected: [String] = []
+            var seen = Set<String>()
             for level in levelsToQuery {
-                let fetchedMinors = coreDataManager.fetchMinors(
+                let minorsForLevel = CatalogProgramReadBridge.fetchMajors(
                     for: school,
                     degreeLevel: level,
-                    sourceCatoid: nil
+                    department: department,
+                    degreeType: nil,
+                    includeMinors: true,
+                    sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid
                 )
-                for minor in fetchedMinors where seenMinors.insert(minor).inserted {
-                    minors.append(minor)
+                for minor in minorsForLevel where seen.insert(minor).inserted {
+                    collected.append(minor)
                 }
             }
+
+            if collected.isEmpty, !selectedCatoid.isEmpty, allowCatoidFallback, useLegacyCatoidFallback {
+                for level in levelsToQuery {
+                    let minorsForLevel = CatalogProgramReadBridge.fetchMajors(
+                        for: school,
+                        degreeLevel: level,
+                        department: department,
+                        degreeType: nil,
+                        includeMinors: true,
+                        sourceCatoid: nil
+                    )
+                    for minor in minorsForLevel where seen.insert(minor).inserted {
+                        collected.append(minor)
+                    }
+                }
+            }
+            return collected
         }
 
+        if includeCollegeBuckets {
+            minorOptionsBySection = collegePersistence.fetchProgramPickerSections(
+                for: school,
+                degreeLevels: levelsToQuery,
+                sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid,
+                includeMinors: true,
+                includeCollegeBuckets: true,
+                allowLegacyCatoidFallback: useLegacyCatoidFallback
+            )
+            .compactMap { section in
+                let programs = section.labels.filter(isSelectableMajorLabel(_:))
+                guard !programs.isEmpty else { return nil }
+                return OnboardingMajorSection(title: section.title, majors: programs)
+            }
+        } else {
+            minorOptionsBySection = buildProgramSections(
+                from: departmentGroups,
+                programFetcher: { department in
+                    fetchMinorUniverse(department: department, allowCatoidFallback: true)
+                }
+            )
+        }
+
+        var minors = fetchMinorUniverse(allowCatoidFallback: true)
+            .filter(isSelectableMajorLabel(_:))
+        minors = Array(Set(minors)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+
         if minors.isEmpty {
-            var certificates = coreDataManager.fetchCertificates(
+            var certificates = collegePersistence.fetchCertificates(
                 for: school,
                 sourceCatoid: selectedCatoid.isEmpty ? nil : selectedCatoid
             )
             if certificates.isEmpty, !selectedCatoid.isEmpty, useLegacyCatoidFallback {
-                certificates = coreDataManager.fetchCertificates(
+                certificates = collegePersistence.fetchCertificates(
                     for: school,
                     sourceCatoid: nil
                 )
@@ -1072,9 +1317,62 @@ struct OnboardingRootView: View {
         } else {
             minorOptions = minors
         }
+
+        updateCourseLeafRefreshHint(school: school)
+    }
+
+    private func updateCourseLeafRefreshHint(school: String) {
+        guard isCourseLeafBackedSchoolSelection(school) else {
+            courseLeafCatalogNeedsRefresh = false
+            return
+        }
+        let programCount = max(
+            majorOptions.count,
+            majorOptionsBySection.reduce(0) { $0 + $1.majors.count }
+        )
+        courseLeafCatalogNeedsRefresh = programCount > 0 && programCount < 25
+    }
+
+    private func isCourseLeafBackedSchoolSelection(_ schoolName: String) -> Bool {
+        let schools = githubService.loadResolvedSchoolsList()
+        guard let manifest = CatalogBackgroundSyncRunner.matchSchoolManifest(named: schoolName, in: schools) else {
+            return false
+        }
+        return manifest.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "courseleaf"
+    }
+
+    private func refreshCourseLeafProgramIndex() {
+        CatalogBackgroundSyncRunner.setForceNextRescrape(true)
+        resetCatalogSyncState()
+        courseLeafCatalogNeedsRefresh = false
+        startCatalogSyncTask()
+    }
+
+    private func buildProgramSections(
+        from departmentGroups: [(group: String, departments: [String])],
+        programFetcher: (String?) -> [String]
+    ) -> [OnboardingMajorSection] {
+        var groupedSections: [OnboardingMajorSection] = []
+        for group in departmentGroups {
+            for department in group.departments {
+                let programsForDepartment = programFetcher(department)
+                    .filter(isSelectableMajorLabel(_:))
+                if programsForDepartment.isEmpty { continue }
+                let unique = Array(Set(programsForDepartment)).sorted {
+                    $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+                }
+                groupedSections.append(OnboardingMajorSection(title: "\(group.group) > \(department)", majors: unique))
+            }
+        }
+        return groupedSections
     }
 
     private func isSelectableMajorLabel(_ major: String) -> Bool {
+        let baseName = major
+            .replacingOccurrences(of: ",\\s*[A-Z./]+$", with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if CourseLeafProgramURLParser.isJunkProgramTitle(baseName) { return false }
+
         let normalized = major.uppercased()
         if normalized.hasSuffix(", UNKNOWN") { return false }
         if normalized.contains("CERTIFICATE") { return false }
@@ -1101,24 +1399,7 @@ struct OnboardingRootView: View {
     }
 
     private func cachedSchoolNames() -> [String] {
-        let cached = githubService.loadCachedSchoolsList() ?? []
-        return schoolNames(from: cached)
-    }
-
-    private func schoolNames(from schools: [SchoolManifest]) -> [String] {
-        Array(Set(schools
-            .filter(isScraperBackedSchool)
-            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }))
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-
-    private func isScraperBackedSchool(_ school: SchoolManifest) -> Bool {
-        let catalogURL = (school.catalogURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !catalogURL.isEmpty else { return false }
-
-        let format = school.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return format == "acalog" || format == "banner" || format == "custom" || format == "moderncampus"
+        SchoolManifestSelection.scraperBackedNames(from: githubService.loadResolvedSchoolsList())
     }
 
     private func refreshUniversityOptionsFromManifest() {
@@ -1126,11 +1407,15 @@ struct OnboardingRootView: View {
         isLoadingUniversityOptions = true
         universityOptionsLoadError = nil
 
+        let cachedNames = cachedSchoolNames()
+        if !cachedNames.isEmpty {
+            universityOptions = cachedNames
+        }
+
         Task {
             do {
-                let schools = try await githubService.fetchSchoolsList()
-                try? githubService.cacheSchoolsList(schools)
-                let names = schoolNames(from: schools)
+                let schools = try await githubService.refreshResolvedSchoolsList()
+                let names = SchoolManifestSelection.scraperBackedNames(from: schools)
 
                 await MainActor.run {
                     isLoadingUniversityOptions = false
@@ -1142,7 +1427,9 @@ struct OnboardingRootView: View {
             } catch {
                 await MainActor.run {
                     isLoadingUniversityOptions = false
-                    universityOptionsLoadError = error.localizedDescription
+                    if universityOptions.isEmpty {
+                        universityOptionsLoadError = error.localizedDescription
+                    }
                 }
             }
         }
@@ -1150,8 +1437,11 @@ struct OnboardingRootView: View {
 
     private func resetCatalogTypeState() {
         catalogTypeOptions = []
+        catalogScrapeProgress = []
         draft.selectedCatalogCatoid = ""
         majorOptionsBySection = []
+        minorOptionsBySection = []
+        lastAppliedContextOptionsKey = ""
     }
 
     private func refreshCatalogTypeOptionsForSelectedSchool() {
@@ -1169,11 +1459,11 @@ struct OnboardingRootView: View {
             do {
                 let manifest = try await resolveSchoolManifest(named: selectedSchool)
                 let format = manifest.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                guard format == "acalog" || format == "moderncampus" else {
+                guard CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: format) else {
                     await MainActor.run {
                         isLoadingCatalogTypeOptions = false
                         resetCatalogTypeState()
-                        reloadContextOptions()
+                        scheduleReloadContextOptions()
                     }
                     return
                 }
@@ -1183,40 +1473,42 @@ struct OnboardingRootView: View {
                     await MainActor.run {
                         isLoadingCatalogTypeOptions = false
                         resetCatalogTypeState()
-                        reloadContextOptions()
+                        scheduleReloadContextOptions()
                     }
                     return
                 }
 
-                let (normalizedCatalogURL, catoidHint) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
-                let discovered = (try? await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalizedCatalogURL)) ?? []
-                let reducedDiscovered = ModernCampusCatalogLabels.latestCatalogsPerNormalizedLabel(from: discovered)
-
                 let descriptors: [ModernCampusCatalogDescriptor]
-                if !reducedDiscovered.isEmpty {
-                    descriptors = reducedDiscovered
-                } else if let catoidHint, !catoidHint.isEmpty {
-                    descriptors = [ModernCampusCatalogDescriptor(catoid: catoidHint, title: "Catalog")]
+                if format == "courseleaf" {
+                    let catalogs = try await CourseLeafCatalogSegmentDiscoverer.onboardingCatalogs(
+                        baseURL: catalogURL,
+                        schoolID: manifest.id
+                    )
+                    descriptors = CourseLeafCatalogSegmentDiscoverer.catalogDescriptors(from: catalogs)
                 } else {
-                    let current = try await ModernCampusEngine.discoverCurrentCatalogID(baseURL: normalizedCatalogURL)
-                    descriptors = [ModernCampusCatalogDescriptor(catoid: current, title: "Catalog")]
-                }
+                    let (normalizedCatalogURL, catoidHint) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
+                    let discovered = (try? await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalizedCatalogURL)) ?? []
 
-                let options = normalizedCatalogTypeOptions(from: descriptors)
+                    if !discovered.isEmpty {
+                        descriptors = discovered
+                    } else if let catoidHint, !catoidHint.isEmpty {
+                        descriptors = [ModernCampusCatalogDescriptor(catoid: catoidHint, title: "Catalog")]
+                    } else {
+                        let current = try await ModernCampusEngine.discoverCurrentCatalogID(baseURL: normalizedCatalogURL)
+                        descriptors = [ModernCampusCatalogDescriptor(catoid: current, title: "Catalog")]
+                    }
+                }
 
                 await MainActor.run {
                     isLoadingCatalogTypeOptions = false
-                    catalogTypeOptions = options
-
-                    syncDegreeSelectionWithCatalogOptions()
-
-                    reloadContextOptions()
+                    applyDiscoveredCatalogs(descriptors)
+                    reloadContextOptionsImmediately()
                 }
             } catch {
                 await MainActor.run {
                     isLoadingCatalogTypeOptions = false
                     resetCatalogTypeState()
-                    reloadContextOptions()
+                    scheduleReloadContextOptions()
                 }
             }
         }
@@ -1233,7 +1525,7 @@ struct OnboardingRootView: View {
 
             out.append(OnboardingCatalogTypeOption(
                 catoid: catoid,
-                label: normalizedCatalogTypeLabel(from: descriptor.title, catoid: catoid),
+                label: ModernCampusCatalogLabels.postedDisplayTitle(from: descriptor.title),
                 rawTitle: descriptor.title
             ))
         }
@@ -1272,16 +1564,13 @@ struct OnboardingRootView: View {
         }
     }
 
-    private func normalizedCatalogTypeLabel(from rawTitle: String, catoid: String) -> String {
-        ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: rawTitle, catoid: catoid)
-    }
-
     private func fetchUniversityNames() -> [String] {
-        let request = NSFetchRequest<UniversityEntity>(entityName: "UniversityEntity")
-        request.sortDescriptors = [NSSortDescriptor(key: "name", ascending: true)]
-        let rows = (try? coreDataManager.viewContext.fetch(request)) ?? []
-        return rows
-            .compactMap { $0.name?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let repo = collegePersistence.catalogRepository,
+              let universities = try? repo.fetchUniversities(limit: 500) else {
+            return []
+        }
+        return universities
+            .map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
 
@@ -1303,7 +1592,9 @@ struct OnboardingRootView: View {
                 coordinator.validationMessage = "Catalog sync is still in progress."
                 return
             case .succeeded:
-                break
+                coordinator.goNext()
+                reloadContextOptionsImmediately()
+                return
             }
         } else if currentStep != .identity && catalogSyncRequired {
             switch catalogSyncPhase {
@@ -1323,7 +1614,7 @@ struct OnboardingRootView: View {
             handleFinishContinue()
         } else {
             coordinator.goNext()
-            reloadContextOptions()
+            scheduleReloadContextOptions()
         }
     }
 
@@ -1338,7 +1629,27 @@ struct OnboardingRootView: View {
         lockedCourseDenominator = 0
         handoffReady = false
         catalogSyncStartDate = nil
-        lastScrapeAuditPath = nil
+        catalogScrapeProgress = []
+    }
+
+    private func applyDiscoveredCatalogs(_ descriptors: [ModernCampusCatalogDescriptor]) {
+        let posted = ModernCampusCatalogLabels.filterPostedCatalogs(from: descriptors)
+        catalogTypeOptions = posted.map { descriptor in
+            OnboardingCatalogTypeOption(
+                catoid: descriptor.catoid,
+                label: ModernCampusCatalogLabels.postedDisplayTitle(from: descriptor.title),
+                rawTitle: descriptor.title
+            )
+        }
+        catalogScrapeProgress = catalogTypeOptions.map {
+            OnboardingCatalogScrapeProgressItem(catoid: $0.catoid, title: $0.label, status: .pending)
+        }
+        syncDegreeSelectionWithCatalogOptions()
+    }
+
+    private func markCatalogScrapeStatus(catoid: String, status: OnboardingCatalogScrapeStatus) {
+        guard let index = catalogScrapeProgress.firstIndex(where: { $0.catoid == catoid }) else { return }
+        catalogScrapeProgress[index].status = status
     }
 
     private func autoStartCatalogSyncIfNeeded() {
@@ -1434,10 +1745,36 @@ struct OnboardingRootView: View {
             }
 
             let format = manifest.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let shouldRunModernCampusScraper = format == "acalog" || format == "moderncampus"
+            let shouldUseCatalogIngestCoordinator = CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: format)
 
-            if shouldRunModernCampusScraper {
-                try await runModernCampusCatalogSync(manifest: manifest, toastID: toastID)
+            if shouldUseCatalogIngestCoordinator {
+                catalogSyncVisualPhase = .downloading
+                _ = try await CatalogIngestCoordinator.runCatalogSync(
+                    manifest: manifest,
+                    toastID: toastID,
+                    collegePersistence: collegePersistence,
+                    notifications: notifications,
+                    githubService: githubService,
+                    depth: .light,
+                    hooks: CatalogBackgroundSyncRunner.Hooks(
+                        onVisualPhase: { phase in
+                            catalogSyncVisualPhase = phase == .importing ? .importing : .downloading
+                        },
+                        onProgress: { progress, message in
+                            catalogSyncProgress = progress
+                            catalogSyncMessage = message
+                        },
+                        onCatalogsDiscovered: { catalogs in
+                            applyDiscoveredCatalogs(catalogs)
+                        },
+                        onCatalogIndexStarted: { catoid, _ in
+                            markCatalogScrapeStatus(catoid: catoid, status: .scraping)
+                        },
+                        onCatalogIndexFinished: { catoid, succeeded in
+                            markCatalogScrapeStatus(catoid: catoid, status: succeeded ? .completed : .failed)
+                        }
+                    )
+                )
             } else {
                 notifications.update(id: toastID, message: "Discovering catalog profile…", progress: 0.2)
                 catalogSyncProgress = 0.2
@@ -1456,8 +1793,14 @@ struct OnboardingRootView: View {
                 catalogSyncProgress = 0.75
                 catalogSyncMessage = "Importing \(lockedCourseDenominator) courses into local database..."
 
-                try await coreDataManager.importSchoolCatalog(profile)
-                _ = coreDataManager.setActiveUniversity(named: canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName)
+                try await collegePersistence.importSchoolCatalog(profile)
+                _ = collegePersistence.setActiveUniversity(named: canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName)
+                if let uni = collegePersistence.getActiveUniversity() {
+                    CatalogIngestPipeline.postCatalogDataDidCommit(
+                        universityID: uni.id,
+                        reason: "catalog onboarding profile committed"
+                    )
+                }
             }
             UserDefaults.standard.set(false, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
 
@@ -1469,14 +1812,19 @@ struct OnboardingRootView: View {
                 autoDismissAfter: 4
             )
 
-            catalogSyncPhase = .succeeded
-            catalogSyncProgress = 1
-            if let auditPath = lastScrapeAuditPath, !auditPath.isEmpty {
-                catalogSyncMessage = "Catalog sync completed. Audit CSV: \(auditPath)"
-            } else {
+            if !catalogSyncMessage.localizedCaseInsensitiveContains("skipped")
+                && !catalogSyncMessage.localizedCaseInsensitiveContains("unchanged") {
                 catalogSyncMessage = "Catalog sync completed."
             }
-            reloadContextOptions()
+            catalogSyncPhase = .succeeded
+            catalogSyncProgress = 1
+            reloadContextOptionsImmediately()
+
+            if coordinator.currentStep == .identity {
+                coordinator.validationMessage = nil
+                coordinator.goNext()
+                reloadContextOptionsImmediately()
+            }
         } catch {
             notifications.dismiss(id: toastID)
             notifications.post(
@@ -1495,413 +1843,26 @@ struct OnboardingRootView: View {
         }
     }
 
-    private func runModernCampusCatalogSync(manifest: SchoolManifest, toastID: UUID) async throws {
-        let catalogURL = (manifest.catalogURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !catalogURL.isEmpty else {
-            throw ScraperError.invalidURL
-        }
-
-        notifications.update(id: toastID, message: "Discovering catalogs…", progress: 0.2)
-        catalogSyncVisualPhase = .discovering
-        catalogSyncProgress = 0.2
-        catalogSyncMessage = "Discovering ModernCampus catalogs..."
-
-        let (normalizedCatalogURL, catoidHint) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
-        guard let baseURL = URL(string: normalizedCatalogURL) else {
-            throw ScraperError.invalidURL
-        }
-
-        let discovered = (try? await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalizedCatalogURL)) ?? []
-        let reducedDiscovered = ModernCampusCatalogLabels.latestCatalogsPerNormalizedLabel(from: discovered)
-        let catalogsToScrape: [ModernCampusCatalogDescriptor]
-        if !reducedDiscovered.isEmpty {
-            catalogsToScrape = reducedDiscovered
-        } else {
-            let catalogID: String
-            if let catoidHint, !catoidHint.isEmpty {
-                catalogID = catoidHint
-            } else {
-                catalogID = try await ModernCampusEngine.discoverCurrentCatalogID(baseURL: normalizedCatalogURL)
-            }
-            catalogsToScrape = [ModernCampusCatalogDescriptor(catoid: catalogID, title: "Catalog")]
-        }
-
-        let normalizedOptions = normalizedCatalogTypeOptions(from: catalogsToScrape)
-        if !normalizedOptions.isEmpty {
-            catalogTypeOptions = normalizedOptions
-            syncDegreeSelectionWithCatalogOptions()
-        }
-
-        var coursesByCode: [String: CatalogCourse] = [:]
-        var programsByCatalogAndURL: [String: ScrapedProgram] = [:]
-        var perCatalogCourseRows: [(catoid: String, title: String, course: CatalogCourse)] = []
-
-        func normalizeCourseCode(_ raw: String) -> String {
-            raw
-                .replacingOccurrences(of: "\u{00A0}", with: " ")
-                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
-        }
-
-        for (index, catalog) in catalogsToScrape.enumerated() {
-            let ordinal = index + 1
-            let fraction = Double(ordinal) / Double(max(1, catalogsToScrape.count))
-            let progress = 0.2 + (0.45 * fraction)
-
-            notifications.update(
-                id: toastID,
-                message: "Scraping \(catalog.title.isEmpty ? "catalog" : catalog.title)… (\(ordinal)/\(catalogsToScrape.count))",
-                progress: progress
-            )
-            catalogSyncVisualPhase = .downloading
-            catalogSyncProgress = progress
-            catalogSyncMessage = "Scraping \(catalog.title.isEmpty ? "catalog" : catalog.title)... (\(ordinal)/\(catalogsToScrape.count))"
-
-            let scrapedCourses = try await ModernCampusEngine.fetchAllCourses(baseURL: normalizedCatalogURL, catoid: catalog.catoid)
-            for course in scrapedCourses {
-                perCatalogCourseRows.append((catoid: catalog.catoid, title: catalog.title, course: course))
-            }
-            for course in scrapedCourses {
-                let key = normalizeCourseCode(course.courseCode)
-                if coursesByCode[key] == nil {
-                    coursesByCode[key] = CatalogCourse(
-                        id: course.id,
-                        courseCode: key,
-                        title: course.title,
-                        description: course.description,
-                        credits: course.credits,
-                        department: course.department,
-                        prerequisites: course.prerequisites,
-                        prerequisiteText: course.prerequisiteText,
-                        corequisites: course.corequisites,
-                        typicallyOffered: course.typicallyOffered
-                    )
-                }
-            }
-
-            let programScraper = UniversalCatalogScraper()
-            let catalogIDInt = Int(catalog.catoid) ?? 0
-            let scrapedPrograms = try await programScraper.scrapeAllPrograms(baseURL: baseURL, catalogID: catalogIDInt)
-            for program in scrapedPrograms {
-                let normalizedURL = program.url.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dedupStem = normalizedURL.isEmpty
-                    ? program.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    : normalizedURL
-                let dedupKey = "\(catalog.catoid)|\(dedupStem)"
-                programsByCatalogAndURL[dedupKey] = program
-            }
-        }
-
-        let courses = Array(coursesByCode.values)
-        let programs = Array(programsByCatalogAndURL.values)
-
-        do {
-            let csvURL = try writeOnboardingScrapeCSV(manifest: manifest, rows: perCatalogCourseRows)
-            lastScrapeAuditPath = csvURL.path
-            notifications.update(
-                id: toastID,
-                message: "Saved scrape audit: \(csvURL.path)",
-                progress: 0.7
-            )
-            catalogSyncMessage = "Saved scrape audit to \(csvURL.path)."
-        } catch {
-            lastScrapeAuditPath = nil
-            notifications.post(
-                kind: .error,
-                title: "Scrape Export Failed",
-                message: error.localizedDescription,
-                isDismissible: true,
-                autoDismissAfter: 8
-            )
-            catalogSyncMessage = "Catalog scraped, but CSV export failed: \(error.localizedDescription)"
-        }
-
-        catalogSyncVisualPhase = .importing
-        notifications.update(id: toastID, message: "Importing scraped catalog…", progress: 0.78)
-        catalogSyncProgress = 0.78
-        catalogSyncMessage = "Importing \(courses.count) courses and \(programs.count) programs..."
-        lockedCourseDenominator = max(1, courses.count)
-
-        let profile = SchoolProfile(
-            schoolID: manifest.id,
-            schoolName: manifest.name,
-            catalogURL: normalizedCatalogURL,
-            version: "1.0.0-onboarding-scraped",
-            lastUpdated: Date(),
-            courses: courses,
-            degreeRequirements: [],
-            policies: SchoolPolicies(
-                transferCreditLimit: nil,
-                minorTransferLimit: nil,
-                maxCreditsPerSemester: nil,
-                minCreditsForFullTime: nil,
-                gradeForCredit: nil,
-                repeatCoursePolicy: nil
-            )
-        )
-
-        // Import even when the live crawl returned zero courses so UniversityEntity/context
-        // still exists and downstream saveMajors/fetchMajors can resolve the selected school.
-        try await coreDataManager.importSchoolCatalog(profile)
-
-        var departmentToGroup: [String: String] = [:]
-        for (dedupKey, program) in programsByCatalogAndURL {
-            let department = (program.department ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !department.isEmpty else { continue }
-
-            let catoidFromKey = dedupKey.split(separator: "|", maxSplits: 1).first.map(String.init) ?? ""
-            let catalogMeta = catalogsToScrape.first { $0.catoid == catoidFromKey }
-            let catalogLabel = catalogMeta.map {
-                normalizedCatalogTypeLabel(from: $0.title, catoid: $0.catoid)
-            } ?? "Catalog \(catoidFromKey)"
-
-            let preferredGroup = (program.college ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let group = preferredGroup.isEmpty ? catalogLabel : preferredGroup
-
-            if departmentToGroup[department] == nil {
-                departmentToGroup[department] = group
-            }
-        }
-
-        if !departmentToGroup.isEmpty {
-            let deptRows = departmentToGroup.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }.map { dept in
-                (name: dept, code: nil as String?, school: departmentToGroup[dept])
-            }
-            try coreDataManager.saveDepartments(deptRows, for: manifest.name)
-        }
-
-        func inferDegreeLevel(programType: String, degreeType: String?) -> String {
-            if programType.lowercased().contains("minor") {
-                return "Undergraduate"
-            }
-
-            let token = (degreeType ?? "").uppercased()
-            if token.contains("PHD") { return "PhD" }
-
-            let undergrad = ["BA", "BS", "BFA", "BM", "BARCH"]
-            if undergrad.contains(where: { token.contains($0) }) { return "Undergraduate" }
-
-            let graduate = ["MA", "MS", "MBA", "MENG", "MFA", "JD", "MD", "DDS", "DMD", "PHARMD"]
-            if graduate.contains(where: { token.contains($0) }) { return "Graduate" }
-
-            return "Undergraduate"
-        }
-
-        func acalogURLForcingCatoid(_ rawURL: String, catoid: String) -> String {
-            guard var components = URLComponents(string: rawURL) else { return rawURL }
-            var queryItems = components.queryItems ?? []
-            if let idx = queryItems.firstIndex(where: { $0.name.lowercased() == "catoid" }) {
-                queryItems[idx] = URLQueryItem(name: "catoid", value: catoid)
-            } else {
-                queryItems.append(URLQueryItem(name: "catoid", value: catoid))
-            }
-            components.queryItems = queryItems
-            return components.string ?? rawURL
-        }
-
-        var rows = programsByCatalogAndURL.sorted(by: { $0.key < $1.key }).map { dedupKey, program in
-            let catoidFromKey = dedupKey.split(separator: "|", maxSplits: 1).first.map(String.init) ?? ""
-            let catalogMeta = catalogsToScrape.first { $0.catoid == catoidFromKey }
-            let catalogBucket = catalogMeta.map {
-                normalizedCatalogTypeLabel(from: $0.title, catoid: $0.catoid)
-            } ?? "Catalog \(catoidFromKey)"
-
-            let normalizedType = program.type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            let rawDegreeType = program.degreeType?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let normalizedDegreeType = (rawDegreeType ?? "").lowercased()
-
-            let isCredentialLike = normalizedType.contains("certificate") ||
-                normalizedType.contains("credential") ||
-                normalizedDegreeType.contains("certificate") ||
-                normalizedDegreeType.contains("credential")
-            let isMinor = normalizedType.contains("minor") && !isCredentialLike
-
-            let degreeType: String?
-            if let rawDegreeType, !rawDegreeType.isEmpty {
-                degreeType = rawDegreeType
-            } else if normalizedType.contains("certificate") {
-                degreeType = "Certificate"
-            } else if normalizedType.contains("credential") {
-                degreeType = "Credential"
-            } else if isMinor {
-                degreeType = "Minor"
-            } else {
-                degreeType = nil
-            }
-
-            let trimmedURL = program.url.trimmingCharacters(in: .whitespacesAndNewlines)
-            let urlForStorage: String? = {
-                guard !trimmedURL.isEmpty else { return nil }
-                guard !catoidFromKey.isEmpty else { return trimmedURL }
-                return acalogURLForcingCatoid(trimmedURL, catoid: catoidFromKey)
-            }()
-
-            return (
-                name: program.name,
-                degreeLevel: catalogBucket,
-                degreeType: degreeType,
-                isMinor: isMinor,
-                department: program.department,
-                url: urlForStorage,
-                resolvedDepartment: program.department,
-                resolvedCollege: program.college,
-                mappingConfidence: nil as Double?,
-                mappingSource: "onboarding.moderncampus" as String?,
-                requirements: program.requirements,
-                sourceCatalogCatoid: catoidFromKey.isEmpty ? nil : catoidFromKey
-            )
-        }
-
-        // Fallback: if program scraping returned no rows, derive majors/minors from profile
-        // degree requirements so Academic Setup dropdowns still populate.
-        if rows.isEmpty {
-            if let downloaded = try? await githubService.downloadSchoolProfile(schoolID: manifest.id) {
-                var seen = Set<String>()
-                rows = downloaded.degreeRequirements.compactMap { req in
-                    let major = req.major.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !major.isEmpty else { return nil }
-
-                    let degreeType = req.degreeType.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let isMinor = degreeType.lowercased().contains("minor") || major.lowercased().contains("minor")
-                    let key = "\(major.lowercased())|\(degreeType.lowercased())|\(isMinor)"
-                    guard seen.insert(key).inserted else { return nil }
-
-                    return (
-                        name: major,
-                        degreeLevel: inferDegreeLevel(programType: isMinor ? "Minor" : "Major", degreeType: degreeType),
-                        degreeType: degreeType.isEmpty ? (isMinor ? "Minor" : nil) : degreeType,
-                        isMinor: isMinor,
-                        department: nil as String?,
-                        url: nil as String?,
-                        resolvedDepartment: nil as String?,
-                        resolvedCollege: nil as String?,
-                        mappingConfidence: nil as Double?,
-                        mappingSource: "onboarding.profile-fallback" as String?,
-                        requirements: nil as [DegreeRequirement]?,
-                        sourceCatalogCatoid: nil as String?
-                    )
-                }
-            }
-        }
-
-        if !rows.isEmpty {
-            try coreDataManager.saveMajors(rows, for: manifest.name)
-        }
-
-        _ = coreDataManager.setActiveUniversity(named: manifest.name)
-    }
-
-    private func writeOnboardingScrapeCSV(
-        manifest: SchoolManifest,
-        rows: [(catoid: String, title: String, course: CatalogCourse)]
-    ) throws -> URL {
-        let timestamp = Int(Date().timeIntervalSince1970)
-        let safeSchoolID = manifest.id
-            .lowercased()
-            .replacingOccurrences(of: "[^a-z0-9_-]+", with: "_", options: .regularExpression)
-        let filename = "\(safeSchoolID)_onboarding_scrape_\(timestamp).csv"
-
-        func csvCell(_ value: String) -> String {
-            let escaped = value.replacingOccurrences(of: "\"", with: "\"\"")
-            return "\"\(escaped)\""
-        }
-
-        var lines: [String] = []
-        lines.append("school_id,school_name,catalog_catoid,catalog_title,course_code,course_title,credits,department,description")
-
-        for row in rows {
-            let course = row.course
-            let line = [
-                csvCell(manifest.id),
-                csvCell(manifest.name),
-                csvCell(row.catoid),
-                csvCell(row.title),
-                csvCell(course.courseCode),
-                csvCell(course.title),
-                String(course.credits),
-                csvCell(course.department ?? ""),
-                csvCell(course.description ?? "")
-            ].joined(separator: ",")
-            lines.append(line)
-        }
-
-        let content = lines.joined(separator: "\n")
-
-        let candidateDirectories = try resolveOnboardingScrapeExportDirectories()
-        var lastError: Error?
-
-        for directory in candidateDirectories {
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let fileURL = directory.appendingPathComponent(filename)
-                try content.write(to: fileURL, atomically: true, encoding: .utf8)
-                return fileURL
-            } catch {
-                lastError = error
-            }
-        }
-
-        if let lastError {
-            throw lastError
-        }
-
-        throw CocoaError(.fileWriteUnknown)
-    }
-
-    private func resolveOnboardingScrapeExportDirectories() throws -> [URL] {
-        // Preferred in local dev: repo-level exports directory next to project files.
-        // #filePath points to .../College/College/App/OnboardingRootView.swift.
-        let sourceURL = URL(fileURLWithPath: #filePath)
-        let repoRoot = sourceURL
-            .deletingLastPathComponent() // App
-            .deletingLastPathComponent() // College
-            .deletingLastPathComponent() // repo root
-        let repoExports = repoRoot.appendingPathComponent("exports", isDirectory: true)
-
-        // Explicit non-sandbox user home path for local debug runs.
-        let userHomeAppSupportExports = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Application Support", isDirectory: true)
-            .appendingPathComponent("College", isDirectory: true)
-            .appendingPathComponent("exports", isDirectory: true)
-
-        // Runtime-safe fallback for sandboxed builds.
-        let appSupport = try FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
-        let appSupportExports = appSupport
-            .appendingPathComponent("College", isDirectory: true)
-            .appendingPathComponent("exports", isDirectory: true)
-
-        // Try repo exports first, then explicit home Application Support,
-        // then container/sandbox Application Support.
-        return [repoExports, userHomeAppSupportExports, appSupportExports]
-    }
-
     private func resolveSchoolManifest(named schoolName: String) async throws -> SchoolManifest {
         let normalizedTarget = schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedTarget.isEmpty else {
             throw GitHubError.invalidData
         }
 
-        let cached = githubService.loadCachedSchoolsList() ?? []
-        if let found = matchSchoolManifest(named: normalizedTarget, in: cached) {
+        let cached = githubService.loadResolvedSchoolsList()
+        if let found = CatalogBackgroundSyncRunner.matchSchoolManifest(named: normalizedTarget, in: cached) {
             return found
         }
 
-        let fetched = try await githubService.fetchSchoolsList()
-        try? githubService.cacheSchoolsList(fetched)
+        let fetched = try await githubService.refreshResolvedSchoolsList()
 
-        if let found = matchSchoolManifest(named: normalizedTarget, in: fetched) {
+        if let found = CatalogBackgroundSyncRunner.matchSchoolManifest(named: normalizedTarget, in: fetched) {
             return found
         }
 
         throw GitHubError.invalidData
     }
+
 
     private func matchSchoolManifest(named schoolName: String, in schools: [SchoolManifest]) -> SchoolManifest? {
         let target = schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1975,11 +1936,11 @@ struct OnboardingRootView: View {
     private func commitAndFinish() {
         coordinator.isCommitting = true
 
-        if coreDataManager.profile == nil {
-            coreDataManager.fetchProfile()
+        if collegePersistence.profile == nil {
+            collegePersistence.fetchProfile()
         }
 
-        guard let profile = coreDataManager.profile else {
+        guard let profile = collegePersistence.profile else {
             coordinator.validationMessage = "Could not load your profile. Please try again."
             coordinator.isCommitting = false
             return
@@ -1999,16 +1960,32 @@ struct OnboardingRootView: View {
         profile.name = trimmedName.isEmpty ? nil : trimmedName
         profile.universityEmail = trimmedEmail.isEmpty ? nil : trimmedEmail
         profile.collegeName = trimmedSchool.isEmpty ? nil : trimmedSchool
-        profile.degreeLevel = draft.selectedDegreeLevels.first?.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.major = validMajors.first
-        profile.secondaryMajor = validMajors.count > 1 ? validMajors[1] : nil
-        profile.minor = validMinors.first
+        if let primary = collegePersistence.ensurePrimaryAcademicProfile() {
+            let level = draft.selectedDegreeLevels.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            primary.degreeLevel = level.isEmpty ? nil : level
+            let college = trimmedSchool.isEmpty ? nil : trimmedSchool
+            if let college, (primary.collegeName ?? "").isEmpty {
+                primary.collegeName = college
+            }
+        }
+        ProfileProgramLists.syncToProfile(majors: validMajors, minors: validMinors, collegePersistence: collegePersistence)
+        if let primary = collegePersistence.ensurePrimaryAcademicProfile(),
+           let primaryMajor = validMajors.first,
+           let departmentBucket = ProfileEditProgramMenuData.departmentBucket(
+            forMajor: primaryMajor,
+            sections: majorOptionsBySection.map {
+                ProfileEditMajorSection(title: $0.title, majors: $0.majors)
+            }
+           ) {
+            primary.department = departmentBucket
+        }
+        collegePersistence.reconcileDeclaredProgramDegreeMetadata()
 
         if !trimmedSchool.isEmpty {
-            _ = coreDataManager.setActiveUniversity(named: trimmedSchool)
+            _ = collegePersistence.setActiveUniversity(named: trimmedSchool)
         }
 
-        coreDataManager.save()
+        collegePersistence.save()
 
         let lmsRaw = draft.selectedLMS.map(\.rawValue).sorted()
         let widgetsRaw = draft.selectedWidgets.map(\.rawValue).sorted()

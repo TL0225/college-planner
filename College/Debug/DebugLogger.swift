@@ -1,3 +1,8 @@
+// DebugLogger.swift
+// Feature: Debug
+// Purpose: Debug module — DebugLogger.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import os
 
@@ -17,7 +22,7 @@ class DebugLogger: @unchecked Sendable {
         case lifecycle = "LIFECYCLE"
         case ui = "UI"
         case navigation = "NAV"
-        case coreData = "COREDATA"
+        case persistence = "PERSISTENCE"
         case network = "NETWORK"
         case scraper = "SCRAPER"
         case intelligence = "INTELLIGENCE"
@@ -129,7 +134,7 @@ class DebugLogger: @unchecked Sendable {
                 case .lifecycle: return .lifecycle
                 case .ui: return .ui
                 case .navigation: return .navigation
-                case .coreData: return .coreData
+                case .persistence: return .persistence
                 case .network: return .network
                 case .scraper: return .scraper
                 case .intelligence: return .intelligence
@@ -145,9 +150,7 @@ class DebugLogger: @unchecked Sendable {
         // In non-debug builds, keep logging minimal and avoid extra formatting overhead.
         #if !DEBUG
         osLogger.debug("\(message, privacy: .private)")
-        return
-        #endif
-
+        #else
         let now = Date()
         let ts = DebugLogger.formatTimestamp(now)
         let elapsed = String(format: "%.3fs", now.timeIntervalSince(startTime))
@@ -159,7 +162,6 @@ class DebugLogger: @unchecked Sendable {
         // Always emit to unified logging (respects system log levels).
         osLogger.debug("\(logMessage, privacy: .private)")
 
-        #if DEBUG
         // Write to file on background queue using the persistent handle — no open/close per call.
         guard logFileURL != nil else { return }
         queue.async { [weak self] in
@@ -211,8 +213,8 @@ class DebugLogger: @unchecked Sendable {
         log(message, category: .navigation, level: level, file: file, function: function, line: line)
     }
 
-    nonisolated func coreData(_ message: String, level: Level = .info, file: String = #fileID, function: String = #function, line: Int = #line) {
-        log(message, category: .coreData, level: level, file: file, function: function, line: line)
+    nonisolated func persistence(_ message: String, level: Level = .info, file: String = #fileID, function: String = #function, line: Int = #line) {
+        log(message, category: .persistence, level: level, file: file, function: function, line: line)
     }
 
     nonisolated func network(_ message: String, level: Level = .info, file: String = #fileID, function: String = #function, line: Int = #line) {

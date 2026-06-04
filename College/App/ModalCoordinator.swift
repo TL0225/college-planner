@@ -1,16 +1,23 @@
+// ModalCoordinator.swift
+// Feature: App
+// Purpose: App module — CourseEditSelection.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
-import Combine
-import CoreData
+import Observation
 
 /// Simple app-wide modal coordinator so overlays can be presented above page content
 /// (like AddCourseView) without being clipped by nested cards.
+@Observable
 @MainActor
-final class ModalCoordinator: ObservableObject {
-    @Published var activeModal: ActiveModal? = nil
-    @Published var courseDashboardTaskOverlay: CourseDashboardTaskOverlay? = nil
+final class ModalCoordinator {
+    var activeModal: ActiveModal? = nil
+    var courseDashboardTaskOverlay: CourseDashboardTaskOverlay? = nil
     /// Tracks whether the anchored creation panel (same UI as edit) is showing.
     /// Used by grid views to clear pending-creation range highlights when dismissed.
-    @Published var isCreationPanelOpen: Bool = false
+    var isCreationPanelOpen: Bool = false
+    /// When set, the add-semester flow prefers this plan if it still exists.
+    var addSemesterPreferredPlanID: UUID? = nil
 
     struct CourseEditSelection: Equatable {
         let courseCode: String
@@ -18,26 +25,34 @@ final class ModalCoordinator: ObservableObject {
         let defaultCreditsText: String
     }
 
+    /// When set, catalog picks assign to a requirement row instead of adding to a semester.
+    struct RequirementCourseAssignment: Equatable {
+        let universityName: String
+        let programURL: String
+        let requirementCategory: String
+    }
+
     enum CourseDashboardTaskOverlay: Equatable {
-        case add(semesterID: UUID?, prefillCourseObjectID: NSManagedObjectID?)
-        case edit(objectID: NSManagedObjectID)
+        case add(semesterID: UUID?, prefillCourseID: UUID?)
+        case edit(taskID: UUID)
     }
 
     enum ActiveModal: Equatable {
         case addSemester
         case addExperience
-        case editExperience(ExperienceEntity)
+        case editExperience(Experience)
         case addAchievement
-        case editAchievement(AchievementEntity)
+        case editAchievement(Achievement)
         case editCourse(CourseEditSelection)
         case addGenEdCourse
         case addCatalogCourseGlobal(tagAsGenEd: Bool)
-        case addCatalogCourse(semesterObjectID: NSManagedObjectID)
+        case addCatalogCourse(semesterID: UUID)
+        case assignRequirementCourse(RequirementCourseAssignment)
         case addCalendarItem(semesterID: UUID?, initialTitle: String?, initialStart: Date?, initialEnd: Date?)
-        case editCalendarItem(objectID: NSManagedObjectID)
-        case addTask(semesterID: UUID?, prefillCourseObjectID: NSManagedObjectID?)
-        case editTask(objectID: NSManagedObjectID)
-        case courseDashboard(courseCode: String, defaultCourseName: String, defaultCreditsText: String, courseObjectID: NSManagedObjectID?)
+        case editCalendarItem(eventID: UUID)
+        case addTask(semesterID: UUID?, prefillCourseID: UUID?)
+        case editTask(taskID: UUID)
+        case courseDashboard(courseCode: String, defaultCourseName: String, defaultCreditsText: String, courseID: UUID?)
         
         static func == (lhs: ActiveModal, rhs: ActiveModal) -> Bool {
             switch (lhs, rhs) {
@@ -59,6 +74,8 @@ final class ModalCoordinator: ObservableObject {
                 return a == b
             case (.addCatalogCourse(let aID), .addCatalogCourse(let bID)):
                 return aID == bID
+            case (.assignRequirementCourse(let a), .assignRequirementCourse(let b)):
+                return a == b
             case (.addCalendarItem(let aSemester, let aTitle, let aStart, let aEnd), .addCalendarItem(let bSemester, let bTitle, let bStart, let bEnd)):
                 return aSemester == bSemester && aTitle == bTitle && aStart == bStart && aEnd == bEnd
             case (.editCalendarItem(let aID), .editCalendarItem(let bID)):
@@ -67,8 +84,8 @@ final class ModalCoordinator: ObservableObject {
                 return aSemester == bSemester && aCourse == bCourse
             case (.editTask(let aID), .editTask(let bID)):
                 return aID == bID
-            case (.courseDashboard(let aCode, let aName, let aCredits, let aObjectID), .courseDashboard(let bCode, let bName, let bCredits, let bObjectID)):
-                return aCode == bCode && aName == bName && aCredits == bCredits && aObjectID == bObjectID
+            case (.courseDashboard(let aCode, let aName, let aCredits, let aCourseID), .courseDashboard(let bCode, let bName, let bCredits, let bCourseID)):
+                return aCode == bCode && aName == bName && aCredits == bCredits && aCourseID == bCourseID
             default:
                 return false
             }

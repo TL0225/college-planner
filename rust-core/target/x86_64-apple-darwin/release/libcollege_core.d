@@ -1,1 +1,0 @@
-/Users/timothy/Desktop/College/rust-core/target/x86_64-apple-darwin/release/libcollege_core.a: /Users/timothy/Desktop/College/rust-core/college-core/src/html_parser.rs /Users/timothy/Desktop/College/rust-core/college-core/src/lib.rs /Users/timothy/Desktop/College/rust-core/college-core/src/prereq.rs /Users/timothy/Desktop/College/rust-core/college-core/src/text.rs

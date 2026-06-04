@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<courseleaf>
+
+<title>CIT Interdisciplinary Courses</title>
+
+
+<text>
+<![CDATA[  
+ <h5>About Course Numbers:</h5> <p><em>Each Carnegie Mellon course number begins with a two-digit prefix that designates the department offering the course (i.e., 76-xxx courses are offered by the Department of English). Although each department maintains its own course numbering practices, typically, the first digit after the prefix indicates the class level: xx-1xx courses are freshmen-level, xx-2xx courses are sophomore level, etc. Depending on the department, xx-6xx courses may be either undergraduate senior-level or graduate-level, and xx-7xx courses and higher are graduate-level. Consult the <a href="https://enr-apps.as.cmu.edu/open/SOC/SOCServlet" target="_blank">Schedule of Classes </a>each semester for course offerings and for any necessary pre-requisites or co-requisites.</em></p> <hr/>
+  
+]]>
+</text>
+<faculty>
+<![CDATA[
+]]>
+</faculty>
+<coursestext name="Courses">
+<![CDATA[
+<a name="courseinventory"> </a>
+<div class="courses">
+<a name="39courses"></a>
+
+
+<dl class="courseblock">
+<dt class="keepwithnext">39-109 Grand Challenge Freshman Seminar: Climate Change</dt>
+<dd>Fall and Spring: 9 units<br />Climate change is considered by many the most serious social, political, and environmental issue of the 21st century. As human activities increase the level of greenhouse gases in the atmosphere, scientists have established the reality of climate change and have estimated its impacts on human society and the natural world. Despite the scientific consensus on its existence, causes, and consequences, a substantial number of Americans and citizens of other countries still question these conclusions and a small but vocal group of doubters continue to challenge the science and scientific consensus on climate change. In spite of some social division over these issues, governments at local, national, and international levels have made concerted efforts to craft policies to address climate change. These policies have shifted over time as the information, attitudes, and technology associated with climate change have evolved. In this course, we will explore the challenges and complexities of climate change by investigating the subject from a variety of angles: scientific, political, rhetorical, cultural, economic, technological, and ethical. Over the course of the semester, well inquire: What is climate change? How do scientists know it is happening? Why is there public debate over it? What solutions are available? And what are the pros and cons of the different solutions?<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-135 DC Grand Challenge First-Year Seminar: Designing Better Human-AI Futures</dt>
+<dd>Intermittent: 9 units<br />This course will explore the societal impacts of artificial intelligence (AI) based decision-making systems, especially focusing on the societal biases they may enhance or reduce. Students will gain a fundamental understanding of how these systems are designed and work, as well as the role of data in mitigating or enhancing biases. The course is multidisciplinary in nature and brings together social scientists, engineers, data scientists, and designers to tackle the grand challenge of dealing with issues of bias and fairness in Human-AI collaborative systems, ranging from the data that is used to train them, to their human creators that are responsible for deciding how they work and get used. Students will investigate policy, technology and societal elements aimed at reducing and mitigating the impact of AI biases that can negatively impact society, especially its vulnerable members.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-210 Experiential Learning I</dt>
+<dd>Fall and Spring<br />The engineer of the 21st century will need to operate effectively in many settings and often with a global perspective. Being curious and constantly looking for inspiration are critical for lifelong learning. This course, designed for all CIT sophomores, requires the student to choose and experience activities for development and growth that are not part of formal course work. Acceptable experiences are listed in the course syllabus on Canvas.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-220 Experiential Learning II</dt>
+<dd>Fall and Spring<br />The engineer of the 21st century will need to operate effectively in many settings and often with a global perspective. Being curious and constantly looking for inspiration are critical for lifelong learning. This course, designed for all CIT sophomores, requires the student to choose and experience activities for development and growth that are not part of formal course work. Acceptable experiences are listed in the course syllabus on Canvas.<br />Prerequisite: <span class="code_bubble" data-code-bubble="39-210">39-210</span></dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-245 Rapid Prototype Design</dt>
+<dd>All Semesters: 9 units<br />This course provides an introduction to rapid design through virtual and physical prototyping. The class covers the engineering design process, problem solving methods, interdisciplinary team work, current industrial practice, and manufacturing process capabilities. The course emphasizes hands on learning.    Sophomores have priority while registering for this course. Juniors and seniors will be put on the waitlist, then released once sophomores have registered.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-250 CIT Undergraduate Projects</dt>
+<dd>Fall<br />This course number is to be used for Fall CIT freshman research projects only. Student must complete a CIT Undergraduate Project Approval form (located in Scaife Hall 110) and submit for approval. The form must include a complete description and a signature approval from the research advisor/instructor. If the project is approved, the CIT Undergraduate Studies Office will add the course to the student's fall schedule.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-251 CIT Undergraduate Projects</dt>
+<dd>Spring<br />This course number is to be used for Spring CIT freshman research projects only. Student must complete a CIT Undergraduate Project Approval form (located in Scaife Hall 110) and submit for approval. The form must include a complete description and a signature approval from the research advisor/instructor. If the project is approved, the CIT Undergraduate Studies Office will add the course to the student's fall schedule.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-310 Experiential Learning III</dt>
+<dd>Fall and Spring<br />The engineer of the 21st century will need to operate effectively in many settings and often with a global perspective. Being curious and constantly looking for inspiration are critical for lifelong learning. This course, designed for all CIT juniors, requires the student to choose and experience activities for development and growth that are not part of formal course work. Acceptable experiences are listed in the course syllabus on Canvas.<br />Prerequisite: <span class="code_bubble" data-code-bubble="39-220">39-220</span></dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-402 Leadership Development Seminar</dt>
+<dd>All Semesters: 9 units<br />This course is designed for CIT seniors and juniors committed to further developing their leadership skills and potential for sustained impact in the future.  The course will be substantive and engaging, while less technically challenging, outright, than thought provoking, edifying, and enjoyable, ideally.  The course will build on the foundation of six key leadership pillars, identified by CIT to hone a student's professional and personal development to serve others, and to seek out and nurture opportunities to heighten one's capacity as a person and leader who is: VISIONARY, with clear goals for yourself, your organizations and communities, and others in whose lives you are a part, including the broader society; ETHICAL, with core values and steadfastness in the face of competing objectives, and the resilience to deal with conflicts without moral compromise; ENGAGING, with empathy, attentive interpersonal attributes, outstanding formal and informal communication skills, and the capacity to inspire; TACTICAL, with an ability to operationalize big ideas and bring them to fruition, creating the ideal environment for individual and group success; TECHNICAL, based on your own high-level skill set and the ego strength for inclusion of others with complementary realms of expertise; REFLECTIVE, manifesting in the honest appraisal of personal and organizational success against metrics, and the ability to redirect based on assessment.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-447 CIT Undergraduate Interdisciplinary Design Project</dt>
+<dd>All Semesters<br />This course is to be used for undergraduate research projects involving a significant interdisciplinary design component. It can be added by permission only through collaboration with the student, project advisor, and the CIT Dean's Office. For projects that are not interdisciplinary in nature, students should refer to the research number specific to the department in which the research is being completed.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-500 CIT Honors Research Project</dt>
+<dd>All Semesters<br />Juniors who have an accumulated QPA of at least 3.5 receive an invitation to participate in the program. This course, open by invitation only, will provide the opportunity for close interaction with a faculty member through independent honors research in a number of disciplinary and interdisciplinary areas, as part of the CIT Honors Research Program. Students will work on their projects during their senior year, earning the equivalent of 18-24 units. Students are required to register for CIT Honor Research Project <span class="code_bubble" data-code-bubble="39-500">39-500</span>. To receive CIT College Honors, a student must complete at least 18 units in <span class="code_bubble" data-code-bubble="39-500">39-500</span> on the same research topic and submit a 1-page executive summary of your research. Lastly, students must present their research findings at the Undergraduate Research Symposium, "Meeting of the Minds" in May. Although "Meeting of the Minds" is open to any undergraduate research initiatives occurring on campus, it is a requirement for College of Engineering Honors Research students.<br />
+<br/>Course Website: <a href="https://tinyurl.com/cithonorsresearch" target="_blank">https://tinyurl.com/cithonorsresearch</a></dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-601 Special Topics: Additive Manufacturing Processing and Product Development</dt>
+<dd>Fall: 12 units<br />Introduction to additive manufacturing (AM) processing fundamentals and applications using Solidworks 3-D CAD software and a variety of polymer and metal AM machines. Includes a brief history of AM processing, a review of and technical fundamentals of current AM processes, a study of the current AM market, and future directions of the technology. Lab Sessions will support an open-ended product development project. Lectures on metals AM will address current research impacting industry. Students will also perform a literature review of papers on the state of the art. Basic Solidworks knowledge required.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-602 Additive Manufacturing and Materials</dt>
+<dd>Fall and Spring: 12 units<br />This course will develop the understanding required for materials science and engineering for additive manufacturing. The emphasis will be on powder bed machines for printing metal parts, reflecting the research emphasis at CMU. The full scope of methods in use, however, will also be covered. The topics are intended to enable students to understand which materials are feasible for 3D printing. Accordingly, high power density welding methods such as electron beam and laser welding will be discussed, along with the characteristic defects. Since metal powders are a key input, powder-making methods will be discussed. Components once printed must satisfy various property requirements hence microstructure-property relationships will be discussed because the microstructures that emerge from the inherently high cooling rates differ strongly from conventional materials. Defect structures are important to performance and therefore inspection. Porosity is a particularly important feature of 3D printed metals and its occurrence depends strongly on the input materials and on the processing conditions. The impact of data science on this area offers many possibilities such as the automatic recognition of materials origin and history. Finally the context for the course will be discussed, i.e. the rapidly growing penetration of the technology and its anticipated impact on manufacturing.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-603 Additive Manufacturing Laboratory</dt>
+<dd>Spring: 12 units<br />Hands-on laboratory projects will teach students about all aspects of metals additive manufacturing (AM). Students will learn how to use SOLIDWORKS for part design, create and transfer design files to the AM machines, run the machines to build parts, perform post-processing operations, and characterize AM parts. Student will work in teams and complete three separate lab projects, each utilizing a different material system, part design, AM process/machine, post-processing steps and characterization methods. A major lab report and presentation will be required for each of the three lab projects. The course includes weekly lectures to complement the laboratory component. Priority for enrollment will be given to students who have declared the Additive Manufacturing Minor.<br />Prerequisites: <span class="code_bubble" data-code-bubble="39-602">39-602</span> or <span class="code_bubble" data-code-bubble="27-503">27-503</span> or 27-765 or <span class="code_bubble" data-code-bubble="39-601">39-601</span> or <span class="code_bubble" data-code-bubble="24-632">24-632</span></dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-605 Engineering Design Projects</dt>
+<dd>Fall: 12 units<br />In this project course, students work in multidisciplinary teams to design products or processes.  The course is open to juniors, seniors and graduate students from all parts of the campus community.  Each project is sponsored by an industry, government or non-profit partner, and is of real commercial interest to that partner.  Students work directly with their partner throughout the semester to establish goals and requirements, evaluate their design as it progresses, and produce a final report, presentation, and, if appropriate, a prototype.  Design reviews, held twice during the semester, give students a chance to present their preliminary designs and receive feedback and advice.  In completing their designs, teams must consider not only the functionality of their designs, but also the look, feel, appearance, and societal impact.  Skills built in this course will include: developing the product statement, establishing goals and constraints for the product, project management, and generating and evaluating design alternatives.  As some projects may span multiple semesters with new groups of students, careful documentation of project work is emphasized.  Students may take this course for either one or two semesters.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-606 Engineering Design Projects</dt>
+<dd>Spring: 12 units<br />In this project course, students work in multidisciplinary teams to design products or processes.  The course is open to juniors, seniors and graduate students from all parts of the campus community.  Each project is sponsored by an industry, government or non-profit partner, and is of real commercial interest to that partner.  Students work directly with their partner throughout the semester to establish goals and requirements, evaluate their design as it progresses, and produce a final report, presentation, and, if appropriate, a prototype.  Design reviews, held twice during the semester, give students a chance to present their preliminary designs and receive feedback and advice.  In completing their designs, teams must consider not only the functionality of their designs, but also the look, feel, appearance, and societal impact.  Skills built in this course will include: developing the product statement, establishing goals and constraints for the product, project management, and generating and evaluating design alternatives.  As some projects may span multiple semesters with new groups of students, careful documentation of project work is emphasized.  Students may take this course for either one or two semesters.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-647 Special Topics in Design</dt>
+<dd>All Semesters<br />This course is to be use for Interdisciplinary Engineering Design Independent Study. It can be added by permission only through collaboration with the student, Independent Study project advisor, and the CIT Dean's Office.<br />
+</dd>
+</dl><dl class="courseblock">
+<dt class="keepwithnext">39-648 Rapid Prototyping of Computer Systems</dt>
+<dd>Spring: 12 units<br />This course deals with rapid prototyping, manufacture, and applications of a new generation of wearable computers, with head-mounted display. The design of wearable computers is a multidisciplinary process including: Electronic design, mechanical design, software development, and human-computer interaction. Two classes of wearable computers will be further developed: embedded, custom designed VuMan series, and general purpose Navigator series. Electronic design includes the custom designed computer board, electronic interfacing, and power supply. Industrial designers and mechanical engineers team to design and manufacture with in-house facilities a variety of conformable/lightweight housings. A software development environment and user interface builders support software and application development. Current applications include: Global Position Sensing, Hypertext documents, speech recognition, wireless communications, and digital imaging.<br />
+</dd>
+</dl>
+</div>
+]]>
+</coursestext>
+</courseleaf>
+

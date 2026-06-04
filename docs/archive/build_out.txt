@@ -1,0 +1,75 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -project College.xcodeproj -scheme College -destination platform=macOS,arch=arm64 CODE_SIGN_IDENTITY= CODE_SIGNING_REQUIRED=NO
+
+Build settings from command line:
+    CODE_SIGN_IDENTITY = 
+    CODE_SIGNING_REQUIRED = NO
+
+Resolve Package Graph
+
+Fetching from https://github.com/apple/swift-numerics (cached)
+
+Fetching from https://github.com/huggingface/swift-transformers (cached)
+
+Fetching from https://github.com/ml-explore/mlx-swift-lm (cached)
+
+Fetching from https://github.com/apple/swift-atomics.git (cached)
+
+Fetching from https://github.com/nicklockwood/LRUCache.git (cached)
+
+Fetching from https://github.com/scinfu/SwiftSoup (cached)
+
+Fetching from https://github.com/ml-explore/mlx-swift (cached)
+
+Fetching from https://github.com/apple/swift-collections.git (cached)
+
+Fetching from https://github.com/huggingface/swift-jinja.git (cached)
+
+Creating working copy of package ‘LRUCache’
+
+Creating working copy of package ‘swift-transformers’
+
+Creating working copy of package ‘SwiftSoup’
+
+Creating working copy of package ‘swift-atomics’
+
+Creating working copy of package ‘swift-collections’
+
+Creating working copy of package ‘swift-jinja’
+
+Creating working copy of package ‘swift-numerics’
+
+Checking out 1.2.0 of package ‘LRUCache’
+
+Checking out 2.3.1 of package ‘swift-jinja’
+
+Checking out 1.1.1 of package ‘swift-numerics’
+
+Checking out 1.3.0 of package ‘swift-atomics’
+
+Checking out 1.3.0 of package ‘swift-collections’
+
+Checking out 1.1.6 of package ‘swift-transformers’
+
+Checking out 2.11.3 of package ‘SwiftSoup’
+
+Creating working copy of package ‘mlx-swift’
+
+Creating working copy of package ‘mlx-swift-lm’
+
+Checking out 0.30.3 of package ‘mlx-swift’
+Couldn’t update repository submodules:
+    Submodule 'submodules/mlx' (https://github.com/ml-explore/mlx) registered for path 'Source/Cmlx/mlx'
+    Submodule 'submodules/mlx-c' (https://github.com/ml-explore/mlx-c) registered for path 'Source/Cmlx/mlx-c'
+    Cloning into '/Users/timothy/Library/Developer/Xcode/DerivedData/College-epvsvfynvajfchhepfkvpvqvkjfx/SourcePackages/checkouts/mlx-swift/Source/Cmlx/mlx'...
+    fatal: could not open '/Users/timothy/Library/Developer/Xcode/DerivedData/College-epvsvfynvajfchhepfkvpvqvkjfx/SourcePackages/checkouts/mlx-swift/.git/modules/submodules/mlx/objects/pack/tmp_pack_SmBjwg' for reading: No such file or directory
+    fatal: fetch-pack: invalid index-pack output
+    fatal: clone of 'https://github.com/ml-explore/mlx' into submodule path '/Users/timothy/Library/Developer/Xcode/DerivedData/College-epvsvfynvajfchhepfkvpvqvkjfx/SourcePackages/checkouts/mlx-swift/Source/Cmlx/mlx' failed
+    Failed to clone 'Source/Cmlx/mlx'. Retry scheduled
+    fatal: Unable to read current working directory: No such file or directory
+    Failed to clone 'Source/Cmlx/mlx-c'. Retry scheduled
+    fatal: Unable to read current working directory: No such file or directory
+    Failed to clone 'Source/Cmlx/mlx' a second time, aborting
+Checking out main (2c70054) of package ‘mlx-swift-lm’
+
+fatalError

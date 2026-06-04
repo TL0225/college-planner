@@ -1,3 +1,8 @@
+// UnlockDebugLog.swift
+// Feature: Debug
+// Purpose: Debug module — Mark.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 #if canImport(AppKit)
 import AppKit

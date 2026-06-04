@@ -1,6 +1,10 @@
+// SheetDismissOnOutsideClick.swift
+// Feature: Core
+// Purpose: Core module — SheetWindowReader.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
 
-#if os(macOS)
 import AppKit
 
 private struct SheetWindowReader: NSViewRepresentable {
@@ -58,13 +62,57 @@ private struct DismissOnOutsideClickSheetModifier: ViewModifier {
     private func isEventOutsideSheetFrame(_ event: NSEvent, sheetWindow: NSWindow) -> Bool {
         guard let eventWindow = event.window else { return false }
 
-        // If the event originated from the sheet window or one of its child windows,
-        // treat it as inside interaction and keep the sheet open.
-        if eventWindow === sheetWindow || eventWindow.parent === sheetWindow {
+        if isWindowInSheetHierarchy(eventWindow, sheetWindow: sheetWindow) {
             return false
         }
 
         let clickPointInScreen = eventWindow.convertPoint(toScreen: event.locationInWindow)
+
+        // Keep the sheet open when the click lands inside the sheet frame even if AppKit
+        // routed the event through a sibling window (e.g. toolbar `.searchable` fields).
+        if sheetWindow.frame.contains(clickPointInScreen) {
+            return false
+        }
+
+        // Parent presenter click: dismiss for dimmed content hits only, not titlebar/toolbar chrome.
+        if let parent = sheetWindow.parent, eventWindow === parent {
+            return isClickOnPresenterDimmedContent(
+                event,
+                parentWindow: parent,
+                sheetWindow: sheetWindow,
+                clickPointInScreen: clickPointInScreen
+            )
+        }
+
+        return true
+    }
+
+    private func isWindowInSheetHierarchy(_ window: NSWindow, sheetWindow: NSWindow) -> Bool {
+        if window === sheetWindow { return true }
+        if window.parent === sheetWindow { return true }
+
+        var current: NSWindow? = window
+        while let candidate = current {
+            if candidate === sheetWindow { return true }
+            current = candidate.parent
+        }
+        return false
+    }
+
+    private func isClickOnPresenterDimmedContent(
+        _ event: NSEvent,
+        parentWindow: NSWindow,
+        sheetWindow: NSWindow,
+        clickPointInScreen: NSPoint
+    ) -> Bool {
+        guard let contentView = parentWindow.contentView else { return false }
+
+        let pointInContent = contentView.convert(event.locationInWindow, from: nil)
+        if !contentView.bounds.contains(pointInContent) {
+            // Title bar / unified toolbar — not an outside dismiss.
+            return false
+        }
+
         return !sheetWindow.frame.contains(clickPointInScreen)
     }
 
@@ -82,12 +130,3 @@ extension View {
     }
 }
 
-#else
-
-extension View {
-    func dismissOnOutsideClickForSheet() -> some View {
-        self
-    }
-}
-
-#endif

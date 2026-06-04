@@ -1,0 +1,145 @@
+{
+  "cases": [
+    {
+      "id": "fordham_aast_courses",
+      "schoolID": "fordham_university",
+      "fixture": "fordham_aast_courses.xml",
+      "pageURL": "https://bulletin.fordham.edu/courses/aast/",
+      "minCourses": 10,
+      "courses": [
+        {
+          "courseCode": "AAST 2528",
+          "title": "Asian American Art",
+          "credits": 4,
+          "descriptionContains": "Asian American art"
+        },
+        {
+          "courseCode": "AAST 3000",
+          "title": "Introduction to Asian American Studies",
+          "credits": 4,
+          "descriptionContains": "interdisciplinary field"
+        },
+        {
+          "courseCode": "AAST 3500",
+          "title": "Asian American Theatre",
+          "credits": 3,
+          "descriptionContains": "theater and performance"
+        }
+      ]
+    },
+    {
+      "id": "fordham_accounting_minor",
+      "schoolID": "fordham_university",
+      "fixture": "fordham_accounting_minor.xml",
+      "pageURL": "https://bulletin.fordham.edu/undergraduate/accounting/accounting-minor/",
+      "programs": [
+        {
+          "name": "Accounting Minor",
+          "type": "Minor"
+        }
+      ]
+    },
+    {
+      "id": "fordham_aa_major",
+      "schoolID": "fordham_university",
+      "fixture": "fordham_aa_major.xml",
+      "pageURL": "https://bulletin.fordham.edu/undergraduate/african-african-american-studies/major/",
+      "programs": [
+        {
+          "nameContains": "African",
+          "type": "Major"
+        }
+      ]
+    },
+    {
+      "id": "cmu_cit_courses",
+      "schoolID": "carnegie_mellon_university",
+      "fixture": "cmu_courses_index.xml",
+      "pageURL": "http://coursecatalog.web.cmu.edu/schools-colleges/collegeofengineering/courses/",
+      "minCourses": 8,
+      "courses": [
+        {
+          "courseCode": "39-109",
+          "title": "Grand Challenge Freshman Seminar: Climate Change",
+          "credits": 9,
+          "descriptionContains": "climate change"
+        },
+        {
+          "courseCode": "39-210",
+          "title": "Experiential Learning I",
+          "credits": 0,
+          "descriptionContains": "engineer of the 21st century"
+        },
+        {
+          "courseCode": "39-245",
+          "title": "Rapid Prototype Design",
+          "credits": 9,
+          "descriptionContains": "rapid design"
+        }
+      ]
+    },
+    {
+      "id": "cmu_undergrad_cs_program",
+      "schoolID": "carnegie_mellon_university",
+      "fixture": "cmu_undergrad_cs_major.xml",
+      "pageURL": "http://coursecatalog.web.cmu.edu/schools-colleges/schoolofcomputerscience/undergraduatecomputerscience/",
+      "programs": [
+        {
+          "nameContains": "Computer Science",
+          "type": "Major"
+        }
+      ]
+    },
+    {
+      "id": "nyu_csci_ua_courses",
+      "schoolID": "new_york_university",
+      "fixture": "nyu_csci_ua_courses.xml",
+      "pageURL": "https://bulletins.nyu.edu/courses/csci_ua/",
+      "minCourses": 15,
+      "courses": [
+        {
+          "courseCode": "CSCI-UA 101",
+          "title": "Intro to Computer Science",
+          "credits": 4,
+          "descriptionContains": "design algorithms"
+        },
+        {
+          "courseCode": "CSCI-UA 102",
+          "title": "Data Structures",
+          "credits": 4,
+          "descriptionContains": "Stacks, queues"
+        },
+        {
+          "courseCode": "CSCI-UA 201",
+          "title": "Computer Systems Org",
+          "credits": 4,
+          "descriptionContains": "internal structure of computers"
+        }
+      ]
+    },
+    {
+      "id": "nyu_cs_minor",
+      "schoolID": "new_york_university",
+      "fixture": "nyu_cs_minor.xml",
+      "pageURL": "https://bulletins.nyu.edu/undergraduate/arts-science/programs/computer-science-minor/",
+      "programs": [
+        {
+          "nameContains": "Computer Science",
+          "type": "Minor"
+        }
+      ]
+    },
+    {
+      "id": "nyu_cs_ba_major",
+      "schoolID": "new_york_university",
+      "fixture": "nyu_cs_ba_major.xml",
+      "pageURL": "https://bulletins.nyu.edu/undergraduate/arts-science/programs/computer-science-ba/",
+      "programs": [
+        {
+          "nameContains": "Computer Science",
+          "type": "Major"
+        }
+      ]
+    }
+  ]
+}

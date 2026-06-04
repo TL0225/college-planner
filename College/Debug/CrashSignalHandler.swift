@@ -1,4 +1,8 @@
-#if os(macOS)
+// CrashSignalHandler.swift
+// Feature: Debug
+// Purpose: Debug module — CrashSignalHandler.
+// Data: CollegePersistence / repositories when applicable.
+
 import Darwin
 
 private let kHandledSignals: [Int32] = [SIGABRT, SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP]
@@ -63,4 +67,3 @@ private let crash_signal_handler: @convention(c) (Int32) -> Void = { sig in
 
     _exit(sig)
 }
-#endif

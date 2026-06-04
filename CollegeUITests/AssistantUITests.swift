@@ -8,12 +8,9 @@ final class AssistantUITests: CollegeUITestCase {
 
     func testTier1_opensAssistantWithFakeModel() throws {
         applyAssistantHarness(app, fakeModel: true, stubLocalLLM: false, seedMinimalPlanner: false)
-        app.launch()
-        _ = app.wait(for: .runningForeground, timeout: 20)
+        launchAppEnsuringAccessibility()
 
-        let assistantLink = app.descendants(matching: .any)["sidebar.link.assistant"].firstMatch
-        XCTAssertTrue(assistantLink.waitForExistence(timeout: 30))
-        assistantLink.click()
+        XCTAssertTrue(openAssistantFromSidebar(timeout: 30))
 
         let composerTF = app.textFields["assistant.composerField"].firstMatch
         let composerTV = app.textViews["assistant.composerField"].firstMatch

@@ -1,8 +1,13 @@
+// ErrorReportView.swift
+// Feature: Debug
+// Purpose: Debug module — ErrorReportView.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
 
 struct ErrorReportView: View {
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var coreDataManager: CoreDataManager
+    @EnvironmentObject private var collegePersistence: CollegePersistence
     
     let policyName: String
     let currentValue: String
@@ -258,7 +263,7 @@ struct ErrorReportView: View {
     private func fixLocalOnly() {
         // This immediately fixes the issue for this user.
         do {
-            try coreDataManager.applyPolicyCorrection(
+            try collegePersistence.applyPolicyCorrection(
                 universityName: schoolName,
                 policyName: policyName,
                 correctedValue: correctedValue
@@ -327,6 +332,5 @@ struct SuccessOverlay: View {
         schoolID: "rutgers_nb",
         schoolName: "Rutgers University - New Brunswick"
     )
-    .environmentObject(CoreDataManager.shared)
-    .environment(\.managedObjectContext, CoreDataManager.shared.viewContext)
+    .environmentObject(CollegePersistence.shared)
 }

@@ -1,3 +1,8 @@
+// DebugLogModifiers.swift
+// Feature: Debug
+// Purpose: Debug module — DebugLogModifiers.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
 
 /// Lightweight SwiftUI helpers to automatically log common UI interactions.

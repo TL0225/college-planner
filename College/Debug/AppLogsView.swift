@@ -1,3 +1,8 @@
+// AppLogsView.swift
+// Feature: Debug
+// Purpose: Debug module — AppLogsView.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
 import AppKit
 import Combine

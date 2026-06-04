@@ -1,3 +1,8 @@
+// MainContentSignals.swift
+// Feature: App
+// Purpose: App module — MainContentReadyPreferenceKey.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
 
 /// Cross-view signals used to coordinate the post-unlock transition.

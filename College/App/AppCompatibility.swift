@@ -1,7 +1,13 @@
+// AppCompatibility.swift
+// Feature: App
+// Purpose: App module — PlannerMenuCommands.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import SwiftUI
 
 extension AppPage {
+    /// Window/menu proxy title when `navigationTitle` is empty (e.g. Settings).
     var windowChromeTitle: String {
         switch self {
         case .documents:

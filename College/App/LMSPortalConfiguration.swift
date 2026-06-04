@@ -1,3 +1,8 @@
+// LMSPortalConfiguration.swift
+// Feature: App
+// Purpose: App module — LMSProvider.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 
 /// Supported learning platforms for the in-app portal tab (single active provider + per-provider URLs).
@@ -97,5 +102,18 @@ enum LMSPortalConfiguration {
         }
         return UserDefaults.standard.string(forKey: provider.portalURLStorageKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    /// Whether launch should spin up a WKWebView for the LMS portal (Phase 2 P0).
+    /// Skips preload when the user has never configured or visited the portal.
+    static func shouldPreloadPortalAtLaunch() -> Bool {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "brightspace.pendingLoadPortalOnNextAppear") { return true }
+        if let lastVisited = defaults.string(forKey: "brightspace.lastVisitedURL")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !lastVisited.isEmpty {
+            return true
+        }
+        return !portalURLString(for: resolvedActiveProvider()).isEmpty
     }
 }

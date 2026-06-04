@@ -15,7 +15,11 @@
 		1C1B1EE52EFF73BC00849BEC /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000030000000000000003 /* SwiftSoup */; };
 		1C1B1F032F0A000000849BEC /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = 1C1B1F012F0A000000849BEC /* MLXLLM */; };
 		1C1B1F042F0A000000849BEC /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 1C1B1F022F0A000000849BEC /* MLXLMCommon */; };
-		AA0002022F0B000000000012 /* libcollege_core.a in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0002012F0B000000000011 /* libcollege_core.a */; };
+		1C1B1F062F0A000000849BEF /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = 1C1B1F052F0A000000849BEF /* MLXEmbedders */; };
+		1C1B1F0C2F0A000000849BEF /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 1C1B1F0B2F0A000000849BEF /* Tokenizers */; };
+		AA0003012F0C000000000001 /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0003022F0C000000000002 /* FoundationModels.framework */; };
+		AA0003032F0C000000000003 /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0003022F0C000000000002 /* FoundationModels.framework */; };
+		BB0000030000000000000003 /* CollegePlatform in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000020000000000000002 /* CollegePlatform */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -39,7 +43,9 @@
 		1C7487602EF688EA00021529 /* College.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = College.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C74876F2EF688EC00021529 /* CollegeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CollegeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1C7487792EF688EC00021529 /* CollegeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CollegeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		AA0002012F0B000000000011 /* libcollege_core.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcollege_core.a; path = "rust-core/build/libcollege_core.a"; sourceTree = SOURCE_ROOT; };
+		AA0003022F0C000000000002 /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = System/Library/Frameworks/FoundationModels.framework; sourceTree = SDKROOT; };
+		CC0000012F0D000000000001 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = SOURCE_ROOT; };
+		CC0000022F0D000000000002 /* Secrets.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig.example; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -86,11 +92,14 @@
 				1C1B1EE42EFF73BC00849BEC /* SwiftSoup in Frameworks */,
 				1C1B1F042F0A000000849BEC /* MLXLMCommon in Frameworks */,
 				1C1B1F032F0A000000849BEC /* MLXLLM in Frameworks */,
+				1C1B1F062F0A000000849BEF /* MLXEmbedders in Frameworks */,
+				1C1B1F0C2F0A000000849BEF /* Tokenizers in Frameworks */,
 				1C1B1CEF2EFC44BD00849BEC /* MLXOptimizers in Frameworks */,
 				1C1B1CED2EFC44BD00849BEC /* MLXNN in Frameworks */,
 				1C1B1CEB2EFC44BD00849BEC /* MLX in Frameworks */,
 				1C1B1CF12EFC44BD00849BEC /* MLXRandom in Frameworks */,
-				AA0002022F0B000000000012 /* libcollege_core.a in Frameworks */,
+				AA0003012F0C000000000001 /* FoundationModels.framework in Frameworks */,
+				BB0000030000000000000003 /* CollegePlatform in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +108,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1C1B1EE52EFF73BC00849BEC /* SwiftSoup in Frameworks */,
+				AA0003032F0C000000000003 /* FoundationModels.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +122,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		1C63E2F42FBA9B1E00D181E3 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				AA0003022F0C000000000002 /* FoundationModels.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		1C7487572EF688EA00021529 = {
 			isa = PBXGroup;
 			children = (
@@ -120,7 +138,9 @@
 				1C74877C2EF688EC00021529 /* CollegeUITests */,
 				1C7487612EF688EA00021529 /* Products */,
 				1C74878F2EF6B53100021529 /* Pages */,
-				AA0002012F0B000000000011 /* libcollege_core.a */,
+				CC0000012F0D000000000001 /* Config.xcconfig */,
+				CC0000022F0D000000000002 /* Secrets.xcconfig.example */,
+				1C63E2F42FBA9B1E00D181E3 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -161,7 +181,10 @@
 				1C1B1CF02EFC44BD00849BEC /* MLXRandom */,
 				1C1B1F012F0A000000849BEC /* MLXLLM */,
 				1C1B1F022F0A000000849BEC /* MLXLMCommon */,
+				1C1B1F052F0A000000849BEF /* MLXEmbedders */,
+				1C1B1F0B2F0A000000849BEF /* Tokenizers */,
 				AA0000030000000000000003 /* SwiftSoup */,
+				BB0000020000000000000002 /* CollegePlatform */,
 			);
 			productName = College;
 			productReference = 1C7487602EF688EA00021529 /* College.app */;
@@ -221,8 +244,8 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 2620;
-				LastUpgradeCheck = 2630;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					1C74875F2EF688EA00021529 = {
 						CreatedOnToolsVersion = 26.2;
@@ -249,7 +272,9 @@
 			packageReferences = (
 				1C1B1CE92EFC44BC00849BEC /* XCRemoteSwiftPackageReference "mlx-swift" */,
 				1C1B1F002F0A000000849BEC /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+				1C1B1F092F0A000000849BEF /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				AA0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				BB0000010000000000000001 /* XCLocalSwiftPackageReference "CollegePlatform" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1C7487612EF688EA00021529 /* Products */;
@@ -327,6 +352,7 @@
 /* Begin XCBuildConfiguration section */
 		1C7487812EF688EC00021529 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CC0000012F0D000000000001 /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -390,6 +416,7 @@
 		};
 		1C7487822EF688EC00021529 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CC0000012F0D000000000001 /* Config.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -446,13 +473,16 @@
 		};
 		1C7487842EF688EC00021529 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CC0000012F0D000000000001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = TNVAR559RQ;
 				ENABLE_APP_INTENTS_METADATA = NO;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -468,11 +498,9 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/rust-core/include",
-				);
 				INFOPLIST_FILE = College/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Blueprint;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -486,10 +514,8 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/rust-core/build";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
-				OTHER_SWIFT_FLAGS = "-DCOLLEGE_CORE_RUST_LINKED $(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.College;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = NO;
@@ -499,8 +525,6 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = Nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/rust-core/include";
-				SWIFT_OBJC_BRIDGING_HEADER = "College/Rust/CollegeCore-Bridging-Header.h";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.3;
@@ -511,18 +535,21 @@
 		};
 		1C7487852EF688EC00021529 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CC0000012F0D000000000001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Sign to Run Locally";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = TNVAR559RQ;
 				ENABLE_APP_INTENTS_METADATA = NO;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_TESTABILITY = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
@@ -533,11 +560,10 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/rust-core/include",
-				);
 				INFOPLIST_FILE = College/Info.plist;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS $(inherited)";
+				INFOPLIST_KEY_CFBundleDisplayName = Blueprint;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -551,10 +577,8 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/rust-core/build";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
-				OTHER_SWIFT_FLAGS = "-DCOLLEGE_CORE_RUST_LINKED $(inherited)";
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.College;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -564,8 +588,6 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = Nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/rust-core/include";
-				SWIFT_OBJC_BRIDGING_HEADER = "College/Rust/CollegeCore-Bridging-Header.h";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.3;
@@ -582,12 +604,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/rust-core/include",
-				);
+				INFOPLIST_FILE = CollegeTests/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.CollegeTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -596,7 +615,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/rust-core/include";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.3;
@@ -614,12 +632,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/rust-core/include",
-				);
+				INFOPLIST_FILE = CollegeTests/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.CollegeTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -628,7 +643,6 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_INCLUDE_PATHS = "$(inherited) $(SRCROOT)/rust-core/include";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.3;
@@ -646,7 +660,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.CollegeUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -672,7 +686,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.CollegeUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -731,6 +745,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		BB0000010000000000000001 /* XCLocalSwiftPackageReference "CollegePlatform" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = CollegePlatform;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		1C1B1CE92EFC44BC00849BEC /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -744,8 +765,16 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
 			requirement = {
-				branch = main;
-				kind = branch;
+				kind = exactVersion;
+				version = 3.31.3;
+			};
+		};
+		1C1B1F092F0A000000849BEF /* XCRemoteSwiftPackageReference "swift-transformers" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/huggingface/swift-transformers";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.1.6;
 			};
 		};
 		AA0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
@@ -789,10 +818,25 @@
 			package = 1C1B1F002F0A000000849BEC /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
 			productName = MLXLMCommon;
 		};
+		1C1B1F052F0A000000849BEF /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C1B1F002F0A000000849BEC /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXEmbedders;
+		};
+		1C1B1F0B2F0A000000849BEF /* Tokenizers */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1C1B1F092F0A000000849BEF /* XCRemoteSwiftPackageReference "swift-transformers" */;
+			productName = Tokenizers;
+		};
 		AA0000030000000000000003 /* SwiftSoup */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
+		};
+		BB0000020000000000000002 /* CollegePlatform */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BB0000010000000000000001 /* XCLocalSwiftPackageReference "CollegePlatform" */;
+			productName = CollegePlatform;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

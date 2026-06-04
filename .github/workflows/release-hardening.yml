@@ -25,6 +25,10 @@ jobs:
         run: |
           xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release -showBuildSettings | grep -E "^ *ENABLE_HARDENED_RUNTIME = YES"
 
+      - name: Neutral persistence label gate
+        run: |
+          bash scripts/check-neutral-persistence-labels.sh
+
       - name: Build (Release)
         run: |
           xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release build

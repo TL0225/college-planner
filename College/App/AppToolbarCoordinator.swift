@@ -1,7 +1,11 @@
-    #if os(macOS)
+// AppToolbarCoordinator.swift
+// Feature: App
+// Purpose: App module — CalendarToolbarSearchMatch.
+// Data: CollegePersistence / repositories when applicable.
+
 import AppKit
 import SwiftUI
-import Combine
+import Observation
 
 struct CalendarToolbarSearchMatch: Identifiable, Hashable, Sendable {
     let id: UUID
@@ -18,34 +22,35 @@ struct CalendarToolbarSearchMatch: Identifiable, Hashable, Sendable {
 /// items to appear in the wrong position after navigation.
 ///
 /// Architecture:
-///   - ContentView creates this as @StateObject and injects it as @EnvironmentObject.
+///   - ContentView creates this as @State and injects it via `.environment`.
 ///   - Per-page views (CalendarViewContent, BrightspaceView) receive it via
-///     @EnvironmentObject and push live state updates (date strings, loading flags, etc.).
+///     `@Environment(AppToolbarCoordinator.self)` and push live state updates (date strings, loading flags, etc.).
 ///   - Action callbacks flow back through onCalPrev / onBsBack / onNavigate etc.
+@Observable
 @MainActor
-final class AppToolbarCoordinator: NSObject, ObservableObject {
+final class AppToolbarCoordinator: NSObject {
 
     // MARK: - Published State (read by NSHostingView toolbar subviews)
 
-    @Published var activePage: AppPage = .degree
-    @Published var calHeaderDate: String = ""
-    @Published var calViewMode: CalendarViewDisplayMode = .month
-    @Published var calSidebarShown: Bool = true
-    @Published var academicsSidebarShown: Bool = true
-    @Published var calSidebarPanel: CalendarSidebarPanel = .eventList
-    @Published var bsTitle: String = "Brightspace"
-    @Published var bsCanGoBack: Bool = false
-    @Published var bsCanGoForward: Bool = false
-    @Published var bsIsLoading: Bool = false
-    @Published var profileInitials: String = ""
-    @Published var searchText: String = ""
-    @Published var isExporting: Bool = false
-    @Published var calendarToolbarSearchText: String = ""
-    @Published var calendarToolbarSearchResults: [CalendarToolbarSearchMatch] = []
-    @Published var calendarToolbarSearchExpanded: Bool = false
-    @Published var assistantCanRegenerate: Bool = false
+    var activePage: AppPage = .degree
+    var calHeaderDate: String = ""
+    var calViewMode: CalendarViewDisplayMode = .month
+    var calSidebarShown: Bool = true
+    var academicsSidebarShown: Bool = true
+    var calSidebarPanel: CalendarSidebarPanel = .eventList
+    var bsTitle: String = "Brightspace"
+    var bsCanGoBack: Bool = false
+    var bsCanGoForward: Bool = false
+    var bsIsLoading: Bool = false
+    var profileInitials: String = ""
+    var searchText: String = ""
+    var isExporting: Bool = false
+    var calendarToolbarSearchText: String = ""
+    var calendarToolbarSearchResults: [CalendarToolbarSearchMatch] = []
+    var calendarToolbarSearchExpanded: Bool = false
+    var assistantCanRegenerate: Bool = false
     /// When the primary `NavigationSplitView` sidebar is hidden (detail-only), the main nav sidebar toggle moves into the ``NSToolbar``; when the sidebar column is visible, it is drawn inside ``SidebarView`` instead.
-    @Published var showsMainNavSidebarToggleInToolbar: Bool = false
+    var showsMainNavSidebarToggleInToolbar: Bool = false
 
     // MARK: - Action Callbacks (wired by ContentView / page views)
 
@@ -77,7 +82,8 @@ final class AppToolbarCoordinator: NSObject, ObservableObject {
     // MARK: - Private
 
     private weak var window: NSWindow?
-    private var cancellables = Set<AnyCancellable>()
+    private var observationTask: Task<Void, Never>?
+    private var lastShowsMainNavSidebarToggleInToolbar = false
     private var lastAppliedWindowTitle: String?
     private var toolbarItemCache: [NSToolbarItem.Identifier: NSToolbarItem] = [:]
 
@@ -139,7 +145,7 @@ final class AppToolbarCoordinator: NSObject, ObservableObject {
         if let existing = window.toolbar,
               existing.identifier == "com.college.main-toolbar",
            existing.delegate === self {
-            bindCombineSubscriptions()
+            bindObservationTracking()
             rebuildItems()
             return
         }
@@ -157,7 +163,7 @@ final class AppToolbarCoordinator: NSObject, ObservableObject {
             toolbar.allowsUserCustomization = false
             window.toolbar = toolbar
         }
-        bindCombineSubscriptions()
+        bindObservationTracking()
         rebuildItems()
     }
 
@@ -183,42 +189,42 @@ final class AppToolbarCoordinator: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Reactive Updates via Combine
+    // MARK: - Reactive Updates via Observation
 
-    private func bindCombineSubscriptions() {
-        cancellables.removeAll()
-
-        // Brightspace back/forward button enabled state
-        $bsCanGoBack
-            .combineLatest($bsCanGoForward)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] back, fwd in
-                self?.setButtonEnabled(id: self?.bsBackID, enabled: back)
-                self?.setButtonEnabled(id: self?.bsForwardID, enabled: fwd)
+    private func bindObservationTracking() {
+        observationTask?.cancel()
+        observationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.syncToolbarFromObservedState()
+            while !Task.isCancelled {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    withObservationTracking {
+                        _ = self.bsCanGoBack
+                        _ = self.bsCanGoForward
+                        _ = self.bsIsLoading
+                        _ = self.isExporting
+                        _ = self.assistantCanRegenerate
+                        _ = self.showsMainNavSidebarToggleInToolbar
+                    } onChange: {
+                        continuation.resume()
+                    }
+                }
+                guard !Task.isCancelled else { break }
+                self.syncToolbarFromObservedState()
             }
-            .store(in: &cancellables)
+        }
+    }
 
-        // Brightspace reload button enabled state
-        $bsIsLoading
-            .receive(on: RunLoop.main)
-            .sink { [weak self] loading in self?.setButtonEnabled(id: self?.bsReloadID, enabled: !loading) }
-            .store(in: &cancellables)
-
-        // Export button disabled while a backup is in progress
-        $isExporting
-            .receive(on: RunLoop.main)
-            .sink { [weak self] exporting in self?.setButtonEnabled(id: self?.exportID, enabled: !exporting) }
-            .store(in: &cancellables)
-
-        $assistantCanRegenerate
-            .receive(on: RunLoop.main)
-            .sink { [weak self] canRegen in self?.setButtonEnabled(id: self?.assistantRegenerateID, enabled: canRegen) }
-            .store(in: &cancellables)
-
-        $showsMainNavSidebarToggleInToolbar
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.rebuildItems() }
-            .store(in: &cancellables)
+    private func syncToolbarFromObservedState() {
+        setButtonEnabled(id: bsBackID, enabled: bsCanGoBack)
+        setButtonEnabled(id: bsForwardID, enabled: bsCanGoForward)
+        setButtonEnabled(id: bsReloadID, enabled: !bsIsLoading)
+        setButtonEnabled(id: exportID, enabled: !isExporting)
+        setButtonEnabled(id: assistantRegenerateID, enabled: assistantCanRegenerate)
+        if showsMainNavSidebarToggleInToolbar != lastShowsMainNavSidebarToggleInToolbar {
+            lastShowsMainNavSidebarToggleInToolbar = showsMainNavSidebarToggleInToolbar
+            rebuildItems()
+        }
     }
 
     // MARK: - Toolbar Rebuild
@@ -282,7 +288,6 @@ final class AppToolbarCoordinator: NSObject, ObservableObject {
         case .academics:
             return mainNavSidebarPrefixToolbarItems() + [
                 addID,
-                .inspectorTrackingSeparator,
                 academicsSidebarToggleID,
             ] + utilityItems
         case .documents:
@@ -626,7 +631,7 @@ private final class ActionBridge: NSObject {
 
 /// Calendar toolbar center: < Month Year > and Month/Week/Day (toolbar item sits between two flexible spaces).
 struct CalToolbarChromeView: View {
-    @ObservedObject var coordinator: AppToolbarCoordinator
+    var coordinator: AppToolbarCoordinator
 
     private var modeBinding: Binding<CalendarViewDisplayMode> {
         Binding(
@@ -641,14 +646,14 @@ struct CalToolbarChromeView: View {
                 coordinator.onCalPrev?()
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(ToolbarMetrics.iconFont)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .help("Previous")
 
             Text(coordinator.calHeaderDate)
-                .font(.system(size: 13, weight: .semibold))
+                .font(ToolbarMetrics.titleFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
@@ -656,7 +661,7 @@ struct CalToolbarChromeView: View {
                 coordinator.onCalNext?()
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(ToolbarMetrics.iconFont)
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -670,7 +675,7 @@ struct CalToolbarChromeView: View {
                         }
                     } label: {
                         Text(mode.rawValue)
-                            .font(.system(size: 12, weight: coordinator.calViewMode == mode ? .semibold : .regular))
+                            .font(ToolbarMetrics.font(coordinator.calViewMode == mode ? .semibold : .regular))
                             .foregroundStyle(
                                 coordinator.calViewMode == mode
                                     ? AnyShapeStyle(.primary)
@@ -699,7 +704,7 @@ struct CalToolbarChromeView: View {
 
 /// Trailing calendar toolbar control: right sidebar toggle (own `NSToolbarItem` for a stable edge anchor).
 struct CalToolbarSidebarToggleView: View {
-    @ObservedObject var coordinator: AppToolbarCoordinator
+    var coordinator: AppToolbarCoordinator
 
     private func setSidebarPanel(_ panel: CalendarSidebarPanel) {
         coordinator.calSidebarPanel = panel
@@ -711,7 +716,7 @@ struct CalToolbarSidebarToggleView: View {
             coordinator.onCalSidebarToggle?()
         } label: {
             Image(systemName: "sidebar.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(ToolbarMetrics.iconFont)
                 .foregroundStyle(.secondary)
                 .frame(width: 28, height: 28)
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -743,7 +748,7 @@ struct CalToolbarSidebarToggleView: View {
 
 /// Brightspace tab title row: fixed section label + portal-home control (web `document.title` is not shown here to avoid D2L "Loading…" flashes).
 struct BsToolbarTitleView: View {
-    @ObservedObject var coordinator: AppToolbarCoordinator
+    var coordinator: AppToolbarCoordinator
 
     var body: some View {
         HStack(spacing: 8) {
@@ -755,7 +760,7 @@ struct BsToolbarTitleView: View {
                 coordinator.onBsPortalHome?()
             } label: {
                 Image(systemName: "arrow.counterclockwise.circle")
-                    .font(.system(size: 16, weight: .medium))
+                    .font(ToolbarMetrics.font(.medium))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -769,7 +774,7 @@ struct BsToolbarTitleView: View {
 
 /// Profile avatar circle button shared across Calendar and Brightspace toolbars.
 struct ToolbarProfileAvatarView: View {
-    @ObservedObject var coordinator: AppToolbarCoordinator
+    var coordinator: AppToolbarCoordinator
 
     var body: some View {
         Button { coordinator.onNavigate?(.profile) } label: {
@@ -795,25 +800,24 @@ struct ToolbarProfileAvatarView: View {
     }
 }
 
-#endif
 
 // MARK: - Academics Views
 
 struct AcademicsToolbarSidebarToggleView: View {
-    @ObservedObject var coordinator: AppToolbarCoordinator
+    var coordinator: AppToolbarCoordinator
 
     var body: some View {
         Button {
             coordinator.onAcademicsSidebarToggle?()
         } label: {
-            Image(systemName: "sidebar.right")
-                .font(.system(size: 13, weight: .semibold))
+            Image(systemName: "sidebar.left")
+                .font(ToolbarMetrics.iconFont)
                 .foregroundStyle(.secondary)
                 .frame(width: 28, height: 28)
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
-        .help(coordinator.academicsSidebarShown ? "Hide right sidebar" : "Show right sidebar")
+        .help(coordinator.academicsSidebarShown ? "Hide stats sidebar" : "Show stats sidebar")
     }
 }
 
@@ -832,7 +836,7 @@ struct SafeSidebarToggleView: View {
             NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
         } label: {
             Image(systemName: "sidebar.left")
-                .font(.system(size: 13, weight: .semibold))
+                .font(ToolbarMetrics.iconFont)
                 .foregroundStyle(.secondary)
                 .frame(width: 28, height: 28)
                 .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))

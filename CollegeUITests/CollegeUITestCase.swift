@@ -64,12 +64,11 @@ class CollegeUITestCase: XCTestCase {
             stubLocalLLM: stubLocalLLM,
             seedMinimalPlanner: seedMinimalPlanner
         )
-        app.launch()
-        activateMainWindowIfNeeded()
+        launchAppEnsuringAccessibility()
 
-        let assistantLink = app.descendants(matching: .any)["sidebar.link.assistant"].firstMatch
-        XCTAssertTrue(assistantLink.waitForExistence(timeout: 30))
-        assistantLink.click()
+        if !openAssistantFromSidebar(timeout: 30) {
+            XCTFail("Failed to open Assistant via sidebar controls.")
+        }
 
         let composer = composerField
         XCTAssertTrue(composer.waitForExistence(timeout: 25))
@@ -123,6 +122,50 @@ class CollegeUITestCase: XCTestCase {
     private func activateMainWindowIfNeeded() {
         // Xcode UI tests on macOS sometimes need a moment for the shell window.
         _ = app.wait(for: .runningForeground, timeout: 15)
+        if app.state == .runningForeground || app.state == .runningBackground {
+            app.activate()
+        }
+    }
+
+    func launchAppEnsuringAccessibility(maxAttempts: Int = 2) {
+        var launched = false
+        for attempt in 1...maxAttempts {
+            if app.state != .notRunning {
+                app.terminate()
+            }
+            app.launch()
+            activateMainWindowIfNeeded()
+
+            let anyWindow = app.windows.firstMatch
+            let loaded = anyWindow.waitForExistence(timeout: 20)
+            if loaded {
+                launched = true
+                break
+            }
+
+            if attempt < maxAttempts {
+                usleep(300_000)
+            }
+        }
+        XCTAssertTrue(launched, "App window did not appear for UI testing.")
+    }
+
+    @discardableResult
+    func openAssistantFromSidebar(timeout: TimeInterval) -> Bool {
+        let assistantID = app.descendants(matching: .any)["sidebar.link.assistant"].firstMatch
+        if assistantID.waitForExistence(timeout: timeout) {
+            assistantID.click()
+            return true
+        }
+
+        let labelMatch = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label ==[c] %@", "Assistant"))
+            .firstMatch
+        if labelMatch.waitForExistence(timeout: 5) {
+            labelMatch.click()
+            return true
+        }
+        return false
     }
 }
 #endif

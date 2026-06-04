@@ -1,4 +1,8 @@
-#if os(macOS)
+// CollegeAppDelegate.swift
+// Feature: App
+// Purpose: App module — CollegeAppDelegate.
+// Data: CollegePersistence / repositories when applicable.
+
 import AppKit
 
 /// Dock menu and Finder-open document delivery (`.portal` backups).
@@ -6,9 +10,17 @@ import AppKit
 final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UserDefaultsWindowAutosaveCleanup.runAtLaunch()
         installEarlyWindowChromeObserver()
         AppActivityCoordinator.shared.refreshPolicyFromSettings()
         UITestLaunchFlags.scheduleUITestActivationRetriesIfNeeded()
+        Task(priority: .utility) {
+            CatalogStoreCoordinator.shared.migrateUniversitiesFromCurrentStoreIfNeeded()
+        }
+        let backgroundReport = BackgroundTaskCompliance.evaluateFromMainBundle()
+        if !backgroundReport.isConfigured {
+            DebugLogger.shared.log("⚠️ Background task compliance warnings: \(backgroundReport.warnings.joined(separator: " | "))")
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -57,6 +69,10 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
     /// Applies the unified-toolbar / full-size-content-view chrome to a window.
     /// Idempotent — safe to call multiple times.
     static func applyWindowChrome(to window: NSWindow) {
+        let stableAutosave = AutosaveNames.mainWindow
+        if window.frameAutosaveName != stableAutosave {
+            window.setFrameAutosaveName(stableAutosave)
+        }
         if !window.styleMask.contains(.fullSizeContentView) {
             window.styleMask.insert(.fullSizeContentView)
         }
@@ -122,12 +138,20 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             guard url.isFileURL else { continue }
-            guard url.pathExtension.lowercased() == "portal" else { continue }
-            NotificationCenter.default.post(
-                name: .plannerImportPortalBackupFileURL,
-                object: nil,
-                userInfo: ["url": url]
-            )
+            let ext = url.pathExtension.lowercased()
+            if ext == "portal" {
+                NotificationCenter.default.post(
+                    name: .plannerImportPortalBackupFileURL,
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            } else if ext == CatalogBundle.fileExtension || (ext == "sqlite" && url.lastPathComponent.lowercased().hasSuffix(".collegecatalog.sqlite")) {
+                NotificationCenter.default.post(
+                    name: .plannerImportCatalogBundleFileURL,
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
         }
     }
 
@@ -144,4 +168,3 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
         MacPreferencesWindow.show()
     }
 }
-#endif

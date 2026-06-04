@@ -1,7 +1,10 @@
+// PlannerMenuNotifications.swift
+// Feature: App
+// Purpose: App module — MacPreferencesWindow.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
-#if os(macOS)
 import AppKit
-#endif
 
 extension Notification.Name {
     /// Triggers the same portal backup export flow as the main-window toolbar.
@@ -14,13 +17,13 @@ extension Notification.Name {
     static let profileOpenAdvisorPrep = Notification.Name("com.timothy.college.profileOpenAdvisorPrep")
     /// Opens Documents and pre-fills the search query using a normalized course code (`userInfo["courseCode"]`).
     static let plannerOpenDocumentsForCourse = Notification.Name("com.timothy.college.plannerOpenDocumentsForCourse")
+    /// Import a `.collegecatalog` file (`userInfo["url"]` as `URL`).
+    static let plannerImportCatalogBundleFileURL = Notification.Name("com.timothy.college.plannerImportCatalogBundleFileURL")
 }
 
-#if os(macOS)
 enum MacPreferencesWindow {
     @MainActor
     static func show() {
         NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
     }
 }
-#endif

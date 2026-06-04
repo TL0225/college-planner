@@ -1,7 +1,10 @@
+// CrashReportStore.swift
+// Feature: Debug
+// Purpose: Debug module — CrashReport.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
-#if os(macOS)
 import AppKit
-#endif
 
 struct CrashReport: Codable {
     enum Kind: String, Codable {
@@ -111,7 +114,6 @@ enum CrashReportStore {
         return url
     }
 
-    #if os(macOS)
     static func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
@@ -124,10 +126,9 @@ enum CrashReportStore {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.path, forType: .string)
     }
-    #endif
 
     private static func persist(_ report: CrashReport, synchronous: Bool) {
-        let write = {
+        let write: @Sendable () -> Void = {
             guard let dir = reportsDirectoryURL() else { return }
             let fm = FileManager.default
             if !fm.fileExists(atPath: dir.path) {

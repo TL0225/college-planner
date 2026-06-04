@@ -1,8 +1,14 @@
-import Foundation
-import Combine
+// LaunchPreloadCoordinator.swift
+// Feature: App
+// Purpose: App module — FeaturePreloadDescriptor.
+// Data: CollegePersistence / repositories when applicable.
 
+import Foundation
+import Observation
+
+@Observable
 @MainActor
-final class LaunchPreloadCoordinator: ObservableObject {
+final class LaunchPreloadCoordinator {
     enum StepID: CaseIterable {
         case storeReady
         case coreSnapshots
@@ -38,25 +44,25 @@ final class LaunchPreloadCoordinator: ObservableObject {
     }
 
     struct FeaturePreloadContext {
-        let coreDataManager: CoreDataManager
+        let collegePersistence: CollegePersistence
         let calendarManager: CalendarIntegrationManager
         let brightspaceCoordinator: BrightspaceWebCoordinator
         let cloudIntegration: CloudIntegrationService
     }
 
-    @Published private(set) var isRunning: Bool = false
-    @Published private(set) var isCompleted: Bool = false
-    @Published private(set) var overallProgress: Double = 0
-    @Published private(set) var currentStepTitle: String = "Starting"
-    @Published private(set) var statusText: String = "Preparing startup..."
-    @Published private(set) var currentStepDetailText: String = ""
-    @Published private(set) var currentStepProgress: Double = 0
-    @Published private(set) var currentStepNumber: Int = 0
-    @Published private(set) var totalStepCount: Int = StepID.allCases.count
-    @Published private(set) var retryAttempt: Int = 0
-    @Published private(set) var lastErrorText: String? = nil
-    @Published private(set) var etaText: String? = nil
-    @Published private(set) var featureOutcomes: [String: FeatureOutcome] = [:]
+    private(set) var isRunning: Bool = false
+    private(set) var isCompleted: Bool = false
+    private(set) var overallProgress: Double = 0
+    private(set) var currentStepTitle: String = "Starting"
+    private(set) var statusText: String = "Preparing startup..."
+    private(set) var currentStepDetailText: String = ""
+    private(set) var currentStepProgress: Double = 0
+    private(set) var currentStepNumber: Int = 0
+    private(set) var totalStepCount: Int = StepID.allCases.count
+    private(set) var retryAttempt: Int = 0
+    private(set) var lastErrorText: String? = nil
+    private(set) var etaText: String? = nil
+    private(set) var featureOutcomes: [String: FeatureOutcome] = [:]
 
     private var preloadTask: Task<Void, Never>?
     private var stepProgress: [StepID: Double] = [:]
@@ -77,12 +83,14 @@ final class LaunchPreloadCoordinator: ObservableObject {
         .featureWarmup: 0.12,
     ]
 
-    deinit {
-        preloadTask?.cancel()
+    nonisolated deinit {
+        MainActor.assumeIsolated {
+            preloadTask?.cancel()
+        }
     }
 
     func startIfNeeded(
-        coreDataManager: CoreDataManager,
+        collegePersistence: CollegePersistence,
         calendarManager: CalendarIntegrationManager,
         brightspaceCoordinator: BrightspaceWebCoordinator,
         cloudIntegration: CloudIntegrationService
@@ -107,7 +115,7 @@ final class LaunchPreloadCoordinator: ObservableObject {
         preloadTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.runPipeline(
-                coreDataManager: coreDataManager,
+                collegePersistence: collegePersistence,
                 calendarManager: calendarManager,
                 brightspaceCoordinator: brightspaceCoordinator,
                 cloudIntegration: cloudIntegration
@@ -116,7 +124,7 @@ final class LaunchPreloadCoordinator: ObservableObject {
     }
 
     private func runPipeline(
-        coreDataManager: CoreDataManager,
+        collegePersistence: CollegePersistence,
         calendarManager: CalendarIntegrationManager,
         brightspaceCoordinator: BrightspaceWebCoordinator,
         cloudIntegration: CloudIntegrationService
@@ -127,7 +135,7 @@ final class LaunchPreloadCoordinator: ObservableObject {
             retriesUntilSuccess: true
         ) { [weak self] in
             guard let self else { return }
-            await self.waitForStoreLoaded(coreDataManager)
+            await self.waitForStoreLoaded(collegePersistence)
         }
 
         await runRetriableStep(
@@ -135,17 +143,18 @@ final class LaunchPreloadCoordinator: ObservableObject {
             title: "Warming local data",
             retriesUntilSuccess: true
         ) {
-            coreDataManager.fetchSemesters()
+            LaunchBootstrapCache.fetchSemestersIfNeeded()
             self.setStepProgress(.coreSnapshots, progress: 0.25)
 
-            coreDataManager.fetchPlans()
+            LaunchBootstrapCache.fetchPlansIfNeeded()
             self.setStepProgress(.coreSnapshots, progress: 0.50)
 
-            coreDataManager.fetchProfile()
+            LaunchBootstrapCache.fetchProfileIfNeeded()
             self.setStepProgress(.coreSnapshots, progress: 0.75)
 
-            coreDataManager.fetchVaultDocuments()
+            LaunchBootstrapCache.fetchVaultDocumentsIfNeeded()
             self.setStepProgress(.coreSnapshots, progress: 1)
+            AppDataStoreLaunchWarmup.prepareIfNeeded()
         }
 
         await runRetriableStep(
@@ -166,6 +175,11 @@ final class LaunchPreloadCoordinator: ObservableObject {
             title: "Preloading Brightspace",
             retriesUntilSuccess: true
         ) {
+            guard LMSPortalConfiguration.shouldPreloadPortalAtLaunch() else {
+                self.setStepDetail(.brightspaceWarmup, detail: "Skipped — LMS portal opens on first visit")
+                self.setStepProgress(.brightspaceWarmup, progress: 1)
+                return
+            }
             try await brightspaceCoordinator.preloadPortalForLaunch { progress in
                 self.setStepProgress(.brightspaceWarmup, progress: progress)
             } detail: { detail in
@@ -194,7 +208,7 @@ final class LaunchPreloadCoordinator: ObservableObject {
         ) {
             await self.runRegisteredFeaturePreloads(
                 context: FeaturePreloadContext(
-                    coreDataManager: coreDataManager,
+                    collegePersistence: collegePersistence,
                     calendarManager: calendarManager,
                     brightspaceCoordinator: brightspaceCoordinator,
                     cloudIntegration: cloudIntegration
@@ -301,10 +315,10 @@ final class LaunchPreloadCoordinator: ObservableObject {
         // Module-owned registration hooks. Add new feature hooks in feature files.
         OverviewFeaturePreloadRegistration.register()
         AcademicsFeaturePreloadRegistration.register()
+        CareerFeaturePreloadRegistration.register()
         CalendarFeaturePreloadRegistration.register()
         AIAssistantFeaturePreloadRegistration.register()
         DocumentsFeaturePreloadRegistration.register()
-        BrightspaceFeaturePreloadRegistration.register()
         SettingsFeaturePreloadRegistration.register()
         ProfileFeaturePreloadRegistration.register()
 
@@ -324,9 +338,9 @@ final class LaunchPreloadCoordinator: ObservableObject {
         #endif
     }
 
-    private func waitForStoreLoaded(_ coreDataManager: CoreDataManager) async {
+    private func waitForStoreLoaded(_ collegePersistence: CollegePersistence) async {
         var pulse: Double = 0
-        while !coreDataManager.isStoreLoaded {
+        while !collegePersistence.isStoreLoaded {
             pulse += 0.08
             let softProgress = min(0.92, 0.08 + pulse.truncatingRemainder(dividingBy: 0.84))
             setStepProgress(.storeReady, progress: softProgress)

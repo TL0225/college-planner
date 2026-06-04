@@ -1,0 +1,59 @@
+old_path,new_path,reason
+College/App/,College/App/,App shell — launch onboarding menu bar coordinators (unchanged root)
+College/Intelligence/,College/Features/Assistant/,Rename Intelligence module to Assistant product area
+College/Overview/,College/Features/Overview/,Overview tab widgets and WidgetKit
+College/Academics/,College/Features/Academics/,Academics audit and degree progress UI
+College/Calendar/,College/Features/Calendar/,Calendar views ICS sync editor
+College/Career/,College/Features/Career/,Career board Workday scrapers
+College/Catalog/,College/Features/Catalog/,Catalog ingest scrapers vector store
+College/CatalogEmbed/,College/Features/Catalog/Embed/,Embedded catalog web host folded into Catalog feature
+College/Courses/,College/Features/Courses/,Course search dashboard GPA popover
+College/Documents/,College/Features/Documents/,Documents vault UI
+College/Profile/,College/Features/Profile/,Profile tab identity cards edit sheets
+College/Degree/,College/Features/Degree/,Degree requirements UI module
+College/Settings/,College/Features/Settings/,Settings panels and navigation
+College/SyllabusAI/,College/Features/SyllabusAI/,Syllabus AI feature
+College/Brightspace/,College/Features/Brightspace/,Brightspace integration
+College/MajorMinorDetailsView.swift,College/Features/Degree/Views/MajorMinorDetailsView.swift,Loose root file — host is DegreeView only
+College/Data/Persistence/,College/Core/Data/Persistence/,Shared CollegePersistence façade and extensions
+College/Data/Repositories/,College/Core/Data/Repositories/,Shared repository implementations
+College/Data/SwiftData/,College/Core/Data/Storage/,Schema AppDataStore ModelContext helpers (rename folder)
+College/Data/SwiftData/ProfilePlannerSwiftDataQueryHost.swift,College/Features/Profile/Services/ProfilePlannerQueryHost.swift,Feature-scoped @Query host — drop technology prefix
+College/Data/SwiftData/ProfilePlannerSwiftDataMirror.swift,College/Core/Data/Sync/ProfilePlannerSyncAdapter.swift,Cross-partition sync adapter
+College/Data/SwiftData/WorkdaySwiftDataMirror.swift,College/Core/Data/Sync/WorkdaySyncAdapter.swift,Cross-partition sync adapter
+College/Data/SwiftData/VaultSwiftDataMirror.swift,College/Core/Data/Sync/VaultSyncAdapter.swift,Cross-partition sync adapter
+College/Data/SwiftData/SwiftDataEntityCompatibility.swift,College/Core/Data/Storage/SchemaEntityAliases.swift,Schema compatibility aliases
+College/Data/SwiftData/SwiftDataMergeCoalescer.swift,College/Core/Data/Storage/ModelContextMergeCoalescer.swift,ModelContext merge coalescer
+College/Data/SwiftData/SwiftDataStoreMaintenance.swift,College/Core/Data/Storage/ModelStoreMaintenance.swift,Store maintenance utilities
+College/Data/SwiftData/PlannerSwiftDataAccessors.swift,College/Core/Data/Storage/PlannerModelAccessors.swift,Planner model accessors
+College/Calendar/CalendarSwiftDataQueryHost.swift,College/Features/Calendar/Services/CalendarQueryHost.swift,Calendar @Query host
+College/Overview/OverviewSwiftDataQueryHost.swift,College/Features/Overview/Services/OverviewQueryHost.swift,Overview @Query host
+College/Career/CareerSwiftDataQueryHost.swift,College/Features/Career/Services/CareerQueryHost.swift,Career @Query host
+College/Calendar/CalendarIntegrationManager+SwiftDataSync.swift,College/Features/Calendar/Services/CalendarIntegrationManager+ModelSync.swift,Calendar integration model sync extension
+College/Calendar/CalendarIntegrationManager+SwiftDataExport.swift,College/Features/Calendar/Services/CalendarIntegrationManager+ModelExport.swift,Calendar integration model export extension
+College/Catalog/Vector/CatalogChunkProjection+SwiftData.swift,College/Features/Catalog/Services/CatalogChunkProjection+Persistence.swift,Catalog chunk projection persistence extension
+College/Career/WorkdayPostingParsing+SwiftData.swift,College/Features/Career/Services/WorkdayPostingParsing+Persistence.swift,Workday posting persistence extension
+College/App/UITestSwiftDataSeeder.swift,College/App/UITestPersistenceSeeder.swift,UITest seeder — neutral persistence name
+College/Services/Vault*.swift,College/Features/Documents/Services/,Vault document services belong to Documents feature
+College/Services/CatalogBackgroundSyncRunner.swift,College/Features/Catalog/Services/CatalogBackgroundSyncRunner.swift,Catalog-only background sync
+College/Services/CatalogScrapeAuditCSVSupport.swift,College/Features/Catalog/Services/CatalogScrapeAuditCSVSupport.swift,Catalog scrape audit support
+College/Services/CatalogBreadthHydrationService.swift,College/Features/Catalog/Services/CatalogBreadthHydrationService.swift,Catalog breadth hydration
+College/Services/GoogleAuthService.swift,College/Core/Services/GoogleAuthService.swift,Shared auth — used by multiple features
+College/Services/CloudIntegrationService.swift,College/Core/Services/CloudIntegrationService.swift,Shared cloud integration
+College/Services/FSWatchdogService.swift,College/Core/Services/FSWatchdogService.swift,Shared filesystem watchdog
+College/Services/StaleFileMonitor.swift,College/Core/Services/StaleFileMonitor.swift,Shared stale file monitor
+College/DesignSystem/,College/Core/DesignSystem/,Shared design tokens and components
+College/Platform/,College/Core/Platform/,Platform commands FFI focus undo
+College/Security/,College/Core/Security/,Security and privacy views
+College/Utilities/,College/Core/Utilities/,Shared utilities
+College/Location/,College/Core/Location/,Shared location services (or Shared/)
+College/Notifications/,College/Core/Notifications/,App-wide notification names
+College/WebShortcuts/,College/Core/WebShortcuts/,Web shortcut host views
+College/Core/,College/Core/,Existing Core/ merged with new Core/ subtree (MemoryPressureHandler etc.)
+College/Debug/,College/Debug/,DEBUG-only tools unchanged
+College/Rust/,College/Rust/,Rust FFI bindings unchanged
+CollegeTests/SwiftData/,CollegeTests/Persistence/,Persistence integration tests — neutral folder name
+CollegeTests/*.swift,CollegeTests/Features/*/,Feature-mirrored unit tests (Catalog CourseLeaf etc.)
+CollegeTests/TestFixturePaths.swift,CollegeTests/Support/TestFixturePaths.swift,Shared fixture resolution for nested Features/
+CollegeTests/Fixtures/,CollegeTests/Fixtures/,Shared test fixtures unchanged
+CollegeTests/*Tests.swift,CollegeTests/Features/<Domain>/,Mirror production feature paths where feasible

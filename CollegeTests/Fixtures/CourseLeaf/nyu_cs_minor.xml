@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<courseleaf>
+
+<title>Computer Science (Minor)</title>
+
+
+<text>
+<![CDATA[  
+<div class="notinpdf onthispage" name="otp1"><div class="otp-title">On This Page</div><ul><li><a href="#text" nav-id="0" otp-id="1" onClick="showSection('text', this);">Program Description</a></li><li><a href="#text" nav-id="1" otp-id="1" onClick="showSection('text', this);">Minor Declaration</a></li></ul></div>
+<h2 headerid="0" name="text" tabindex="-1">Program Description</h2>
+<p>Computing plays an increasingly important role in almost all fields. It is a very diverse discipline that comprises both theory and applications and incorporates the design and analysis of computing technology. The Department of Computer Science is part of the Courant Institute of Mathematical Sciences, a world-renowned center for the study of mathematics and computer science.</p>
+<p>The department offers three minor programs: the Computer Science minor, the Web Programming and Applications minor, and the joint Mathematics/Computer Science minor. The goal of the minors is to train students to be proficient users of computers and computer software with less emphasis on the underlying technology and mathematical tools.</p>
+<p>No prior background is required. College of Arts Science students are eligible to pursue any of these minors. Non-CAS students will need written authorization from their home school. Students with transfer credits are required to complete half of their minor requirements in the Department of Computer Science.</p>
+ <h2 headerid="1" name="text" tabindex="-1">Minor Declaration</h2> <p>To request declaration of a minor, CAS students should visit the host department. To request declaration of a cross-school minor, CAS students should complete the online Minor Application available in their Albert Student Center. Students may also use the <a href="https://www.nyu.edu/students/student-information-and-resources/registration-records-and-graduation/forms-policies-procedures.html" target="_blank">Minor Application</a> in Albert to request cancellation of a CAS or cross-school minor.</p>
+  
+]]>
+</text>
+<curriculumtext name="Curriculum">
+<![CDATA[
+<h2>Program Requirements</h2>
+<p>The minor requires the completion of four 4-credit courses (16 credits), comprised of the following:</p>
+<table class="sc_courselist">
+<caption class="hidden noscript">Course List</caption>
+<colgroup>
+<col class="codecol"/>
+<col class="titlecol"/>
+<col align="char" char="." class="hourscol"/>
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Course</th>
+<th scope="col">Title</th>
+<th scope="col" class="hourscol">Credits</th>
+</tr>
+</thead>
+<tbody>
+<tr class="even areaheader  firstrow"><td colspan="2"><span class="courselistcomment areaheader ">Minor Requirements</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CSCI-UA 101">CSCI-UA 101</span></td><td>Intro to Computer Science <sup>1</sup></td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CSCI-UA 102">CSCI-UA 102</span></td><td>Data Structures</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CSCI-UA 201">CSCI-UA 201</span></td><td>Computer Systems Org</td><td class="hourscol">4</td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Select one of the following:</span></td><td class="hourscol">4</td></tr>
+<tr class="odd"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">CSCI-UA 400-level elective</span></div></td><td class="hourscol"></td></tr>
+<tr class="even"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="CSCI-UA 202">CSCI-UA 202</span></div></td><td>Operating Systems</td><td class="hourscol"></td></tr>
+<tr class="odd lastrow"><td class="codecol"><div style="margin-left:20px;" class="blockindent"><span class="code_bubble" data-code-bubble="CSCI-UA 310">CSCI-UA 310</span></div></td><td>Basic Algorithms <sup>2</sup></td><td class="hourscol"></td></tr>
+<tr class="listsum"><td colspan="2">Total Credits</td><td class="hourscol">16</td></tr></tbody>
+</table>
+
+<dl class="sc_footnotes" aria-label="Footnotes"><dt> <sup> 1 </sup> </dt><dd><p class="noindent">Prerequisite: CSCI-UA 2 or CSCI-UA 3 or placement.</p></dd><dt> <sup> 2 </sup> </dt><dd><p class="noindent"><span class="markedContent" id="page347R_mcid17365"><span dir="ltr" role="presentation">Prerequisite: <span class="sc_courseinline"><span class="code_bubble" data-code-bubble="MATH-UA 120">MATH-UA 120</span> Discrete Mathematics</span></span></span></p></dd></dl>
+]]>
+</curriculumtext>
+<policiestext name="Policies">
+<![CDATA[
+<h2>Policies</h2>
+<div class="notinpdf onthispage" name="otp2"><div class="otp-title">On This Page</div><ul><ul><li><a href="#policiestext" nav-id="0" otp-id="2" onClick="showSection('policiestext', this);">Program Policies</a><ul><li><a href="#policiestext" nav-id="1" otp-id="2" onClick="showSection('policiestext', this);">Policy on Declaration of Major or Minor</a></li><li><a href="#policiestext" nav-id="2" otp-id="2" onClick="showSection('policiestext', this);">Restrictions on Minors</a></li><li><a href="#policiestext" nav-id="3" otp-id="2" onClick="showSection('policiestext', this);">School of Engineering courses</a></li><li><a href="#policiestext" nav-id="4" otp-id="2" onClick="showSection('policiestext', this);">Grading Policy</a></li></ul><li><a href="#policiestext" nav-id="5" otp-id="2" onClick="showSection('policiestext', this);">NYU Policies</a></li><li><a href="#policiestext" nav-id="6" otp-id="2" onClick="showSection('policiestext', this);">College of Arts and Science Policies</a></li></li></ul></ul></div>
+<h3 headerid="0" name="policiestext" tabindex="-1">Program Policies</h3>
+<h4 headerid="1" name="policiestext" tabindex="-1">Policy on Declaration of Major or Minor</h4>
+<p>Students must complete either <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=CSCI-UA%20101" title="CSCI-UA 101">CSCI-UA 101</a> Intro to Computer Science</span> or <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=CSCI-UA%20102" title="CSCI-UA 102">CSCI-UA 102</a> Data Structures</span> (depending on placement) with a grade of C or better before they can declare the major or minor in Computer Science, the joint majors with Economics and Mathematics, or the joint minor with Mathematics. To declare the joint major in Computer and Data Science, students must first meet this prerequisite and also complete either <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=DS-UA%20111" title="DS-UA 111">DS-UA 111</a> Data Science for Everyone</span> or <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=DS-UA%20112" title="DS-UA 112">DS-UA 112</a> Principles of Data Science</span> (depending on placement) with a grade of C or better. To declare the minor in Web Programming and Applications, students must first complete their choice of either (1) <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=CSCI-UA%202" title="CSCI-UA 2">CSCI-UA 2</a> Introduction to Computer Programming (No Prior Experience)</span> or <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=CSCI-UA%203" title="CSCI-UA 3">CSCI-UA 3</a> Introduction to Computer Programming (Limited Prior Experience)</span> (depending on placement) or (2) <span class="sc_courseinline"><a class="bubblelink code" href="/search/?P=CSCI-UA%204" title="CSCI-UA 4">CSCI-UA 4</a> Introduction to Web Design and Computer Principles</span> with a grade of C or better. These policies apply to all NYU students, not just to those matriculated in CAS.</p>
+<h4 headerid="2" name="policiestext" tabindex="-1">Restrictions on Minors</h4>
+<ol>
+	<li>
+	<p>Tandon students are not permitted to declare a minor in Computer Science or a minor in Computer Science/Mathematics at CAS. Tandon Students may declare the Web Programming and Applications Minor.</p>
+	</li>
+	<li>
+	<p>Students who are planning to declare a Data Science major or who already have a declared Data Science major are not permitted to declare a minor in Computer Science or a minor in Computer Science/Mathematics due to significant course overlap. Data Science majors may declare the Web Programming and Applications Minor. Only 1 course can be shared between the Data Science major and the Web Programming and Applications minor.</p>
+	</li>
+</ol>
+<h4 headerid="3" name="policiestext" tabindex="-1">School of Engineering courses</h4>
+<p>CAS students (in any major or minor) are not permitted to take computer science courses in the Tandon School of Engineering.</p>
+<h4 headerid="4" name="policiestext" tabindex="-1">Grading Policy</h4>
+<p>A grade of C or better is necessary in all courses to fulfill the minor requirements.</p>
+ <h3 headerid="5" name="policiestext" tabindex="-1">NYU Policies</h3> <p>University-wide policies can be found on the <a href="/nyu/policies/">New York University Policy pages</a>.</p>
+ <h3 headerid="6" name="policiestext" tabindex="-1">College of Arts and Science Policies</h3> <p>A full list of relevant academic policies can be found on the <a href="/undergraduate/arts-science/academic-policies/">CAS Academic Policies page</a>. </p>
+]]>
+</policiestext>
+<faculty>
+<![CDATA[
+]]>
+</faculty>
+</courseleaf>
+

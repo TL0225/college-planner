@@ -1,3 +1,8 @@
+// OnboardingPreferenceBridge.swift
+// Feature: App
+// Purpose: App module — OnboardingPreferenceBridge.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 
 enum OnboardingPreferenceBridge {
@@ -47,5 +52,23 @@ enum OnboardingPreferenceBridge {
             return .brightspace
         }
         return .profile
+    }
+
+    /// Clears onboarding / first-run flags so the next launch shows onboarding (UserDefaults, not local store).
+    static func resetOnboardingState() {
+        let keys = [
+            completedKey,
+            selectedLMSKey,
+            selectedWidgetsKey,
+            academicDraftKey,
+            catalogSyncInFlightKey,
+            pendingLMSConnectKey,
+            dashboardWidgetsKey,
+            showDeepCatalogPromptKey,
+            deepCatalogScrapeCompletedKey,
+        ]
+        for key in keys {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 }

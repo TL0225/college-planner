@@ -1,3 +1,8 @@
+// SessionTerminationTracker.swift
+// Feature: App
+// Purpose: App module — SessionTerminationTracker.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 
 /// Tracks whether the previous process exited via normal termination so the next launch can detect force quits / crashes.

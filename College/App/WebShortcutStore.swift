@@ -1,3 +1,8 @@
+// WebShortcutStore.swift
+// Feature: App
+// Purpose: App module — WebShortcut.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 
 struct WebShortcut: Codable, Hashable, Identifiable {

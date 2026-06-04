@@ -1,10 +1,13 @@
+// LaunchPreloadView.swift
+// Feature: App
+// Purpose: App module — LaunchPreloadView.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
-#if os(macOS)
 import AppKit
-#endif
 
 struct LaunchPreloadView: View {
-    @EnvironmentObject private var preload: LaunchPreloadCoordinator
+    @Environment(LaunchPreloadCoordinator.self) private var preload
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @State private var didAppear = false

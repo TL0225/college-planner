@@ -1,3 +1,0 @@
-[workspace]
-members = ["college-core"]
-resolver = "2"

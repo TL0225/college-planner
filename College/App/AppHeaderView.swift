@@ -1,3 +1,8 @@
+// AppHeaderView.swift
+// Feature: App
+// Purpose: App module — AppHeaderView.
+// Data: CollegePersistence / repositories when applicable.
+
 //
 //  AppHeaderView.swift
 //  College

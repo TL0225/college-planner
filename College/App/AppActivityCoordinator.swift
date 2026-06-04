@@ -1,18 +1,24 @@
+// AppActivityCoordinator.swift
+// Feature: App
+// Purpose: App module — AppActivityCoordinator.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import SwiftUI
-import Combine
+import Observation
 
 /// Tracks app active/inactive lifecycle state and exposes a lightweight inactivity policy
 /// (visual dim + periodic refresh throttling) for the main workspace window.
+@Observable
 @MainActor
-final class AppActivityCoordinator: ObservableObject {
+final class AppActivityCoordinator {
     static let shared = AppActivityCoordinator()
 
     static let inactiveStateEnabledKey = "ui.inactiveStateEnabled"
 
-    @Published private(set) var isAppActive: Bool = true
-    @Published private(set) var isResourceThrottled: Bool = false
-    @Published private(set) var shouldApplyInactiveDim: Bool = false
+    private(set) var isAppActive: Bool = true
+    private(set) var isResourceThrottled: Bool = false
+    private(set) var shouldApplyInactiveDim: Bool = false
 
     private var resumeTask: Task<Void, Never>?
     private var transitionToken = UUID()

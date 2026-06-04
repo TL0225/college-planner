@@ -1,3 +1,8 @@
+// CollegeApp.swift
+// Feature: App
+// Purpose: App module — CollegeApp.
+// Data: CollegePersistence / repositories when applicable.
+
 //
 //  CollegeApp.swift
 //  College
@@ -7,34 +12,37 @@
 
 import SwiftUI
 
-#if os(macOS)
 import AppKit
-#endif
+import SwiftData
 
 @main
 struct CollegeApp: App {
-    #if os(macOS)
     @NSApplicationDelegateAdaptor(CollegeAppDelegate.self) private var collegeAppDelegate
-    #endif
 
-    @StateObject private var coreDataManager = CoreDataManager.shared
-    @StateObject private var academicMetricsStore = AcademicMetricsStore()
-    @StateObject private var modalCoordinator = ModalCoordinator()
+    @StateObject private var collegePersistence = CollegePersistence.shared
+    @StateObject private var appDataStore = AppDataStore.shared
+    @State private var academicMetricsStore = AcademicMetricsStore()
+    @State private var auditSnapshotStore = AuditSnapshotStore()
+    @State private var modalCoordinator = ModalCoordinator()
     @StateObject private var appNotifications = AppNotificationCenter.shared
     @StateObject private var locationPermissionService = LocationPermissionService()
     @StateObject private var calendarManager = CalendarIntegrationManager()
-    #if os(macOS)
-    @StateObject private var appToolbarCoordinator = AppToolbarCoordinator()
-    #endif
+    @State private var appToolbarCoordinator = AppToolbarCoordinator()
     @StateObject private var securityManager = SecurityManager.shared
     @StateObject private var brightspaceCoordinator = BrightspaceWebCoordinator()
-    @StateObject private var launchPreloadCoordinator = LaunchPreloadCoordinator()
-    @StateObject private var appActivity = AppActivityCoordinator.shared
+    @State private var launchPreloadCoordinator = LaunchPreloadCoordinator()
+    @State private var appActivity = AppActivityCoordinator.shared
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted: Bool = false
     @State private var showSessionInterruptedAlert = false
     @State private var pendingCrashReportURL: URL?
     @State private var launchMinimumDisplayElapsed = false
+    @State private var launchSplashShownAt: Date?
+    private let launchSplashMinimumSeconds: TimeInterval = 1.4
+    @State private var calendarToolbar = CalendarToolbarState()
+    @State private var webPortalToolbar = WebPortalToolbarState()
+    @State private var careerToolbar = CareerToolbarState()
+    @State private var academicsToolbar = AcademicsToolbarState()
     @AppStorage(CalendarTimeZonePreference.storageKey) private var calendarTimeZoneSelection: String = CalendarTimeZonePreference.systemValue
     @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
 
@@ -49,50 +57,81 @@ struct CollegeApp: App {
     }
 
     private var forceUITestMainUI: Bool { UITestLaunchFlags.forcesMainUI }
+    /// Unit tests host inside `College.app`; avoid full UI, launch preload, and background services.
+    private var isHostedUnitTest: Bool {
+        CollegeTestRuntime.isUnitTestProcess && !forceUITestMainUI
+    }
     private var canLeaveLaunchScreen: Bool {
         forceUITestMainUI || (launchPreloadCoordinator.isCompleted && launchMinimumDisplayElapsed)
     }
 
-    #if os(macOS)
     /// XCTest snapshots were missing the main window entirely until the app was activated
     /// and key; this mirrors what a user does when clicking the dock icon.
     private func activateForUITestsIfNeeded() {
         guard forceUITestMainUI else { return }
         UITestLaunchFlags.activateMainWindowIfUITestBoot()
     }
-    #endif
 
     private var shouldShowOnboarding: Bool {
         if forceUITestMainUI { return false }
-        guard launchPreloadCoordinator.isCompleted, coreDataManager.isStoreLoaded else { return false }
+        guard launchPreloadCoordinator.isCompleted, collegePersistence.isStoreLoaded else { return false }
 
-        let noPlans = coreDataManager.plans.isEmpty
-        let noSemesters = coreDataManager.semesters.isEmpty
+        // Finished onboarding is stored in UserDefaults, not inferred from SQLite alone.
+        if onboardingCompleted { return false }
 
-        let school = (coreDataManager.profile?.collegeName ?? "")
+        let noPlans = collegePersistence.plans.isEmpty
+            && ((try? appDataStore.profileRepository.fetchPlans(limit: 1).isEmpty) ?? true)
+        let noSemesters = collegePersistence.semesters.isEmpty
+            && ((try? appDataStore.profileRepository.fetchSemesters(limit: 1).isEmpty) ?? true)
+        guard noPlans, noSemesters else { return false }
+
+        if hasEstablishedAcademicIdentity(in: collegePersistence) { return false }
+
+        return true
+    }
+
+    /// True when the user has committed school + degree level + at least one major (legacy columns or JSON lists).
+    private func hasEstablishedAcademicIdentity(in persistence: CollegePersistence) -> Bool {
+        if persistence.academicProfiles.contains(where: academicProfileHasCoreIdentity) {
+            return true
+        }
+        guard let profile = persistence.profile else { return false }
+        return legacyProfileHasCoreIdentity(profile, persistence: persistence)
+    }
+
+    private func academicProfileHasCoreIdentity(_ profile: AcademicProfile) -> Bool {
+        let school = (profile.collegeName ?? profile.profile?.collegeName ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let degree = (coreDataManager.profile?.degreeLevel ?? "")
+        let degree = (profile.degreeLevel ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let major = (coreDataManager.profile?.major ?? "")
+        let hasMajor = !AcademicProfileProgramLists.majors(from: profile).isEmpty
+            || !(profile.major ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !school.isEmpty && !degree.isEmpty && hasMajor
+    }
+
+    private func legacyProfileHasCoreIdentity(_ profile: Profile, persistence: CollegePersistence) -> Bool {
+        let school = (profile.collegeName ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        let missingCoreAcademicIdentity = school.isEmpty || degree.isEmpty || major.isEmpty
-        let dataStateRequiresOnboarding = noPlans && noSemesters && missingCoreAcademicIdentity
-
-        return dataStateRequiresOnboarding
+        let degree = persistence.primaryDegreeLevel(default: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasMajor = !persistence.resolvedMajorNames().isEmpty
+        return !school.isEmpty && !degree.isEmpty && hasMajor
     }
 
     init() {
         UITestLaunchFlags.applyInjectedUserDefaultsIfNeeded()
+        if CollegeTestRuntime.isUnitTestProcess, !UITestLaunchFlags.forcesMainUI {
+            return
+        }
+        UserDefaultsWindowAutosaveCleanup.runAtLaunch()
         // Initialize production logger immediately on app launch.
         // Also capture stdout/stderr so print() + runtime warnings are preserved.
         AppLogger.shared.redirectConsoleOutput()
         RuntimeTelemetryMonitor.shared.startIfNeeded()
         RuntimeTelemetryMonitor.shared.markServiceState("app", state: "initializing")
         LaunchPreloadCoordinator.bootstrapBuiltInFeaturePreloadsIfNeeded()
-
-        // Register built-in widgets so WidgetRegistry is populated before
-        // OverviewView appears. Third-party widgets can call register() here too.
+        ModelMigrationService.runLaunchMigrationsIfNeeded()
+        WidgetRegistry.shared.bootstrapBuiltIns()
 
         let logger = DebugLogger.shared
         logger.app("🚀 App init")
@@ -101,6 +140,11 @@ struct CollegeApp: App {
         logger.app("TimeZone: \(TimeZone.current.identifier)")
         logger.app("ProcessInfo: \(ProcessInfo.processInfo.processName)")
         logger.app("OS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        let platform = AppleSiliconPlatform.report
+        logger.app("Platform: \(platform.deviceName) — Apple Silicon supported: \(platform.isSupported)")
+        if let reason = platform.requirementMessage {
+            logger.app("Platform: \(reason)")
+        }
 
         #if DEBUG
         Task.detached(priority: .background) { UnlockDebugLog.ensureFileExists() }
@@ -113,17 +157,16 @@ struct CollegeApp: App {
         UnlockDebugLog.log("===")
         #endif
 
-        #if os(macOS)
         MLXGlobalErrorHandler.installIfNeeded()
         CrashReportStore.installSignalCrashCaptureIfNeeded()
         UncaughtExceptionLogger.installIfNeeded()
         CatalogMenuBarProgressController.shared.startObservingProgressNotifications()
-        #endif
+        CollegeMenuBarStatusModel.shared.startObservingProgressNotifications()
+        MemoryPressureHandler.shared.startIfNeeded()
 
         RuntimeTelemetryMonitor.shared.markServiceState("app", state: "initialized")
     }
 
-    #if os(macOS)
     private func applyMacAppearance(from rawValue: String) {
         let appearance = AppAppearance(rawValue: rawValue) ?? .system
         switch appearance {
@@ -153,7 +196,6 @@ struct CollegeApp: App {
             RuntimeTelemetryMonitor.shared.markServiceState("screenshot_triage", state: "running")
         }
     }
-    #endif
 
     private func startTrackedServiceTask(
         _ name: String,
@@ -179,60 +221,65 @@ struct CollegeApp: App {
                 UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.showDeepCatalogPromptKey)
             }
         }
-        .environmentObject(coreDataManager)
-        .environmentObject(launchPreloadCoordinator)
-        .environment(\.managedObjectContext, coreDataManager.viewContext)
+        .environmentObject(collegePersistence)
+        .environmentObject(appDataStore)
+        .environment(launchPreloadCoordinator)
         .environment(\.timeZone, selectedTimeZone)
         .environment(\.calendar, selectedCalendar)
-        .environmentObject(modalCoordinator)
+        .environment(modalCoordinator)
         .environmentObject(appNotifications)
         .environmentObject(calendarManager)
         .environmentObject(locationPermissionService)
         .environmentObject(securityManager)
         .environmentObject(brightspaceCoordinator)
-        .environmentObject(appActivity)
-        #if os(macOS)
-        .environmentObject(appToolbarCoordinator)
-        #endif
+        .environment(appActivity)
+        .environment(appToolbarCoordinator)
+        .modelContainer(appDataStore.profileContainer)
     }
 
     @ViewBuilder
     private func mainRoot() -> some View {
         ContentView()
-            .environmentObject(coreDataManager)
-            .environmentObject(academicMetricsStore)
-            .environment(\.managedObjectContext, coreDataManager.viewContext)
+            .environmentObject(collegePersistence)
+            .environmentObject(appDataStore)
+            .modelContainer(appDataStore.profileContainer)
+            .environment(academicMetricsStore)
             .environment(\.timeZone, selectedTimeZone)
             .environment(\.calendar, selectedCalendar)
-            .environmentObject(modalCoordinator)
+            .environment(modalCoordinator)
             .environmentObject(appNotifications)
             .environmentObject(calendarManager)
             .environmentObject(locationPermissionService)
             .environmentObject(securityManager)
             .environmentObject(brightspaceCoordinator)
-            .environmentObject(launchPreloadCoordinator)
-            .environmentObject(appActivity)
-            #if os(macOS)
-            .environmentObject(appToolbarCoordinator)
-            #endif
+            .environment(launchPreloadCoordinator)
+            .environment(appActivity)
+            .environment(WidgetRegistry.shared)
+            .environment(appToolbarCoordinator)
+            .environment(calendarToolbar)
+            .environment(webPortalToolbar)
+            .environment(careerToolbar)
+            .environment(academicsToolbar)
+            .environment(auditSnapshotStore)
             .onOpenURL { url in
                 _ = CollegeInboundURLDispatcher.handle(url) { _ in
                 }
             }
             .handlesExternalEvents(preferring: ["college"], allowing: ["*"])
             .onAppear {
-                academicMetricsStore.refresh()
+                guard !isHostedUnitTest else { return }
+                Task { @MainActor in
+                    academicMetricsStore.refresh()
+                }
                 DebugLogger.shared.lifecycle("WindowGroup ContentView appeared")
-                #if os(macOS)
                 applyInactiveServiceThrottle(appActivity.isResourceThrottled)
-                #endif
                 AppNotificationCenter.shared.requestPermission()
                 CalendarReminderScheduler.shared.registerNotificationCategories()
                 CalendarReminderScheduler.shared.requestAuthorizationIfNeeded()
 
-                #if os(macOS)
                 applyMacAppearance(from: appAppearanceRaw)
                 CatalogMenuBarProgressController.shared.startObservingProgressNotifications()
+        CollegeMenuBarStatusModel.shared.startObservingProgressNotifications()
                 if UserDefaults.standard.bool(forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey) {
                     CatalogMenuBarProgressNotifier.postInProgress(
                         fraction: 0.02,
@@ -240,7 +287,6 @@ struct CollegeApp: App {
                         indeterminate: true
                     )
                 }
-                #endif
 
                 startTrackedServiceTask("model_bootstrap") {
                     await ModelBootstrapService.ensureModelReady()
@@ -268,17 +314,20 @@ struct CollegeApp: App {
                 }
             }
             .onChange(of: appAppearanceRaw) { _, newValue in
-                #if os(macOS)
                 applyMacAppearance(from: newValue)
-                #endif
             }
     }
 
     var body: some Scene {
         WindowGroup {
             Group {
-            if forceUITestMainUI {
+            if !forceUITestMainUI, !AppleSiliconPlatform.isSupported {
+                AppleSiliconRequiredView(report: AppleSiliconPlatform.report)
+            } else if forceUITestMainUI {
                 mainRoot()
+            } else if isHostedUnitTest {
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if canLeaveLaunchScreen {
                 if shouldShowOnboarding {
                     onboardingRoot()
@@ -287,12 +336,17 @@ struct CollegeApp: App {
                 }
             } else {
                 LaunchPreloadView()
-                    .environmentObject(launchPreloadCoordinator)
+                    .environment(launchPreloadCoordinator)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.thinMaterial)
+                    .onAppear {
+                        if launchSplashShownAt == nil {
+                            launchSplashShownAt = Date()
+                        }
+                    }
                     .task {
                         launchPreloadCoordinator.startIfNeeded(
-                            coreDataManager: coreDataManager,
+                            collegePersistence: collegePersistence,
                             calendarManager: calendarManager,
                             brightspaceCoordinator: brightspaceCoordinator,
                             cloudIntegration: CloudIntegrationService.shared
@@ -301,20 +355,29 @@ struct CollegeApp: App {
             }
             }
             .frame(minWidth: 1080, minHeight: 700)
-            .task {
-                guard !forceUITestMainUI, !launchMinimumDisplayElapsed else { return }
-                try? await Task.sleep(nanoseconds: 1_400_000_000)
+            .task(id: launchSplashShownAt) {
+                guard !forceUITestMainUI else { return }
+                guard let shownAt = launchSplashShownAt else { return }
+                let remaining = launchSplashMinimumSeconds - Date().timeIntervalSince(shownAt)
+                if remaining > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                }
                 launchMinimumDisplayElapsed = true
             }
-            #if os(macOS)
+            .onChange(of: launchPreloadCoordinator.isCompleted) { _, completed in
+                guard completed, !forceUITestMainUI else { return }
+                guard let shownAt = launchSplashShownAt else { return }
+                if Date().timeIntervalSince(shownAt) >= launchSplashMinimumSeconds {
+                    launchMinimumDisplayElapsed = true
+                }
+            }
             .onAppear { activateForUITestsIfNeeded() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { activateForUITestsIfNeeded() }
             }
-            #endif
-            .onChange(of: coreDataManager.isStoreLoaded) { _, loaded in
+            .onChange(of: collegePersistence.isStoreLoaded) { _, loaded in
                 guard loaded else { return }
-                UITestCoreDataSeeder.seedMinimalPlannerDataIfNeeded(coreDataManager: coreDataManager)
+                UITestPersistenceSeeder.seedMinimalPlannerDataIfNeeded()
             }
             .onChange(of: launchPreloadCoordinator.isCompleted) { _, completed in
                 guard completed else { return }
@@ -335,32 +398,24 @@ struct CollegeApp: App {
                     reportURL: pendingCrashReportURL,
                     onViewCrashLog: {
                         guard let reportURL = pendingCrashReportURL else { return }
-                        #if os(macOS)
                         CrashReportStore.open(reportURL)
-                        #endif
                     },
                     onRevealInFinder: {
                         guard let reportURL = pendingCrashReportURL else { return }
-                        #if os(macOS)
                         CrashReportStore.revealInFinder(reportURL)
-                        #endif
                     },
                     onCopyLogPath: {
                         guard let reportURL = pendingCrashReportURL else { return }
-                        #if os(macOS)
                         CrashReportStore.copyPathToPasteboard(reportURL)
-                        #endif
                     }
                 )
                 .dismissOnOutsideClickForSheet()
             }
         }
-        #if os(macOS)
         .windowToolbarStyle(.unified)
         .commands {
             PlannerMenuCommands()
         }
-        #endif
         .handlesExternalEvents(matching: ["college"])
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
@@ -376,20 +431,17 @@ struct CollegeApp: App {
             appActivity.handleScenePhase(newPhase)
         }
         .onChange(of: appActivity.isResourceThrottled) { _, throttled in
-            #if os(macOS)
             applyInactiveServiceThrottle(throttled)
-            #endif
         }
-        #if os(macOS)
         Settings {
             Group {
-                if coreDataManager.isStoreLoaded {
-                    SettingsView(activePage: .constant(.settings))
+                if collegePersistence.isStoreLoaded {
+                    MacStandaloneSettingsRoot()
                         .environmentObject(securityManager)
                         .environmentObject(calendarManager)
-                        .environmentObject(coreDataManager)
+                        .environmentObject(collegePersistence)
                         .environmentObject(appNotifications)
-                        .environmentObject(appActivity)
+                        .environment(appActivity)
                 } else {
                     ProgressView(String(localized: "app.launch.loading"))
                         .controlSize(.large)
@@ -399,9 +451,8 @@ struct CollegeApp: App {
                 }
             }
         }
-        .defaultSize(width: 1120, height: 760)
+        .defaultSize(width: SettingsMetrics.preferredWindowWidth, height: 760)
         .windowResizability(.automatic)
-        #endif
     }
 }
 

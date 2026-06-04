@@ -1,3 +1,8 @@
+// AppLogger.swift
+// Feature: Debug
+// Purpose: Debug module — Entry.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import os
 
@@ -42,7 +47,7 @@ actor AppLogger {
         case lifecycle
         case ui
         case navigation
-        case coreData
+        case persistence
         case network
         case calendar
         case google

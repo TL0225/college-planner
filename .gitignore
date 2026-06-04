@@ -8,6 +8,10 @@
 .assistant_ui_analysis_last_run.json
 .college_ui_test_long_waits
 
+# Repo-local Xcode derived data (do not commit)
+.xcode_derived*/
+.xcode_derived*
+
 # Xcode / Swift
 DerivedData/
 build/
@@ -52,6 +56,7 @@ __pycache__/
 .cursor/
 .vscode/
 .artifacts/
+Secrets.xcconfig
 
 # ML / large model artifacts
 *.safetensors

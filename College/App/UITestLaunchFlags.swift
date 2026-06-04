@@ -1,7 +1,10 @@
+// UITestLaunchFlags.swift
+// Feature: App
+// Purpose: App module — UITestLaunchFlags.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
-#if os(macOS)
 import AppKit
-#endif
 
 /// Shared detection for UI-test bootstrap (must match `CollegeApp.forceUITestMainUI`).
 enum UITestLaunchFlags {
@@ -11,7 +14,7 @@ enum UITestLaunchFlags {
         return p.arguments.contains("--ui-test-boot-main")
     }
 
-    /// Pretend Gemma is installed so Assistant chat is reachable without MLX weights (only with `forcesMainUI`).
+    /// Pretend the JSON worker is installed so Assistant chat is reachable without MLX weights (only with `forcesMainUI`).
     static var fakeAssistantModelForUITest: Bool {
         guard forcesMainUI else { return false }
         if ProcessInfo.processInfo.environment["COLLEGE_UITEST_FAKE_ASSISTANT_MODEL"] == "1" { return true }
@@ -23,6 +26,26 @@ enum UITestLaunchFlags {
         guard forcesMainUI else { return false }
         if ProcessInfo.processInfo.environment["COLLEGE_UITEST_LOCAL_LLM_STUB"] == "1" { return true }
         return ProcessInfo.processInfo.arguments.contains("--uitest-local-llm-stub")
+    }
+
+    static var assistantInferenceStubEnabled: Bool {
+        guard forcesMainUI else { return false }
+        if ProcessInfo.processInfo.environment["COLLEGE_UITEST_ASSISTANT_INFERENCE_STUB"] == "1" { return true }
+        return ProcessInfo.processInfo.arguments.contains("--uitest-assistant-inference-stub")
+    }
+
+    static var assistantInferenceBackendOverride: String? {
+        guard forcesMainUI else { return nil }
+        if let raw = ProcessInfo.processInfo.environment["COLLEGE_UITEST_ASSISTANT_INFERENCE_BACKEND"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {
+            return raw
+        }
+        for arg in ProcessInfo.processInfo.arguments where arg.hasPrefix("--uitest-assistant-inference-backend=") {
+            let raw = String(arg.dropFirst("--uitest-assistant-inference-backend=".count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !raw.isEmpty { return raw }
+        }
+        return nil
     }
 
     /// Insert minimal planner rows (profile, task, event) for tool/snapshot tests.
@@ -70,9 +93,9 @@ enum UITestLaunchFlags {
         }
     }
 
-    #if os(macOS)
     /// `xcodebuild`/XCTest often launches the app without foreground activation; mirror a dock click
     /// so the main window becomes key before AX queries run.
+    @MainActor
     static func activateMainWindowIfUITestBoot() {
         guard forcesMainUI else { return }
         let app = NSApplication.shared
@@ -96,15 +119,17 @@ enum UITestLaunchFlags {
     }
 
     /// Re-attempt activation while SwiftUI creates the first window (AX can lag behind `launch()`).
+    @MainActor
     static func scheduleUITestActivationRetriesIfNeeded() {
         guard forcesMainUI else { return }
         activateMainWindowIfUITestBoot()
         let delays: [TimeInterval] = [0.05, 0.15, 0.35, 0.75, 1.5, 3.0, 5.0, 8.0]
         for delay in delays {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                activateMainWindowIfUITestBoot()
+                MainActor.assumeIsolated {
+                    activateMainWindowIfUITestBoot()
+                }
             }
         }
     }
-    #endif
 }

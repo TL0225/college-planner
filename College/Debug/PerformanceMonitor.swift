@@ -1,13 +1,21 @@
+// PerformanceMonitor.swift
+// Feature: Debug
+// Purpose: Debug module — PerformanceMonitor.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 import Combine
 import Darwin.Mach
+import Observation
 
 /// Lightweight, live CPU + memory monitor for the current process.
 ///
 /// Intended for in-app diagnostics UI (not persistent logging).
-final class PerformanceMonitor: ObservableObject {
-    @Published private(set) var cpuPercent: Double = 0
-    @Published private(set) var memoryMB: Double = 0
+@Observable
+@MainActor
+final class PerformanceMonitor {
+    private(set) var cpuPercent: Double = 0
+    private(set) var memoryMB: Double = 0
 
     private var timerCancellable: AnyCancellable?
 
@@ -71,4 +79,3 @@ final class PerformanceMonitor: ObservableObject {
         return totalUsage
     }
 }
-

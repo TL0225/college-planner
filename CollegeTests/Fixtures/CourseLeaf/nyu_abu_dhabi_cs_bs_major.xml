@@ -1,0 +1,305 @@
+<?xml version="1.0"?>
+<courseleaf>
+
+<title>Computer Science (BS)</title>
+
+
+<text>
+<![CDATA[  
+<div class="notinpdf onthispage" name="otp1"><div class="otp-title">On This Page</div><ul><li><a href="#text" nav-id="0" otp-id="1" onClick="showSection('text', this);">Program Description</a></li><li><a href="#text" nav-id="1" otp-id="1" onClick="showSection('text', this);">Study Away</a></li><li><a href="#text" nav-id="2" otp-id="1" onClick="showSection('text', this);">Admissions</a></li></ul></div>
+<h2 headerid="0" name="text" tabindex="-1">Program Description</h2>
+<p>Computer Science is a practical art that has led to revolutionary innovations in entertainment, the humanities, health, business, the news media, communications, education, scientific research, and the arts. It is also a science rooted in mathematics and engineering. Although it is a relatively young field, computer science has produced many of the advances in modern life that we now take for granted. It has given medical researchers tools to understand and cure diseases, enabled physicists to reshape our understanding of the universe, allowed neuroscientists to uncover the secrets of our brains, and helped biologists decipher the human genome. Computer Science has rewritten the rules of the entertainment industry and has transformed the way humans communicate with each other.</p>
+<p>The goal of the Computer Science major is to train students both in the fundamental principles of computer science and in related aspects of technology, to broaden the knowledge base of computer science majors, and to demonstrate the relevance of computer technology to other disciplines. Computer Science majors must complete a minor or a major in one of the following areas: Applied Mathematics, Economics, Engineering, Interactive Media, Natural Sciences, or Sound and Music Computing. The Program in Computer Science embraces a rich variety of subjects and provides great flexibility, allowing students to tailor courses of study to their particular interests. Advanced undergraduate students can work on research projects with faculty members engaged in projects of mutual interest.</p>
+<h2 headerid="1" name="text" tabindex="-1">Study Away</h2>
+<p>The study away pathway can be found on the NYUAD Student Portal at <a href="students.nyuad.nyu.edu/pathways" target="_blank">students.nyuad.nyu.edu/pathways</a>. Students with questions should contact the Office of Global Education. <span style="font-size:0.9375rem; font-weight:400">The program strongly recommends that at least one Computer Science elective course be taken in Abu Dhabi.</span></p>
+ <h2 headerid="2" name="text" tabindex="-1">Admissions</h2> <p>New York University's Office of Undergraduate Admissions supports the application process for all undergraduate programs at NYU. For additional information about undergraduate admissions, including application requirements, see <a href="https://www.nyu.edu/admissions/undergraduate-admissions/how-to-apply.html" target="_blank">How to Apply</a>. </p>
+  
+]]>
+</text>
+<curriculumtext name="Curriculum">
+<![CDATA[
+<div class="notinpdf onthispage" name="otp2"><div class="otp-title">On This Page</div><ul><li><a href="#curriculumtext" nav-id="0" otp-id="2" onClick="showSection('curriculumtext', this);">Program Requirements</a><ul><li><a href="#curriculumtext" nav-id="1" otp-id="2" onClick="showSection('curriculumtext', this);">Computer Science Electives</a></li></ul><li><a href="#curriculumtext" nav-id="2" otp-id="2" onClick="showSection('curriculumtext', this);">Program Notes</a></li></li></ul></div>
+<h2 headerid="0" name="curriculumtext" tabindex="-1">Program Requirements</h2>
+<table class="sc_courselist">
+<caption class="hidden noscript">Course List</caption>
+<colgroup>
+<col class="codecol"/>
+<col class="titlecol"/>
+<col align="char" char="." class="hourscol"/>
+</colgroup>
+<thead>
+<tr>
+<th scope="col">Course</th>
+<th scope="col">Title</th>
+<th scope="col" class="hourscol">Credits</th>
+</tr>
+</thead>
+<tbody>
+<tr class="even areaheader  firstrow"><td colspan="2"><span class="courselistcomment areaheader ">General Education Requirements</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Physical Education (2 courses)</span></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Quantitative Reasoning (1 course)</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Experimental Inquiry (1 course)</span></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Islamic Studies (1 course)</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">First-Year Writing Seminar</span></td><td class="hourscol">4</td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Colloquia</span></td><td class="hourscol">4</td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Field Colloquia (2 J-Term courses)</span></td><td class="hourscol">6</td></tr>
+<tr class="even areasubheader undefined"><td colspan="2"><span class="courselistcomment areasubheader undefined">Core Competencies</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Arts, Design, and Technology</span></td><td class="hourscol">4</td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Cultural Exploration Analysis</span></td><td class="hourscol">4</td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Data and Discovery</span></td><td class="hourscol">4</td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Structures of Thought and Society</span></td><td class="hourscol">4</td></tr>
+<tr class="odd areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Major Required Courses</span></td><td class="hourscol"></td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="MATH-UH 1012Q">MATH-UH 1012Q</span></td><td>Calculus with Applications to Science and Engineering</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1001">CS-UH 1001</span></td><td>Introduction to Computer Science (see note 1 below)</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1002">CS-UH 1002</span></td><td>Discrete Mathematics</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1050">CS-UH 1050</span></td><td>Data Structures</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1052">CS-UH 1052</span></td><td>Algorithms</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2010">CS-UH 2010</span></td><td>Computer Systems Organization</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2012">CS-UH 2012</span></td><td>Software Engineering</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3010">CS-UH 3010</span></td><td>Operating Systems</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3012">CS-UH 3012</span></td><td>Computer Networks</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3090">CS-UH 3090</span></td><td>Research Seminar in Computer Science</td><td class="hourscol">2</td></tr>
+<tr class="even areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Major Electives</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><span class="courselistcomment">Complete 2 Computer Science electives (see list below)</span></td><td class="hourscol">8</td></tr>
+<tr class="even areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Capstone</span></td><td class="hourscol"></td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 4001">CS-UH 4001</span></td><td>Capstone Project in Computer Science 1</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 4002">CS-UH 4002</span></td><td>Capstone Project in Computer Science 2 (see note 2 below)</td><td class="hourscol">4</td></tr>
+<tr class="odd areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Required Minor</span></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><span class="courselistcomment">Complete one of the following minors: (see note 3 below)</span></td><td class="hourscol">16-20</td></tr>
+<tr class="odd"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">Applied Mathematics</span></div></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">Economics</span></div></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">Engineering</span></div></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">Interactive Media (see note 4 below)</span></div></td><td class="hourscol"></td></tr>
+<tr class="odd"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">Natural Sciences</span></div></td><td class="hourscol"></td></tr>
+<tr class="even"><td colspan="2"><div style="margin-left:20px;" class="blockindent"><span class="courselistcomment commentindent">Sound and Music Computing</span></div></td><td class="hourscol"></td></tr>
+<tr class="odd areaheader "><td colspan="2"><span class="courselistcomment areaheader ">Other Electives</span></td><td class="hourscol"></td></tr>
+<tr class="even lastrow"><td colspan="2"><span class="courselistcomment">Complete enough courses to reach the minimum overall required 128 credits</span></td><td class="hourscol">28</td></tr>
+<tr class="listsum"><td colspan="2">Total Credits</td><td class="hourscol">128-132</td></tr></tbody>
+</table>
+
+<h3 class="toggle" headerid="1" name="curriculumtext" tabindex="-1"><strong>Computer Science Electives</strong></h3>
+<p><em><span>Topics and credits for</span> </em><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="ENGR-UH 4560">ENGR-UH 4560</span> Selected Topics in Information and Computational Systems</span><em><span> may vary each term, therefore approval by the </span>Computer Science Program Head <span>is required for it to count as a CS elective.</span></em></p>
+
+<table class="sc_courselist">
+<caption class="hidden noscript">Course List (Per Attribute)</caption>
+<colgroup>
+<col class="codecol"/>
+<col class="titlecol"/>
+<col align="char" char="." class="hourscol"/>
+</colgroup>
+<thead>
+<tr class="hidden noscript">
+<th scope="col">Code</th>
+<th scope="col">Title</th>
+<th scope="col" class="hourscol">Credits</th>
+</tr>
+</thead>
+<tbody>
+<tr class="even firstrow"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2214">CS-UH 2214</span></td><td>Database Systems</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2216">CS-UH 2216</span></td><td>Natural Language Processing</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2218">CS-UH 2218</span></td><td>Algorithmic Foundations of Data Science</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2219E">CS-UH 2219E</span></td><td>Computational Social Science</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2220">CS-UH 2220</span></td><td>Machine Learning</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2221">CS-UH 2221</span></td><td>Arabic Computational Linguistics</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3210">CS-UH 3210</span></td><td>Computer Security</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3211">CS-UH 3211</span></td><td>Quantum Computing</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3212">CS-UH 3212</span></td><td>Advanced Topics in AI and Machine Learning</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3260">CS-UH 3260</span></td><td>Special Topics in Computer Science</td><td class="hourscol">4</td></tr>
+<tr class="even"><td class="codecol"><span class="code_bubble" data-code-bubble="ENGR-UH 3332">ENGR-UH 3332</span></td><td>Applied Machine Learning</td><td class="hourscol">4</td></tr>
+<tr class="odd"><td class="codecol"><span class="code_bubble" data-code-bubble="ENGR-UH 4560">ENGR-UH 4560</span></td><td>Selected Topics in Information and Computational Systems</td><td class="hourscol">2-4</td></tr>
+<tr class="even lastrow"><td class="codecol"><span class="code_bubble" data-code-bubble="MATH-UH 3410">MATH-UH 3410</span></td><td>Number Theory and Cryptography</td><td class="hourscol">4</td></tr>
+</tbody>
+</table>
+
+<h2 headerid="2" name="curriculumtext" tabindex="-1">Program Notes</h2>
+<ol>
+	<li><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="ENGR-UH 1000">ENGR-UH 1000</span> Computer Programming for Engineers</span> can be used in place of <span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UH 1001">CS-UH 1001</span> Introduction to Computer Science</span>, but only if a grade of A- or above is achieved.</li>
+
+	<li><span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UH 4002">CS-UH 4002</span> Capstone Project in Computer Science 2</span> can be replaced by an additional Computer Science elective.</li>
+
+	<li>Note that completing a <strong>major</strong> in Biology, Business Organizations &amp; Society, Chemistry, Economics, Engineering, Interactive Media*, Mathematics, or Physics precludes the need to complete one of the listed minors.</li>
+	<li>Computer Science majors fulfilling their minor requirement with Interactive Media <strong>minor</strong>, must complete electives from within the Computational Media category. (<span class="sc_courseinline"><span class="code_bubble" data-code-bubble="CS-UH 1001">CS-UH 1001</span> Introduction to Computer Science</span> and <span class="sc_courseinline"><span class="code_bubble" data-code-bubble="ENGR-UH 1000">ENGR-UH 1000</span> Computer Programming for Engineers</span> cannot be used towards the Interactive Media minor). </li>
+
+</ol>
+
+<p>*Computer Science majors fulfilling their minor requirement with <strong>Interactive Media</strong> <u><strong>major</strong></u>, must complete at least 2 of the 6 Interactive Media major electives from within the Computational Media category. </p>
+]]>
+</curriculumtext>
+<sampleplanofstudytext name="Sample Plan of Study">
+<![CDATA[
+<h2>Sample Plan of Study</h2>
+<table pdfnorepeatheader="true" class="sc_plangrid">
+<caption>Plan of Study Grid</caption><colgroup>
+	<col pdfwidth="28" class="codecol"/>
+	<col pdfwidth="57" class="titlecol"/>
+	<col pdfwidth="15" class="hourscol"/>
+</colgroup>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_0" class="year" colspan="2">1st Semester/Term</th><th id="lZpkCr_plangrid2_hoursheader" scope="col" class="hourscol">Credits</th></tr>
+<tr class="even"><td headers="lZpkCr_plangrid2_0 " colspan="2" class="codecol"><span class="comment">First-Year Writing Seminar</span></td>
+<td headers="lZpkCr_plangrid2_0  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers="lZpkCr_plangrid2_0 " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1001">CS-UH 1001</span></td>
+<td headers="lZpkCr_plangrid2_0 " class="titlecol">Introduction to Computer Science</td>
+<td headers="lZpkCr_plangrid2_0  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers="lZpkCr_plangrid2_0 " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1002">CS-UH 1002</span></td>
+<td headers="lZpkCr_plangrid2_0 " class="titlecol">Discrete Mathematics</td>
+<td headers="lZpkCr_plangrid2_0  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers="lZpkCr_plangrid2_0 " class="codecol"><span class="code_bubble" data-code-bubble="MATH-UH 1012Q">MATH-UH 1012Q</span></td>
+<td headers="lZpkCr_plangrid2_0 " class="titlecol">Calculus with Applications to Science and Engineering</td>
+<td headers="lZpkCr_plangrid2_0  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers="lZpkCr_plangrid2_0 " colspan="2" class="codecol"><span class="comment">Physical Education</span></td>
+<td headers="lZpkCr_plangrid2_0  lZpkCr_plangrid2_hoursheader" class="hourscol"> </td>
+</tr>
+<tr class="plangridsum odd"><td> </td><td headers="lZpkCr_plangrid2_0 " class="titlecol">Credits</td><td headers="lZpkCr_plangrid2_0  lZpkCr_plangrid2_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_1" class="year" colspan="3">2nd Semester/Term</th></tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Field Colloquia (J-Term)</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="plangridsum odd"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">3</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_2" class="year" colspan="3">3rd Semester/Term</th></tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1050">CS-UH 1050</span></td>
+<td headers=" " class="titlecol">Data Structures</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 1052">CS-UH 1052</span></td>
+<td headers=" " class="titlecol">Algorithms</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Colloquia</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Core Competency</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Physical Education</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol"> </td>
+</tr>
+<tr class="plangridsum odd"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_3" class="year" colspan="3">4th Semester/Term</th></tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2010">CS-UH 2010</span></td>
+<td headers=" " class="titlecol">Computer Systems Organization</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Major Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Minor Requirement</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Core Competency</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_4" class="year" colspan="3">5th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Field Colloquia (J-Term)</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">3</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">3</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_5" class="year" colspan="3">6th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 2012">CS-UH 2012</span></td>
+<td headers=" " class="titlecol">Software Engineering</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3010">CS-UH 3010</span></td>
+<td headers=" " class="titlecol">Operating Systems</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Minor Requirement</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">General Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum odd"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_6" class="year" colspan="3">7th Semester/Term</th></tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Major Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">General Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">General Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">General Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_7" class="year" colspan="3">8th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3012">CS-UH 3012</span></td>
+<td headers=" " class="titlecol">Computer Networks</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 3090">CS-UH 3090</span></td>
+<td headers=" " class="titlecol">Research Seminar in Computer Science</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">2</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Minor Requirement</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Core Competency</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum odd"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">14</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_8" class="year" colspan="3">9th Semester/Term</th></tr>
+<tr class="even"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 4001">CS-UH 4001</span></td>
+<td headers=" " class="titlecol">Capstone Project in Computer Science 1</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">Minor Requirement</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Core Competency</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">General Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">16</td></tr>
+<tr class="plangridyear"><th id="lZpkCr_plangrid2_9" class="year" colspan="3">10th Semester/Term</th></tr>
+<tr class="odd"><td headers=" " class="codecol"><span class="code_bubble" data-code-bubble="CS-UH 4002">CS-UH 4002</span></td>
+<td headers=" " class="titlecol">Capstone Project in Computer Science 2 (<span class="comment">or CS elective</span>)</td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="even"><td headers=" " colspan="2" class="codecol"><span class="comment">Major Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="odd"><td headers=" " colspan="2" class="codecol"><span class="comment">General Elective</span></td>
+<td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">4</td>
+</tr>
+<tr class="plangridsum even"><td> </td><td headers=" " class="titlecol">Credits</td><td headers="  lZpkCr_plangrid2_hoursheader" class="hourscol">12</td></tr>
+<tr class="plangridtotal lastrow odd"><td> </td><td>Total Credits</td><td headers="lZpkCr_plangrid2_hoursheader" class="hourscol">128</td></tr>
+</table>
+]]>
+</sampleplanofstudytext>
+<outcomestext name="Outcomes">
+<![CDATA[
+<h2>Learning Outcomes</h2>
+<p>Upon successful completion of the program, graduates will:</p>
+<ol>
+	<li>Be able to analyze a problem, and identify, define, and verify the appropriate computational tools required to solve it.</li>
+	<li>Be able to apply up-to-date computational tools necessary in a variety of computing practices.</li>
+	<li>Be able to implement algorithms as programs using modern computer languages.</li>
+	<li>Be able to apply their mathematical knowledge to solve computational problems.</li>
+	<li>Be able to communicate computer science knowledge both orally and in writing.</li>
+	<li>Be able to collaborate in teams.</li>
+</ol>
+]]>
+</outcomestext>
+<policiestext name="Policies">
+<![CDATA[
+<h2>Policies</h2>
+<div class="notinpdf onthispage" name="otp3"><div class="otp-title">On This Page</div><ul><ul><li><a href="#policiestext" nav-id="0" otp-id="3" onClick="showSection('policiestext', this);">NYU Policies</a></li><li><a href="#policiestext" nav-id="1" otp-id="3" onClick="showSection('policiestext', this);">NYU Abu Dhabi Policies</a></li></ul></ul></div>
+ <h3 headerid="0" name="policiestext" tabindex="-1">NYU Policies</h3> <p>University-wide policies can be found on the <a href="/nyu/policies/">New York University Policy pages</a>.</p>
+ <h3 headerid="1" name="policiestext" tabindex="-1">NYU Abu Dhabi Policies</h3> <p>A full list of relevant policies can be found on <a href="/undergraduate/abu-dhabi/academic-policies/">NYU Abu Dhabi's undergraduate academic policies page</a>.</p>
+]]>
+</policiestext>
+<faculty>
+<![CDATA[
+]]>
+</faculty>
+</courseleaf>
+

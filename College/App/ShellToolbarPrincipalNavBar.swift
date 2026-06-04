@@ -1,3 +1,8 @@
+// ShellToolbarPrincipalNavBar.swift
+// Feature: App
+// Purpose: App module — ShellToolbarPrincipalNavBar.
+// Data: CollegePersistence / repositories when applicable.
+
 //
 //  ShellToolbarPrincipalNavBar.swift
 //  College
@@ -8,7 +13,6 @@
 
 import SwiftUI
 
-#if os(macOS)
 
 private enum ShellToolbarPrincipalNavMotion {
     static let hoverDuration: Double = 0.18
@@ -71,7 +75,7 @@ struct ShellToolbarPrincipalNavBar: View {
             activePage = page
         } label: {
             Label(title, systemImage: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(ToolbarMetrics.controlFont)
                 .labelStyle(.titleAndIcon)
                 .foregroundStyle(isActive ? Color.accentColor : .primary)
                 .padding(.horizontal, 10)
@@ -94,4 +98,3 @@ struct ShellToolbarPrincipalNavBar: View {
     }
 }
 
-#endif

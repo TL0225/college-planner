@@ -1,3 +1,8 @@
+// UncaughtExceptionLogger.swift
+// Feature: Debug
+// Purpose: Debug module — UncaughtExceptionLogger.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 
 enum UncaughtExceptionLogger {

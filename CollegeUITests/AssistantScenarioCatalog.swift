@@ -14,7 +14,7 @@ enum AssistantScenarioCatalog {
     static let tier1WeekAgenda = "What do I have this week?"
     static let tier1DueItems = "what is due"
     static let tier1Tomorrow = "What's on my calendar tomorrow?"
-    static let tier1ModelIdentity = "what model are you"W
+    static let tier1ModelIdentity = "what model are you"
     static let tier1EventHelp = "create event for my study group"
 
     static let tier2ProgramProgress = "UITEST_STUB get program progress"

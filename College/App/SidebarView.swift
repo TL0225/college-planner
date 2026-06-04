@@ -1,8 +1,10 @@
+// SidebarView.swift
+// Feature: App
+// Purpose: App module — SidebarView.
+// Data: CollegePersistence / repositories when applicable.
+
 import SwiftUI
-import CoreData
-#if os(macOS)
 import AppKit
-#endif
 
 struct SidebarView: View {
     @Binding var activePage: AppPage
@@ -10,8 +12,8 @@ struct SidebarView: View {
     var showLeadingMainSidebarToggle: Bool = false
     var onMainSidebarToggleIntent: (() -> Void)? = nil
 
-    @FetchRequest(fetchRequest: SidebarView.profileRequest)
-    private var profiles: FetchedResults<ProfileEntity>
+    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
 
     @State private var hoveredFooterActionID: String?
     @State private var webShortcuts: [WebShortcut] = WebShortcutStore.loadAllSync()
@@ -34,7 +36,6 @@ struct SidebarView: View {
     private var footerActions: [FooterAction] {
         var actions: [FooterAction] = []
 
-        #if os(macOS)
         actions.append(
             FooterAction(
                 id: "settings",
@@ -43,7 +44,6 @@ struct SidebarView: View {
                 helpText: String(localized: "app.page.settings")
             )
         )
-        #endif
 
         actions.append(
             FooterAction(
@@ -58,18 +58,10 @@ struct SidebarView: View {
     }
 
     private var sidebarPortalTitle: String {
-        let p = profiles.first
-        if let college = p?.collegeName?.trimmingCharacters(in: .whitespacesAndNewlines), !college.isEmpty {
+        if let college = profileShell.collegeName, !college.isEmpty {
             return college
         }
         return String(localized: "sidebar.default_portal_title")
-    }
-
-    private static var profileRequest: NSFetchRequest<ProfileEntity> {
-        let r = NSFetchRequest<ProfileEntity>(entityName: "ProfileEntity")
-        r.fetchLimit = 1
-        r.sortDescriptors = []
-        return r
     }
 
     var body: some View {
@@ -96,16 +88,20 @@ struct SidebarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.clear)
         .ignoresSafeArea(.container, edges: [.leading])
+        .onAppear { refreshProfileShell() }
+        .onChange(of: collegePersistence.profileRevision) { _, _ in refreshProfileShell() }
+    }
+
+    private func refreshProfileShell() {
+        profileShell = ProfileReadBridge.shellSnapshot(collegePersistence: collegePersistence)
     }
 
     private func navigationContent(compactHeight: Bool, topChromeInset: CGFloat, showLeadingMainSidebarToggle: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
-                #if os(macOS)
                 if showLeadingMainSidebarToggle {
                     SafeSidebarToggleView(onToggleIntent: onMainSidebarToggleIntent)
                 }
-                #endif
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
@@ -136,23 +132,17 @@ struct SidebarView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            #if os(macOS)
             .padding(.top, max(10, topChromeInset - 28))
             .padding(.bottom, 20)
             .padding(.horizontal, -10)
             .padding(.horizontal, 16)
-            #else
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 10)
-            .padding(.horizontal, 20)
-            .padding(.bottom, 20)
-            #endif
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 8) {
                     SidebarLink(icon: "square.grid.2x2", title: AppPage.degree.displayTitle, page: .degree, activePage: $activePage, activeTint: sidebarSelectionTint)
                     SidebarLink(icon: "graduationcap", title: AppPage.academics.displayTitle, page: .academics, activePage: $activePage, activeTint: sidebarSelectionTint)
                     SidebarLink(icon: "calendar", title: AppPage.calendar.displayTitle, page: .calendar, activePage: $activePage, activeTint: sidebarSelectionTint)
+                    SidebarLink(icon: "briefcase", title: AppPage.career.displayTitle, page: .career, activePage: $activePage, activeTint: sidebarSelectionTint)
                     SidebarLink(icon: "sparkles", title: AppPage.assistant.displayTitle, page: .assistant, activePage: $activePage, activeTint: sidebarSelectionTint)
                     SidebarLink(icon: "folder", title: AppPage.documents.displayTitle, page: .documents, activePage: $activePage, activeTint: sidebarSelectionTint)
 
@@ -235,6 +225,7 @@ struct SidebarView: View {
         next.removeAll { $0.id == id }
         webShortcuts = next
         WebShortcutStore.saveAll(next)
+        WebShortcutCoordinatorPool.pruneToRegisteredShortcuts()
         if case .webShortcut(let sid) = activePage, sid == id {
             activePage = .degree
         }
@@ -275,7 +266,6 @@ struct SidebarView: View {
     private func footerActionCell(_ action: FooterAction) -> some View {
         switch action.kind {
         case .settings:
-            #if os(macOS)
             SettingsLink {
                 footerActionIcon(symbol: action.icon, isHovered: hoveredFooterActionID == action.id)
             }
@@ -285,7 +275,6 @@ struct SidebarView: View {
             .onHover { hovering in
                 hoveredFooterActionID = hovering ? action.id : nil
             }
-            #endif
 
         case .profile:
             Button {
@@ -344,6 +333,7 @@ struct SidebarLink: View {
         case .degree: return "sidebar.link.degree"
         case .academics: return "sidebar.link.academics"
         case .calendar: return "sidebar.link.calendar"
+        case .career: return "sidebar.link.career"
         case .assistant: return "sidebar.link.assistant"
         case .documents: return "sidebar.link.documents"
         case .brightspace: return "sidebar.link.brightspace"

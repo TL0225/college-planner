@@ -1,3 +1,8 @@
+// GoogleDebugLog.swift
+// Feature: Debug
+// Purpose: Debug module — GoogleDebugLog.
+// Data: CollegePersistence / repositories when applicable.
+
 import Foundation
 #if canImport(AppKit)
 import AppKit
