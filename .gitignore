@@ -62,6 +62,15 @@ Secrets.xcconfig
 *.safetensors
 *.safetensors.*
 
-# Documentation / text artifacts
+# Documentation / generated tabular artifacts
 *.md
 *.txt
+*.csv
+*.tsv
+!College/Features/Assistant/Resources/IntentTrainingData.csv
+
+# Scrape / catalog export dumps (local only)
+exports/
+
+# Local scratch / sidebar experiments (not in Xcode target)
+test_sidebar*.swift
