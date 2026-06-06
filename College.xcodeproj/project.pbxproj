@@ -18,6 +18,8 @@
 		1C1B1F0C2F0A000000849BEF /* Tokenizers in Frameworks */ = {isa = PBXBuildFile; productRef = 1C1B1F0B2F0A000000849BEF /* Tokenizers */; };
 		AA0003012F0C000000000001 /* FoundationModels.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA0003022F0C000000000002 /* FoundationModels.framework */; };
 		BB0000030000000000000003 /* CollegePlatform in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000020000000000000002 /* CollegePlatform */; };
+		CC0000030000000000000003 /* CollegeCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = CC0000020000000000000002 /* CollegeCalendar */; };
+		CC0000040000000000000004 /* CollegeCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = CC0000020000000000000002 /* CollegeCalendar */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -88,6 +90,7 @@
 				1C1B1CF12EFC44BD00849BEC /* MLXRandom in Frameworks */,
 				AA0003012F0C000000000001 /* FoundationModels.framework in Frameworks */,
 				BB0000030000000000000003 /* CollegePlatform in Frameworks */,
+				CC0000030000000000000003 /* CollegeCalendar in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -95,6 +98,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC0000040000000000000004 /* CollegeCalendar in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -158,6 +162,7 @@
 				1C1B1F0B2F0A000000849BEF /* Tokenizers */,
 				AA0000030000000000000003 /* SwiftSoup */,
 				BB0000020000000000000002 /* CollegePlatform */,
+				CC0000020000000000000002 /* CollegeCalendar */,
 			);
 			productName = College;
 			productReference = 1C7487602EF688EA00021529 /* College.app */;
@@ -181,6 +186,7 @@
 			);
 			name = CollegeTests;
 			packageProductDependencies = (
+				CC0000020000000000000002 /* CollegeCalendar */,
 			);
 			productName = CollegeTests;
 			productReference = 1C74876F2EF688EC00021529 /* CollegeTests.xctest */;
@@ -220,6 +226,7 @@
 				1C1B1F092F0A000000849BEF /* XCRemoteSwiftPackageReference "swift-transformers" */,
 				AA0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				BB0000010000000000000001 /* XCLocalSwiftPackageReference "CollegePlatform" */,
+				CC0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCalendar" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1C7487612EF688EA00021529 /* Products */;
@@ -625,6 +632,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = CollegePlatform;
 		};
+		CC0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCalendar" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CollegeCalendar;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -712,6 +723,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BB0000010000000000000001 /* XCLocalSwiftPackageReference "CollegePlatform" */;
 			productName = CollegePlatform;
+		};
+		CC0000020000000000000002 /* CollegeCalendar */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CC0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCalendar" */;
+			productName = CollegeCalendar;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

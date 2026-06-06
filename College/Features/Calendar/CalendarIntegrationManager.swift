@@ -11,6 +11,7 @@ import Foundation
 import Security
 import SwiftUI
 import os
+import CollegeCalendar
 
 // MARK: - Outlook import (file scope: `DateFormatter` + payload boxes for local store `perform` @Sendable closures)
 

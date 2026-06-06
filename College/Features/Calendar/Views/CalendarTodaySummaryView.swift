@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCalendar
 
 /// Phase 6: compact today summary for sidebar / overview hooks.
 struct CalendarTodaySummaryView: View {

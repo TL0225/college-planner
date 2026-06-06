@@ -7,7 +7,7 @@ import Foundation
 
 // MARK: - Models (shared by Calendar UI + background cache builder)
 
-enum CalendarEventKind: Hashable, Sendable {
+public enum CalendarEventKind: Hashable, Sendable {
     case deadline
     case classEvent
     case lecture
@@ -19,65 +19,122 @@ enum CalendarEventKind: Hashable, Sendable {
     case computerScience
 }
 
-struct CalendarCalEvent: Identifiable, Hashable, Sendable {
-    let title: String
-    let type: CalendarEventKind
-    let isImportant: Bool
-    var startDate: Date?
-    var endDate: Date?
-    var isAllDay: Bool
-    var calendarEventID: UUID?
-    var calendarObjectURI: String?
-    var customColorHex: String? = nil
+public struct CalendarCalEvent: Identifiable, Hashable, Sendable {
+    public let title: String
+    public let type: CalendarEventKind
+    public let isImportant: Bool
+    public var startDate: Date?
+    public var endDate: Date?
+    public var isAllDay: Bool
+    public var calendarEventID: UUID?
+    public var calendarObjectURI: String?
+    public var customColorHex: String? = nil
 
-    var cacheKey: String {
+    public init(
+        title: String,
+        type: CalendarEventKind,
+        isImportant: Bool,
+        startDate: Date?,
+        endDate: Date?,
+        isAllDay: Bool,
+        calendarEventID: UUID? = nil,
+        calendarObjectURI: String? = nil,
+        customColorHex: String? = nil
+    ) {
+        self.title = title
+        self.type = type
+        self.isImportant = isImportant
+        self.startDate = startDate
+        self.endDate = endDate
+        self.isAllDay = isAllDay
+        self.calendarEventID = calendarEventID
+        self.calendarObjectURI = calendarObjectURI
+        self.customColorHex = customColorHex
+    }
+
+    public var cacheKey: String {
         let titleKey = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let startKey = Int(startDate?.timeIntervalSince1970 ?? 0)
         let endKey = Int(endDate?.timeIntervalSince1970 ?? 0)
         return "\(titleKey)|\(startKey)|\(endKey)|\(isAllDay)"
     }
 
-    var id: String { cacheKey }
+    public var id: String { cacheKey }
 }
 
-struct CalendarLayoutSegment: Identifiable, Hashable, Sendable {
-    var id: String {
+public struct CalendarLayoutSegment: Identifiable, Hashable, Sendable {
+    public var id: String {
         "\(sourceKey)|\(columnIndex)|\(columnCount)"
     }
-    let sourceKey: String
-    var event: CalendarCalEvent
-    let columnIndex: Int
-    let columnCount: Int
+    public let sourceKey: String
+    public var event: CalendarCalEvent
+    public let columnIndex: Int
+    public let columnCount: Int
+
+    public init(sourceKey: String, event: CalendarCalEvent, columnIndex: Int, columnCount: Int) {
+        self.sourceKey = sourceKey
+        self.event = event
+        self.columnIndex = columnIndex
+        self.columnCount = columnCount
+    }
 }
 
 // MARK: - Snapshots (Sendable; built on MainActor from local store objects)
 
-struct CalendarEventSnapshot: Sendable {
-    let title: String
-    let start: Date
-    let end: Date
-    let explicitAllDay: Bool?
-    let calendarEventID: UUID?
-    let calendarObjectURI: String?
-    var tenantKind: CalendarTenantKind?
+public struct CalendarEventSnapshot: Sendable {
+    public let title: String
+    public let start: Date
+    public let end: Date
+    public let explicitAllDay: Bool?
+    public let calendarEventID: UUID?
+    public let calendarObjectURI: String?
+    public var tenantKind: CalendarTenantKind?
+
+    public init(
+        title: String,
+        start: Date,
+        end: Date,
+        explicitAllDay: Bool?,
+        calendarEventID: UUID?,
+        calendarObjectURI: String?,
+        tenantKind: CalendarTenantKind? = nil
+    ) {
+        self.title = title
+        self.start = start
+        self.end = end
+        self.explicitAllDay = explicitAllDay
+        self.calendarEventID = calendarEventID
+        self.calendarObjectURI = calendarObjectURI
+        self.tenantKind = tenantKind
+    }
 }
 
-struct CalendarTaskSnapshot: Sendable {
-    let title: String
-    let due: Date
+public struct CalendarTaskSnapshot: Sendable {
+    public let title: String
+    public let due: Date
+
+    public init(title: String, due: Date) {
+        self.title = title
+        self.due = due
+    }
 }
 
 // MARK: - Pure cache engine (no SwiftUI / local store)
 
-enum CalendarCacheEngine: Sendable {
+public enum CalendarCacheEngine: Sendable {
 
-    struct Result: Sendable {
-        let dayEventsByDate: [Date: [CalendarCalEvent]]
-        let timedLayoutsByDate: [Date: [CalendarLayoutSegment]]
+    public struct Result: Sendable {
+        public let dayEventsByDate: [Date: [CalendarCalEvent]]
+        public let timedLayoutsByDate: [Date: [CalendarLayoutSegment]]
+
+        public init(dayEventsByDate: [Date: [CalendarCalEvent]], timedLayoutsByDate: [Date: [CalendarLayoutSegment]]) {
+            self.dayEventsByDate = dayEventsByDate
+            self.timedLayoutsByDate = timedLayoutsByDate
+        }
     }
 
     /// Visible fetch window for local store (overlap-friendly).
-    static func fetchWindow(
+    public static func fetchWindow(
         currentDate: Date,
         mode: CalendarFetchMode,
         cal: Calendar
@@ -113,7 +170,7 @@ enum CalendarCacheEngine: Sendable {
         return (start, end)
     }
 
-    static func buildCaches(
+    public static func buildCaches(
         events: [CalendarEventSnapshot],
         tasks: [CalendarTaskSnapshot],
         calendar: Calendar
@@ -332,7 +389,7 @@ enum CalendarCacheEngine: Sendable {
 }
 
 /// Month / week / day fetch window (maps from `CalendarView.ViewMode`).
-enum CalendarFetchMode: Sendable {
+public enum CalendarFetchMode: Sendable {
     case month
     case week
     case day

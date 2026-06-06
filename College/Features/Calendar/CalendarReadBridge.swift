@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCalendar
 
 /// local store-only calendar reads for cache rebuild (Phase 7f).
 @MainActor

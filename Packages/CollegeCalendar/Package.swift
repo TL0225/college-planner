@@ -1,6 +1,5 @@
 // swift-tools-version: 6.0
-// ADR 004 Phase 2 — Calendar feature extraction scaffold.
-// Not wired into College.xcodeproj yet; validates dependency edges only.
+// ADR 004 Phase 2a — Calendar feature extraction (Layer 1).
 
 import PackageDescription
 
@@ -20,6 +19,9 @@ let package = Package(
             name: "CollegeCalendar",
             dependencies: [
                 .product(name: "CollegePlatform", package: "CollegePlatform"),
+            ],
+            linkerSettings: [
+                .linkedFramework("EventKit"),
             ]
         ),
         .testTarget(

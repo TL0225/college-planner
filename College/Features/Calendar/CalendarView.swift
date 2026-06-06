@@ -7,6 +7,7 @@ import SwiftUI
 import Observation
 import os
 import MapKit
+import CollegeCalendar
 
 // Domain types and cache logic live in CalendarCacheEngine.swift
 typealias CalEvent = CalendarCalEvent

@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCalendar
 
 enum ICSSubscriptionUpsertService {
     @MainActor

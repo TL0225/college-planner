@@ -5,6 +5,7 @@
 
 import AppKit
 import Foundation
+import CollegeCalendar
 
 /// Refreshes ICS subscription feeds on macOS (Phase 4). Uses `NSBackgroundActivityScheduler`, not BGTaskScheduler.
 @MainActor

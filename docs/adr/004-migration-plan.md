@@ -2,7 +2,7 @@
 
 **Owner:** Timothy Leung  
 **Deadline:** 2026-06-19  
-**Status:** Kickoff (enforcement CI + package scaffolds)
+**Status:** Phase 2a in progress (Layer 1 complete, package wired)
 
 ## Audit summary (2026-06-05)
 
@@ -103,12 +103,42 @@ Move from `College/Features/Calendar/` into `Packages/CollegeCalendar/Sources/Co
 | `Packages/CollegePlatformBoundary/` | Documents allowed dependency edges |
 | `CollegePlatform/` | Existing shared module (calendar change messaging, integration health) |
 
-## Xcode wiring (not done in kickoff)
+## Xcode wiring (Phase 2a — 2026-06-05)
 
-1. Add local package reference `Packages/CollegeCalendar` to `College.xcodeproj`
-2. Link `CollegeCalendar` product to College app target
-3. Remove migrated sources from app target compile phase (incremental per layer)
-4. Repeat for Academics/Career
+1. [x] Add local package reference `Packages/CollegeCalendar` to `College.xcodeproj` (`XCLocalSwiftPackageReference`, mirrors `CollegePlatform`)
+2. [x] Link `CollegeCalendar` product to College app target and `CollegeTests`
+3. [x] Layer 1 sources removed from app compile path (moved to package; SwiftData bridges remain in app)
+4. [ ] Repeat for Academics/Career
+
+### Layer 1 status: **complete**
+
+Moved to `Packages/CollegeCalendar/Sources/CollegeCalendar/`:
+
+| File | Notes |
+| --- | --- |
+| `CalendarCacheEngine.swift` | Pure cache engine + snapshot types |
+| `CalendarTenantKind.swift` | Uses `CoreGraphics`; persistence `resolve(for:)` in app bridge |
+| `CalendarVisibilityFilter.swift` | Uses `CalendarVisibilityEventInput`; SwiftData `shouldDisplay(_: CalendarEvent)` in app bridge |
+| `CalendarFormatters.swift` | Date formatters |
+| `CalendarTimelineAggregator.swift` | Tenant enrichment via `[UUID: CalendarTenantKind]` map |
+| `CalendarTimelineEpics.swift` | Dependency / display-mode foundation types |
+| `Recurrence/CalendarRecurrenceExpander.swift` | EventKit + RRULE fallback |
+| `ICS/ICSCalendarParser.swift` | Minimal ICS parser |
+
+App-target bridges (Layer 2 prep, not Layer 1):
+
+- `CalendarFetchQuery.swift` — SwiftData fetch helpers (split from former `CalendarVisibilityFilter.swift`)
+- `CalendarPersistenceBridges.swift` — `CalendarEvent` adapters for package APIs
+
+Tests: `Packages/CollegeCalendar/Tests/CollegeCalendarTests/CalendarCacheEngineTests.swift` (perf + ICS smoke).
+
+**Blockers for full Calendar extraction:**
+
+- Layer 2: `CalendarEventWritePipeline`, `CalendarEditorSession` (CollegePlatform messaging; persistence writes)
+- Layer 3: Sync providers, `CalendarIntegrationManager*`, coordinators (~20 files; heavy SwiftData + EventKit)
+- Layer 4: SwiftUI views, editor, modals (depend on App shell + `@Environment` bridges)
+- `CalendarView.swift` still duplicates private `CalendarFormatters` — dedupe when UI moves
+- No `CollegeCore` package yet; persistence models stay in app until Core extraction lands
 
 **Blocker note:** Full Calendar extract in one pass risks breaking SwiftUI previews and bridge compile order. Layer 1–2 can land without UI churn.
 

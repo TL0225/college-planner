@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCalendar
 
 @MainActor
 enum CalendarEventChipStyle {

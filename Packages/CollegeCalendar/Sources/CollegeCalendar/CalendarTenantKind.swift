@@ -1,20 +1,15 @@
-// CalendarTenantKind.swift
-// Feature: Calendar
-// Purpose: Calendar module — CalendarTenantKind.
-// Data: CollegePersistence / repositories when applicable.
-
+import CoreGraphics
 import Foundation
-import SwiftUI
 
 /// Multi-tenant lane classification for calendar chip geometry and aggregation.
-enum CalendarTenantKind: String, CaseIterable, Sendable {
+public enum CalendarTenantKind: String, CaseIterable, Sendable {
     case personal
     case work
     case school
 
-    static let cornerRadiusOverridesKey = "calendar.tenant.cornerRadiusOverrides"
+    public static let cornerRadiusOverridesKey = "calendar.tenant.cornerRadiusOverrides"
 
-    var defaultCornerRadius: CGFloat {
+    public var defaultCornerRadius: CGFloat {
         switch self {
         case .personal: return 10
         case .work: return 6
@@ -22,7 +17,7 @@ enum CalendarTenantKind: String, CaseIterable, Sendable {
         }
     }
 
-    func resolvedCornerRadius(cellRadius: CGFloat) -> CGFloat {
+    public func resolvedCornerRadius(cellRadius: CGFloat) -> CGFloat {
         let stored = UserDefaults.standard.dictionary(forKey: Self.cornerRadiusOverridesKey) as? [String: Double]
         let base = stored?[rawValue].map { CGFloat($0) } ?? defaultCornerRadius
         switch self {
@@ -33,9 +28,11 @@ enum CalendarTenantKind: String, CaseIterable, Sendable {
         }
     }
 
-    static func resolve(for event: CalendarEvent) -> CalendarTenantKind {
-        if event.course != nil { return .school }
-        let source = (event.providerSource ?? "").lowercased()
+    public static func resolve(courseCode: String?, providerSource: String?, hasCourse: Bool) -> CalendarTenantKind {
+        if hasCourse { return .school }
+        let trimmedCode = courseCode?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedCode.isEmpty { return .school }
+        let source = (providerSource ?? "").lowercased()
         if source.contains("outlook") || source.contains("google") { return .work }
         return .personal
     }

@@ -1,30 +1,43 @@
-// ICSCalendarParser.swift
-// Feature: Calendar
-// Purpose: Calendar module — ParsedEvent.
-// Data: CollegePersistence / repositories when applicable.
-
 import Foundation
 
 /// Minimal ICS parser for subscription import (Phase 4). Expands to Rust/UniFFI per CALENDAR_FFI.md.
-enum ICSCalendarParser {
-    struct ParsedEvent: Sendable {
-        var uid: String
-        var title: String
-        var start: Date
-        var end: Date
-        var allDay: Bool
-        var location: String?
-        var notes: String?
+public enum ICSCalendarParser {
+    public struct ParsedEvent: Sendable {
+        public var uid: String
+        public var title: String
+        public var start: Date
+        public var end: Date
+        public var allDay: Bool
+        public var location: String?
+        public var notes: String?
+
+        public init(
+            uid: String,
+            title: String,
+            start: Date,
+            end: Date,
+            allDay: Bool,
+            location: String? = nil,
+            notes: String? = nil
+        ) {
+            self.uid = uid
+            self.title = title
+            self.start = start
+            self.end = end
+            self.allDay = allDay
+            self.location = location
+            self.notes = notes
+        }
     }
 
-    static func parse(data: Data) throws -> [ParsedEvent] {
+    public static func parse(data: Data) throws -> [ParsedEvent] {
         guard let text = String(data: data, encoding: .utf8) else {
             throw ICSParseError.invalidEncoding
         }
         return parse(icsText: text)
     }
 
-    static func parse(icsText: String) -> [ParsedEvent] {
+    public static func parse(icsText: String) -> [ParsedEvent] {
         var events: [ParsedEvent] = []
         var inEvent = false
         var buffer: [String: String] = [:]
@@ -91,6 +104,6 @@ enum ICSCalendarParser {
     }
 }
 
-enum ICSParseError: Error {
+public enum ICSParseError: Error {
     case invalidEncoding
 }

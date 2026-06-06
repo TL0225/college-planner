@@ -1,20 +1,20 @@
-// CalendarRecurrenceExpander.swift
-// Feature: Calendar
-// Purpose: Calendar module — Occurrence.
-// Data: CollegePersistence / repositories when applicable.
-
 import EventKit
 import Foundation
 
 /// Recurrence expansion (Phase 2d Option B): EventKit for Apple-linked events; local RRULE parsing fallback.
-enum CalendarRecurrenceExpander {
-    struct Occurrence: Sendable {
-        var start: Date
-        var end: Date
+public enum CalendarRecurrenceExpander {
+    public struct Occurrence: Sendable {
+        public var start: Date
+        public var end: Date
+
+        public init(start: Date, end: Date) {
+            self.start = start
+            self.end = end
+        }
     }
 
     /// Expands occurrences in `window` for a stored recurrence rule string.
-    static func expand(
+    public static func expand(
         rule: String?,
         start: Date,
         end: Date,
@@ -34,7 +34,7 @@ enum CalendarRecurrenceExpander {
     }
 
     /// EventKit expansion when an `EKEvent` is available (Apple sync path).
-    static func expand(ekEvent: EKEvent, in store: EKEventStore, windowStart: Date, windowEnd: Date) -> [Occurrence] {
+    public static func expand(ekEvent: EKEvent, in store: EKEventStore, windowStart: Date, windowEnd: Date) -> [Occurrence] {
         guard let calendar = ekEvent.calendar else { return [] }
         let predicate = store.predicateForEvents(withStart: windowStart, end: windowEnd, calendars: [calendar])
         let matches = store.events(matching: predicate).filter { $0.eventIdentifier == ekEvent.eventIdentifier }

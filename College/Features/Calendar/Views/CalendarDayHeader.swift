@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCalendar
 
 /// Top-left corner of the week/day timed grid (above hour labels).
 struct CalendarTimeZoneCornerLabel: View {
