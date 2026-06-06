@@ -14,6 +14,7 @@
 //     posts `Notification.Name.graduationPlanChanged` so the rest of the app
 //     refreshes immediately.
 
+import CollegeAcademics
 import SwiftUI
 
 struct GraduationTimelineConfigSheet: View {
@@ -47,7 +48,9 @@ struct GraduationTimelineConfigSheet: View {
             academicProfile?.degreeLevel ?? collegePersistence.primaryDegreeLevel(default: "")
         )
         return GraduationTimelineEngine.policyBand(
-            policies: collegePersistence.activeSchoolPolicies(),
+            policyInput: GraduationTimelineEngine.PolicyInput(
+                policies: collegePersistence.activeSchoolPolicies()
+            ),
             isGraduate: isGraduate
         )
     }

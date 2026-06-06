@@ -7,12 +7,18 @@ import SwiftUI
 struct MainWindowToolbar: ToolbarContent {
     let activePage: AppPage
     @Binding var academicsInspectorPresented: Bool
+    @Environment(AppContainer.self) private var appContainer
 
     var body: some ToolbarContent {
         DefaultToolbarItem(kind: .sidebarToggle, placement: .automatic)
         ToolbarProviderRegistry.pageToolbarContent(
             for: activePage,
-            academicsInspectorPresented: $academicsInspectorPresented
+            context: ToolbarProviderContext(
+                store: appContainer.toolbarStore,
+                dispatcher: appContainer.toolbarDispatcher,
+                activePage: activePage,
+                academicsInspectorPresented: $academicsInspectorPresented
+            )
         )
     }
 }

@@ -1,4 +1,5 @@
 // ScheduleWidget.swift
+import CollegeCalendar
 // Feature: Overview
 // Purpose: Overview module — ScheduleWidget.
 // Data: CollegePersistence / repositories when applicable.

@@ -3,6 +3,7 @@
 // Purpose: Career module — CareerSpotlightIndexer.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCareer
 import CoreSpotlight
 import UniformTypeIdentifiers
 

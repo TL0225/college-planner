@@ -2,6 +2,7 @@
 // Feature: App / Toolbar
 
 import SwiftUI
+import CollegeCareer
 
 struct CareerToolbarContent: ToolbarContent {
     let activePage: AppPage

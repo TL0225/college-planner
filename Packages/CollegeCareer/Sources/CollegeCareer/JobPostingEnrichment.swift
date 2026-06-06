@@ -6,9 +6,9 @@
 import Foundation
 import CryptoKit
 
-enum JobPostingEnrichment {
+public enum JobPostingEnrichment {
     /// Annual salary in whole dollars (not cents) for min/max.
-    static func extractSalaryRange(from text: String) -> (min: Int, max: Int)? {
+    public static func extractSalaryRange(from text: String) -> (min: Int, max: Int)? {
         let patterns: [String] = [
             #"\$\s*([\d,]+(?:\.\d{2})?)\s*(?:k|K)?\s*[-–—to]+\s*\$\s*([\d,]+(?:\.\d{2})?)\s*(?:k|K)?"#,
             #"(?:salary|pay|compensation)[:\s]+\$\s*([\d,]+)\s*[-–—]+\s*\$\s*([\d,]+)"#,
@@ -32,7 +32,7 @@ enum JobPostingEnrichment {
         return nil
     }
 
-    static func extractDeadline(from text: String) -> Date? {
+    public static func extractDeadline(from text: String) -> Date? {
         let phrases = [
             #"apply\s+by\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})"#,
             #"deadline[:\s]+([A-Za-z]+\s+\d{1,2},?\s+\d{4})"#,
@@ -63,13 +63,13 @@ enum JobPostingEnrichment {
         return nil
     }
 
-    static func descriptionHash(_ plain: String) -> String {
+    public static func descriptionHash(_ plain: String) -> String {
         let data = Data(plain.utf8)
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    static func appendChangeLog(existing: String?, summary: String) -> String {
+    public static func appendChangeLog(existing: String?, summary: String) -> String {
         let line = "\(Self.todayStamp()): \(summary)"
         if let existing, !existing.isEmpty {
             return existing + "\n" + line
@@ -77,13 +77,13 @@ enum JobPostingEnrichment {
         return line
     }
 
-    static func changeSummary(oldHash: String?, newHash: String, oldSalary: String?, newMin: Int?, newMax: Int?) -> String? {
+    public static func changeSummary(oldHash: String?, newHash: String, oldSalary: String?, newMin: Int?, newMax: Int?) -> String? {
         guard oldHash != newHash else { return nil }
         if oldSalary == nil, newMin != nil { return "Salary range added" }
         return "Description updated"
     }
 
-    static func formatSalaryRange(min: Int, max: Int) -> String {
+    public static func formatSalaryRange(min: Int, max: Int) -> String {
         func fmt(_ v: Int) -> String {
             if v >= 1000, v % 1000 == 0 { return "$\(v / 1000)K" }
             let nf = NumberFormatter()
@@ -95,7 +95,7 @@ enum JobPostingEnrichment {
         return "\(fmt(min)) – \(fmt(max)) / year"
     }
 
-    static func deadlineBadgeText(for deadline: Date) -> (text: String, urgent: Bool)? {
+    public static func deadlineBadgeText(for deadline: Date) -> (text: String, urgent: Bool)? {
         let cal = Calendar.current
         let start = cal.startOfDay(for: Date())
         let end = cal.startOfDay(for: deadline)

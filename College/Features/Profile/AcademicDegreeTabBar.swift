@@ -5,6 +5,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import CollegeAcademics
 
 // MARK: - Degree scope pill bar
 

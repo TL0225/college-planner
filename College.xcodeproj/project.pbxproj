@@ -20,6 +20,10 @@
 		BB0000030000000000000003 /* CollegePlatform in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000020000000000000002 /* CollegePlatform */; };
 		CC0000030000000000000003 /* CollegeCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = CC0000020000000000000002 /* CollegeCalendar */; };
 		CC0000040000000000000004 /* CollegeCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = CC0000020000000000000002 /* CollegeCalendar */; };
+		DD0000030000000000000003 /* CollegeAcademics in Frameworks */ = {isa = PBXBuildFile; productRef = DD0000020000000000000002 /* CollegeAcademics */; };
+		DD0000040000000000000004 /* CollegeAcademics in Frameworks */ = {isa = PBXBuildFile; productRef = DD0000020000000000000002 /* CollegeAcademics */; };
+		EE0000030000000000000003 /* CollegeCareer in Frameworks */ = {isa = PBXBuildFile; productRef = EE0000020000000000000002 /* CollegeCareer */; };
+		EE0000040000000000000004 /* CollegeCareer in Frameworks */ = {isa = PBXBuildFile; productRef = EE0000020000000000000002 /* CollegeCareer */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -91,6 +95,8 @@
 				AA0003012F0C000000000001 /* FoundationModels.framework in Frameworks */,
 				BB0000030000000000000003 /* CollegePlatform in Frameworks */,
 				CC0000030000000000000003 /* CollegeCalendar in Frameworks */,
+				DD0000030000000000000003 /* CollegeAcademics in Frameworks */,
+				EE0000030000000000000003 /* CollegeCareer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -99,6 +105,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				CC0000040000000000000004 /* CollegeCalendar in Frameworks */,
+				DD0000040000000000000004 /* CollegeAcademics in Frameworks */,
+				EE0000040000000000000004 /* CollegeCareer in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -163,6 +171,8 @@
 				AA0000030000000000000003 /* SwiftSoup */,
 				BB0000020000000000000002 /* CollegePlatform */,
 				CC0000020000000000000002 /* CollegeCalendar */,
+				DD0000020000000000000002 /* CollegeAcademics */,
+				EE0000020000000000000002 /* CollegeCareer */,
 			);
 			productName = College;
 			productReference = 1C7487602EF688EA00021529 /* College.app */;
@@ -187,6 +197,8 @@
 			name = CollegeTests;
 			packageProductDependencies = (
 				CC0000020000000000000002 /* CollegeCalendar */,
+				DD0000020000000000000002 /* CollegeAcademics */,
+				EE0000020000000000000002 /* CollegeCareer */,
 			);
 			productName = CollegeTests;
 			productReference = 1C74876F2EF688EC00021529 /* CollegeTests.xctest */;
@@ -227,6 +239,8 @@
 				AA0000010000000000000001 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 				BB0000010000000000000001 /* XCLocalSwiftPackageReference "CollegePlatform" */,
 				CC0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCalendar" */,
+				DD0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeAcademics" */,
+				EE0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCareer" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 1C7487612EF688EA00021529 /* Products */;
@@ -636,6 +650,14 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/CollegeCalendar;
 		};
+		DD0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeAcademics" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CollegeAcademics;
+		};
+		EE0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCareer" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/CollegeCareer;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -728,6 +750,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = CC0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCalendar" */;
 			productName = CollegeCalendar;
+		};
+		DD0000020000000000000002 /* CollegeAcademics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DD0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeAcademics" */;
+			productName = CollegeAcademics;
+		};
+		EE0000020000000000000002 /* CollegeCareer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = EE0000010000000000000001 /* XCLocalSwiftPackageReference "Packages/CollegeCareer" */;
+			productName = CollegeCareer;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

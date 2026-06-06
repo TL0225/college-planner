@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCareer
 
 /// Row used for career stats charts (local store-only).
 struct CareerApplicationStatsRow: Sendable {

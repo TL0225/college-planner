@@ -2,7 +2,7 @@
 
 **Owner:** Timothy Leung  
 **Deadline:** 2026-06-19  
-**Status:** Phase 2a Layers 1–4 complete (CollegeCalendar package + app bridges)
+**Status:** Phase 2 complete (Calendar Layers 1–4 + Academics/Career Layer 1 packages + package import CI)
 
 ## Audit summary (2026-06-05)
 
@@ -124,7 +124,7 @@ Moved to `Packages/CollegeCalendar/Sources/CollegeCalendar/UI/` and `Views/`, `E
 1. [x] Add local package reference `Packages/CollegeCalendar` to `College.xcodeproj` (`XCLocalSwiftPackageReference`, mirrors `CollegePlatform`)
 2. [x] Link `CollegeCalendar` product to College app target and `CollegeTests`
 3. [x] Layer 1 sources removed from app compile path (moved to package; SwiftData bridges remain in app)
-4. [ ] Repeat for Academics/Career
+4. [x] Repeat for Academics/Career (Layer 1 packages wired; scrapers/UI remain in app)
 
 ### Layer 1 status: **complete**
 
@@ -154,6 +154,28 @@ Tests: `Packages/CollegeCalendar/Tests/CollegeCalendarTests/CalendarCacheEngineT
 - No `CollegeCore` package yet; SwiftData models (`CalendarEvent`, `PlannerTask`) remain in app
 - `CalendarGhostEventOverlay` stays in app until editor host is fully port-driven
 
+## Phase 2b — CollegeAcademics (Layer 1 + scene state)
+
+Package: `Packages/CollegeAcademics/`
+
+| Moved to package | Stays in app |
+| --- | --- |
+| `GPAFormatting.swift` | Requirement engines (Catalog coupling) |
+| `GraduationTimelineEngine.swift` | Views, stores, bridges |
+| `AuditRequirementSelectionStore.swift` | `GraduationTimelinePolicyBridge.swift` |
+| `UI/AcademicsSceneState.swift` | SwiftData / Catalog DTO adapters |
+
+## Phase 2c — CollegeCareer (Layer 1 + scene state)
+
+Package: `Packages/CollegeCareer/`
+
+| Moved to package | Stays in app |
+| --- | --- |
+| `CareerModels.swift` (DTOs) | Scrapers, Workday sync, views |
+| `JobPostingEnrichment.swift` | `JobBoardScraper.swift`, platform detectors |
+| `CareerNavigation.swift` (`CareerSubView`, `CareerBoardLayout`) | `CareerBoardLayoutMenu`, workspace UI |
+| `UI/CareerSceneState.swift` | SwiftData bridges, ingest/AI |
+
 ## CI
 
 - `scripts/check-feature-imports.sh warn` — toolbar-architecture workflow (interim)
@@ -163,5 +185,5 @@ Tests: `Packages/CollegeCalendar/Tests/CollegeCalendarTests/CalendarCacheEngineT
 ## Exit criteria (from ADR 004)
 
 - [x] `feature-boundaries.yml` exists and runs fail mode
-- [ ] `import CollegeAcademics` inside Calendar fails CI (requires packages + app wiring)
-- [ ] Calendar package extracted; Academics and Career follow
+- [x] `import CollegeAcademics` inside `CollegeCalendar` sources fails CI (`check-feature-imports.sh` scans `Packages/`)
+- [x] Calendar package extracted (Layers 1–4); Academics and Career Layer 1 packages follow

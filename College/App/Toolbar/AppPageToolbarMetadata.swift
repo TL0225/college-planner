@@ -8,26 +8,55 @@ import SwiftUI
 enum AppPageToolbarMetadata {
     struct Entry: Sendable {
         let toolbarContentTypeName: String
+        let toolbarProviderTypeName: String
         let hasDedicatedToolbarChrome: Bool
     }
 
     static func entry(for page: AppPage) -> Entry {
         switch page {
         case .calendar:
-            return Entry(toolbarContentTypeName: "CalendarToolbarContent", hasDedicatedToolbarChrome: true)
+            return Entry(
+                toolbarContentTypeName: "CalendarToolbarContent",
+                toolbarProviderTypeName: "CalendarToolbarProvider",
+                hasDedicatedToolbarChrome: true
+            )
         case .academics:
-            return Entry(toolbarContentTypeName: "AcademicsToolbarContent", hasDedicatedToolbarChrome: true)
+            return Entry(
+                toolbarContentTypeName: "AcademicsToolbarContent",
+                toolbarProviderTypeName: "AcademicsToolbarProvider",
+                hasDedicatedToolbarChrome: true
+            )
         case .career:
-            return Entry(toolbarContentTypeName: "CareerToolbarContent", hasDedicatedToolbarChrome: true)
+            return Entry(
+                toolbarContentTypeName: "CareerToolbarContent",
+                toolbarProviderTypeName: "CareerToolbarProvider",
+                hasDedicatedToolbarChrome: true
+            )
         case .webShortcut:
-            return Entry(toolbarContentTypeName: "WebToolbarContent", hasDedicatedToolbarChrome: true)
+            return Entry(
+                toolbarContentTypeName: "WebToolbarContent",
+                toolbarProviderTypeName: "WebToolbarProvider",
+                hasDedicatedToolbarChrome: true
+            )
         case .brightspace:
-            return Entry(toolbarContentTypeName: "WebToolbarContent", hasDedicatedToolbarChrome: false)
+            return Entry(
+                toolbarContentTypeName: "WebToolbarContent",
+                toolbarProviderTypeName: "WebToolbarProvider",
+                hasDedicatedToolbarChrome: false
+            )
         case .degree, .assistant, .profile, .settings, .documents:
-            return Entry(toolbarContentTypeName: "None", hasDedicatedToolbarChrome: false)
+            return Entry(
+                toolbarContentTypeName: "None",
+                toolbarProviderTypeName: "None",
+                hasDedicatedToolbarChrome: false
+            )
         #if DEBUG
         case .debug:
-            return Entry(toolbarContentTypeName: "None", hasDedicatedToolbarChrome: false)
+            return Entry(
+                toolbarContentTypeName: "None",
+                toolbarProviderTypeName: "None",
+                hasDedicatedToolbarChrome: false
+            )
         #endif
         }
     }

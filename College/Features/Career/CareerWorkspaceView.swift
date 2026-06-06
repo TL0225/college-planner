@@ -6,16 +6,7 @@
 import SwiftUI
 import AppKit
 import Quartz
-enum CareerSubView: String, CaseIterable, Identifiable, Hashable {
-    case board = "Board"
-    case openings = "Openings"
-    case stats = "Stats"
-    case resumes = "Resumes"
-    case stories = "Stories"
-    case networking = "Networking"
-
-    var id: String { rawValue }
-}
+import CollegeCareer
 
 struct CareerWorkspaceView: View {
     @Environment(AppContainer.self) private var appContainer

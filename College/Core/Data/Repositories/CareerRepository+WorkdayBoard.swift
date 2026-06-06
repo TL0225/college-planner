@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCareer
 
 extension CareerRepository {
     func fetchTrackerForWorkday(companySlug: String, externalId: String) throws -> JobApplication? {

@@ -1,4 +1,5 @@
 // EventsWidget.swift
+import CollegeCalendar
 // Feature: Overview
 // Purpose: Overview module — EventsWidget.
 // Data: CollegePersistence / repositories when applicable.

@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCareer
 
 struct SettingsCareerPanel: View {
     @AppStorage("career.board.keyboardNavigation") private var keyboardNavigation = true

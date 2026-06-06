@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import CollegeCareer
 
 struct WorkdayCompanyJobsView: View {
     @Environment(AppContainer.self) private var container

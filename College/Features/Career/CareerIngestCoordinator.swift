@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import Foundation
+import CollegeCareer
 
 @MainActor
 final class CareerIngestCoordinator {

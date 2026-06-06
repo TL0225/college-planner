@@ -1,6 +1,6 @@
 # ADR 007: Liquid Glass Toolbar Design System
 
-**Status:** Accepted  
+**Status:** Implemented (Tahoe glass layers 1–7; density v2 theme scaling; hover/press on all public controls)  
 **Date:** 2026-06-05
 
 ## Context
@@ -18,7 +18,7 @@ The toolbar visual layer is a **replaceable design system** via the `GlassToolba
 | 1 | `ToolbarGlassTheme` | Static tokens: radii, spacing, materials, stroke, `minHitTarget` |
 | 2 | `GlassMotionTokens` | Shared spring vocabulary: hover/press scale, elevation, transitions |
 | 3 | `GlassInteractionState` | `idle`, `hover`, `focus`, `pressed`, `selected`, `disabled` |
-| 4 | `ToolbarDensity` | `compact` / `regular` / `expanded` — v1 from sidebar visibility only |
+| 4 | `ToolbarDensity` | `compact` / `regular` / `expanded` — v1 from sidebar visibility; **v2** scales all `ToolbarGlassTheme` metrics via `scaled(for:)` |
 | 5 | `GlassToolbarStyle` | Protocol wiring theme + motion + interaction; `TahoeGlassStyle` default |
 | 6 | Accessibility | Label, identifier, `minHitTarget` on every public control |
 | 7 | `GlassToolbarControls` | Composed controls consuming style/environment only |

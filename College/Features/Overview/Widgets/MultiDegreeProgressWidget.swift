@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeAcademics
 
 struct MultiDegreeProgressWidget: View {
     @Environment(AppContainer.self) private var container

@@ -5,6 +5,7 @@
 
 import SwiftUI
 import AppKit
+import CollegeCareer
 
 struct CareerApplicationContextMenu: ViewModifier {
     let persistence: CollegePersistence

@@ -4,6 +4,7 @@
 
 import CollegeCalendar
 import SwiftUI
+import CollegeAcademics
 
 struct CalToolbarChromeView: View {
     @Environment(AppContainer.self) private var appContainer

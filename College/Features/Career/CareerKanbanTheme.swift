@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCareer
 
 enum CareerKanbanTheme {
     struct PillStyle: Sendable {

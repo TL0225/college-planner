@@ -18,7 +18,7 @@ All controls animate via `GlassMotionTokens` from the active `GlassToolbarStyle`
 
 ### 4. Density
 
-Controls respect `@Environment(\.toolbarDensity)` or injected `ToolbarDensity`. v1 derivation: sidebar open → `.expanded`, collapsed → `.compact`, default → `.regular`.
+Controls respect `@Environment(\.toolbarDensity)` and `GlassToolbarStyle.effectiveTheme(for:)`. v1 derivation: sidebar open → `.expanded`, collapsed → `.compact`, default → `.regular`. v2 applies compact/expanded multipliers to circle size, search width, group inset, and spacing.
 
 ### 5. New controls
 

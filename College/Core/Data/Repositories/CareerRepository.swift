@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCareer
 
 /// Bounded local store fetch helpers for career tracking (Phase 7b).
 @MainActor

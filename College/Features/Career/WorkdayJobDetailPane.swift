@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCareer
 
 struct WorkdayJobDetailPane: View {
     @Environment(AppContainer.self) private var container

@@ -2,7 +2,9 @@
 // Feature: App
 // Purpose: Window-scoped composition root (ADR 005).
 
+import CollegeAcademics
 import CollegeCalendar
+import CollegeCareer
 import Foundation
 import Observation
 import SwiftData

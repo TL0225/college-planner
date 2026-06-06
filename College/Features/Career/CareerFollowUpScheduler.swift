@@ -5,6 +5,7 @@
 
 import Foundation
 import UserNotifications
+import CollegeCareer
 
 @MainActor
 final class CareerFollowUpScheduler {

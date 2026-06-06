@@ -3,6 +3,7 @@
 // Purpose: Architecture enforcement for toolbar refactor (ADR 001–007).
 
 import XCTest
+import CollegeAcademics
 @testable import College
 
 @MainActor
@@ -99,10 +100,37 @@ final class ToolbarArchitectureTests: XCTestCase {
 
     func testToolbarProviderRegistryExists() throws {
         let registry = repoRoot.appendingPathComponent("College/App/Toolbar/ToolbarProviderRegistry.swift")
-        let source = try String(contentsOf: registry, encoding: .utf8)
-        XCTAssertTrue(source.contains("enum ToolbarProviderRegistry"))
-        XCTAssertTrue(source.contains("CalendarToolbarContent"))
-        XCTAssertTrue(source.contains("AcademicsToolbarContent"))
+        let providing = repoRoot.appendingPathComponent("College/App/Toolbar/ToolbarProviding.swift")
+        let registrySource = try String(contentsOf: registry, encoding: .utf8)
+        let providingSource = try String(contentsOf: providing, encoding: .utf8)
+
+        XCTAssertTrue(registrySource.contains("enum ToolbarProviderRegistry"))
+        XCTAssertTrue(providingSource.contains("protocol ToolbarProviding"))
+        XCTAssertTrue(providingSource.contains("struct ToolbarProviderContext"))
+
+        for provider in [
+            "CalendarToolbarProvider",
+            "AcademicsToolbarProvider",
+            "CareerToolbarProvider",
+            "WebToolbarProvider",
+        ] {
+            XCTAssertTrue(
+                providingSource.contains("enum \(provider): ToolbarProviding"),
+                "Missing provider \(provider)"
+            )
+            XCTAssertTrue(
+                registrySource.contains("\(provider).toolbarContent"),
+                "Registry must delegate to \(provider)"
+            )
+        }
+    }
+
+    func testToolbarProviderMetadataMatchesRegistry() {
+        for page in [AppPage.calendar, .academics, .career, .webShortcut(id: UUID())] {
+            let entry = AppPageToolbarMetadata.entry(for: page)
+            XCTAssertFalse(entry.toolbarProviderTypeName.isEmpty)
+            XCTAssertNotEqual(entry.toolbarProviderTypeName, "None")
+        }
     }
 
     func testAppContainerCompositionRoot() {
@@ -325,7 +353,21 @@ final class ToolbarArchitectureTests: XCTestCase {
                 end.contains("glassInteractiveSurface") || end.contains("GlassInteractiveSurface"),
                 "\(control) must route interaction through GlassInteractiveSurface"
             )
+            if control == "GlassToolbarAddMenuButton" || control == "GlassToolbarProfileAvatarButton" {
+                XCTAssertTrue(
+                    end.contains("onHover") || end.contains("glassToolbarHoverPressInteraction"),
+                    "\(control) must drive hover interaction state"
+                )
+            }
         }
+
+        let densityFile = repoRoot
+            .appendingPathComponent("College/App/Toolbar/Glass/ToolbarDensity.swift")
+        let densitySource = try String(contentsOf: densityFile, encoding: .utf8)
+        XCTAssertTrue(
+            densitySource.contains("func scaled(for density: ToolbarDensity)"),
+            "Density v2 theme scaling must exist on ToolbarGlassTheme"
+        )
 
         XCTAssertFalse(
             source.contains(".opacity(isEnabled"),

@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCareer
 
 extension CollegePersistence {
     typealias CareerPipelineMetrics = CareerRepository.CareerPipelineMetrics

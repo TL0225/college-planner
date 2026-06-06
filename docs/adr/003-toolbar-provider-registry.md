@@ -1,6 +1,6 @@
 # ADR 003: Toolbar Provider Registry
 
-**Status:** Accepted (registry implemented; full provider protocol deferred until scale triggers)  
+**Status:** Implemented (provider protocol + per-feature providers; registry delegates from `MainWindowToolbar`)  
 **Date:** 2026-06-05
 
 ## Context
@@ -43,6 +43,6 @@ Each feature registers its provider; `MainWindowToolbar` delegates to the regist
 
 ## Consequences
 
-- **Until triggered:** ADR 001 rule stands—`MainWindowToolbar` remains the sole router.
-- **When triggered:** Schedule registry work with or immediately after Phase 2 platform initiative (ADR 004).
-- **Not in scope now:** `ToolbarRegistry.shared` singleton; providers receive window-scoped store and dispatcher as parameters.
+- **Main window:** `ToolbarProviderRegistry` routes each `AppPage` to a `ToolbarProviding` enum (`CalendarToolbarProvider`, etc.). `MainWindowToolbar` builds a `ToolbarProviderContext` (store, dispatcher, active page, academics binding) and delegates.
+- **Scale:** Adding a page with toolbar chrome = new provider + registry case + metadata entry — not edits to a monolithic switch body in `MainWindowToolbar`.
+- **Not in scope:** `ToolbarRegistry.shared` singleton; providers receive window-scoped store and dispatcher via context parameters (views may still read `@Environment(AppContainer.self)` for scene state).

@@ -9,6 +9,7 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import CollegeAcademics
 
 // MARK: - Motion Infrastructure
 
@@ -730,7 +731,9 @@ struct AcademicsAuditPanel: View {
 // MARK: - Academic Landscape UI Extensions
 
 struct LandscapeDashboard: View {
-        let profile: Profile?
+    @Environment(AppContainer.self) private var appContainer
+
+    let profile: Profile?
     let academicProfile: AcademicProfile?
     let plannerGPAFormatted: String
     let plannerCreditsEarned: Int
@@ -1100,7 +1103,9 @@ struct LandscapeTimelineCard: View {
 }
 
 struct LandscapeCurriculumCard: View {
-        let semester: PlannerSemester
+    @Environment(AppContainer.self) private var appContainer
+
+    let semester: PlannerSemester
     @State private var isCollapsed = false
     private var collegePersistence: CollegePersistence { appContainer.persistence }
     private var sortedCourses: [PlannerCourse] {

@@ -1,6 +1,6 @@
 # ADR 004: Feature Module Boundaries
 
-**Status:** Accepted (charter); enforcement deferred to Phase 2  
+**Status:** Implemented (Phase 2 complete — feature packages + CI enforcement)  
 **Date:** 2026-06-05
 
 ## Context

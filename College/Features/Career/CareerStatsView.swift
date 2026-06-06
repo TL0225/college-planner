@@ -5,6 +5,7 @@
 
 import SwiftUI
 import Charts
+import CollegeCareer
 
 struct CareerStatsView: View {
     @Environment(AppContainer.self) private var container

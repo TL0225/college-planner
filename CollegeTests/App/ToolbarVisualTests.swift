@@ -77,4 +77,18 @@ final class ToolbarVisualTests: XCTestCase {
                 .glassToolbarEnvironment(density: .expanded)
         }
     }
+
+    func testGlassAddMenuCompact() throws {
+        try ToolbarSnapshotHarness.assertSnapshot(named: "glass-add-menu-compact", size: CGSize(width: 64, height: 64)) {
+            GlassToolbarAddMenuButton(onAddSemester: {}, onAddCourse: {})
+                .glassToolbarEnvironment(density: .compact)
+        }
+    }
+
+    func testGlassProfileAvatarExpanded() throws {
+        try ToolbarSnapshotHarness.assertSnapshot(named: "glass-profile-expanded", size: CGSize(width: 64, height: 64)) {
+            GlassToolbarProfileAvatarButton(initials: "TL", action: {})
+                .glassToolbarEnvironment(density: .expanded)
+        }
+    }
 }

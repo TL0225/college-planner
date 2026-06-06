@@ -1,6 +1,6 @@
 // ToolbarProviderRegistry.swift
 // Feature: App / Toolbar
-// Purpose: ADR 003 — page → toolbar content registry (delegates from MainWindowToolbar).
+// Purpose: ADR 003 — page → toolbar provider registry (delegates from MainWindowToolbar).
 
 import SwiftUI
 
@@ -8,17 +8,17 @@ enum ToolbarProviderRegistry {
     @ToolbarContentBuilder
     static func pageToolbarContent(
         for page: AppPage,
-        academicsInspectorPresented: Binding<Bool>
+        context: ToolbarProviderContext
     ) -> some ToolbarContent {
         switch page {
         case .calendar:
-            CalendarToolbarContent()
+            CalendarToolbarProvider.toolbarContent(context: context)
         case .academics:
-            AcademicsToolbarContent(academicsInspectorPresented: academicsInspectorPresented)
+            AcademicsToolbarProvider.toolbarContent(context: context)
         case .career:
-            CareerToolbarContent(activePage: page)
+            CareerToolbarProvider.toolbarContent(context: context)
         case .webShortcut:
-            WebToolbarContent()
+            WebToolbarProvider.toolbarContent(context: context)
         default:
             ToolbarContentEmpty()
         }

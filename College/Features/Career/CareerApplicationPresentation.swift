@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
+import CollegeCareer
 
 enum CareerApplicationPresentation {
     static func status(for application: JobApplication) -> CareerApplicationStatus {

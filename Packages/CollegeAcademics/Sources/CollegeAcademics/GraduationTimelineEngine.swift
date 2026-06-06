@@ -11,11 +11,11 @@
 
 import Foundation
 
-enum GraduationTimelineEngine {
+public enum GraduationTimelineEngine {
 
     // MARK: - Inputs
 
-    enum TermRole: String, Codable, Equatable {
+    public enum TermRole: String, Codable, Equatable {
         case completed
         case inProgress
         case future
@@ -26,20 +26,20 @@ enum GraduationTimelineEngine {
     /// term; `plannedCap` is the sheet's user-editable cap. Historical / in-progress
     /// terms are passed through with `role != .future` so the UI can disable their
     /// stepper.
-    struct TermState: Identifiable, Equatable {
-        let id: String
-        let year: Int
-        let season: String
-        let isHistorical: Bool
-        let isCurrent: Bool
-        let actualCredits: Int
-        let plannedCap: Int
-        let role: TermRole
+    public struct TermState: Identifiable, Equatable {
+        public let id: String
+        public let year: Int
+        public let season: String
+        public let isHistorical: Bool
+        public let isCurrent: Bool
+        public let actualCredits: Int
+        public let plannedCap: Int
+        public let role: TermRole
 
-        var label: String { "\(season) \(year)" }
+        public var label: String { "\(season) \(year)" }
     }
 
-    enum CreditState: Equatable {
+    public enum CreditState: Equatable {
         case sufficient        // within full-time → max-overload band
         case underAllocated    // > 0 but below full-time threshold
         case belowFullTime     // 0 credits planned for a future term
@@ -47,22 +47,33 @@ enum GraduationTimelineEngine {
         case criticalOverload  // beyond the critical/burnout threshold
     }
 
-    struct TermStatus: Equatable {
-        let state: CreditState
-        let warnings: [String]
+    public struct TermStatus: Equatable {
+        public let state: CreditState
+        public let warnings: [String]
     }
 
     /// Top-line numbers shown in the sheet's pacing header.
-    struct Summary: Equatable {
-        let completed: Int
-        let inProgress: Int
-        let planned: Int
-        let requiredTotal: Int
-        let remainingNeeded: Int
-        let allocatedAcrossFutureTerms: Int
-        let deficitToTarget: Int
-        let avgPaceNeeded: Double
-        let isAchievable: Bool
+    public struct Summary: Equatable {
+        public let completed: Int
+        public let inProgress: Int
+        public let planned: Int
+        public let requiredTotal: Int
+        public let remainingNeeded: Int
+        public let allocatedAcrossFutureTerms: Int
+        public let deficitToTarget: Int
+        public let avgPaceNeeded: Double
+        public let isAchievable: Bool
+    }
+
+    /// Catalog-neutral policy inputs (maps from app `SchoolPolicies` in the Academics bridge).
+    public struct PolicyInput: Sendable, Equatable {
+        public var minCreditsForFullTime: Int?
+        public var maxCreditsPerSemester: Int?
+
+        public init(minCreditsForFullTime: Int? = nil, maxCreditsPerSemester: Int? = nil) {
+            self.minCreditsForFullTime = minCreditsForFullTime
+            self.maxCreditsPerSemester = maxCreditsPerSemester
+        }
     }
 
     // MARK: - Term enumeration
@@ -70,7 +81,7 @@ enum GraduationTimelineEngine {
     /// Walk from `(startYear, startSeason)` through `(endYear, endSeason)` inclusive.
     /// Includes only the four canonical seasons (Spring → Summer → Fall → Winter).
     /// Returns empty when the end is before the start.
-    static func enumerateTerms(
+    public static func enumerateTerms(
         from start: (year: Int, season: String),
         through end: (year: Int, season: String)
     ) -> [(year: Int, season: String)] {
@@ -102,7 +113,7 @@ enum GraduationTimelineEngine {
     /// Current term given today's date. Spring/Summer/Fall/Winter map roughly to
     /// the Northern-Hemisphere academic calendar (Jan–May Spring, Jun–Aug Summer,
     /// Sep–Nov Fall, Dec Winter). Used as the start anchor when the sheet opens.
-    static func currentTerm(now: Date = Date(), calendar: Calendar = .current) -> (year: Int, season: String) {
+    public static func currentTerm(now: Date = Date(), calendar: Calendar = .current) -> (year: Int, season: String) {
         let comps = calendar.dateComponents([.year, .month], from: now)
         let year = comps.year ?? 2024
         let month = comps.month ?? 1
@@ -116,7 +127,7 @@ enum GraduationTimelineEngine {
 
     // MARK: - Summary computation
 
-    static func summary(
+    public static func summary(
         completed: Int,
         inProgress: Int,
         planned: Int,
@@ -145,34 +156,38 @@ enum GraduationTimelineEngine {
 
     /// Policy bands used by `status(forTerm:)`. Pulled from `SchoolPolicies` when
     /// available, otherwise from the safe defaults below.
-    struct PolicyBand {
-        let minFullTime: Int
-        let maxOverload: Int
-        let criticalOverload: Int
+    public struct PolicyBand: Sendable, Equatable {
+        public let minFullTime: Int
+        public let maxOverload: Int
+        public let criticalOverload: Int
+
+        public init(minFullTime: Int, maxOverload: Int, criticalOverload: Int) {
+            self.minFullTime = minFullTime
+            self.maxOverload = maxOverload
+            self.criticalOverload = criticalOverload
+        }
     }
 
-    static let defaultUndergradBand = PolicyBand(minFullTime: 12, maxOverload: 18, criticalOverload: 21)
-    static let defaultGraduateBand = PolicyBand(minFullTime: 9, maxOverload: 15, criticalOverload: 18)
+    public static let defaultUndergradBand = PolicyBand(minFullTime: 12, maxOverload: 18, criticalOverload: 21)
+    public static let defaultGraduateBand = PolicyBand(minFullTime: 9, maxOverload: 15, criticalOverload: 18)
 
     /// Pick the right band given a school's `SchoolPolicies` (if any) and the
     /// student's degree level. Graduate-level degrees use the looser graduate
     /// defaults when a school doesn't publish its own cap.
-    static func policyBand(
-        policies: SchoolPolicies?,
+    public static func policyBand(
+        policyInput: PolicyInput?,
         isGraduate: Bool
     ) -> PolicyBand {
         let defaults = isGraduate ? defaultGraduateBand : defaultUndergradBand
-        guard let policies else { return defaults }
+        guard let policyInput else { return defaults }
         return PolicyBand(
-            minFullTime: policies.minCreditsForFullTime ?? defaults.minFullTime,
-            maxOverload: policies.maxCreditsPerSemester ?? defaults.maxOverload,
-            // Most catalogs don't publish a "critical" threshold; +3 over the
-            // overload cap is the conservative heuristic the AI assistant uses.
-            criticalOverload: (policies.maxCreditsPerSemester ?? defaults.maxOverload) + 3
+            minFullTime: policyInput.minCreditsForFullTime ?? defaults.minFullTime,
+            maxOverload: policyInput.maxCreditsPerSemester ?? defaults.maxOverload,
+            criticalOverload: (policyInput.maxCreditsPerSemester ?? defaults.maxOverload) + 3
         )
     }
 
-    static func status(
+    public static func status(
         forCap cap: Int,
         isHistorical: Bool,
         isCurrent: Bool,
@@ -215,7 +230,7 @@ enum GraduationTimelineEngine {
     /// time across earlier terms so totals add up exactly (within the band).
     /// When `futureTermCount == 0` returns an empty array (caller should disable
     /// the Save button in that case).
-    static func recommendedEvenSplit(
+    public static func recommendedEvenSplit(
         remainingCredits: Int,
         futureTermCount: Int,
         band: PolicyBand
@@ -245,7 +260,7 @@ enum GraduationTimelineEngine {
 
     /// Total credits left to graduate after subtracting everything currently on
     /// the planner (completed + in-progress + planned). Used by the header.
-    static func remainingCreditsToGraduate(
+    public static func remainingCreditsToGraduate(
         completed: Int,
         inProgress: Int,
         planned: Int,
@@ -256,7 +271,7 @@ enum GraduationTimelineEngine {
 
     /// Suggest the next 8 candidate target terms following the user's current term.
     /// Useful for the target-graduation picker pill row.
-    static func suggestTargetTerms(
+    public static func suggestTargetTerms(
         from start: (year: Int, season: String),
         count: Int = 8
     ) -> [(year: Int, season: String)] {

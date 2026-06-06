@@ -7,6 +7,7 @@ import SwiftUI
 import Combine
 import os
 import UniformTypeIdentifiers
+import CollegeAcademics
 
 /// Main-panel content shown when the user clicks "View Details" for their Major.
 ///

@@ -7,7 +7,7 @@ import Foundation
 
 /// Persists which catalog-listed courses the student picked for choose/select/OR rows
 /// in the Requirements Breakdown (separate from drag-and-drop fulfillment assignments).
-enum AuditRequirementSelectionStore {
+public enum AuditRequirementSelectionStore {
     private static let prefix = "academics.audit.requirementSelection.v1."
 
     private static func storageKey(degreeKey: String, categoryTitle: String) -> String {
@@ -20,7 +20,7 @@ enum AuditRequirementSelectionStore {
         return "\(prefix)\(degreeNorm)|\(categoryNorm)"
     }
 
-    static func selectedCodes(degreeKey: String, categoryTitle: String) -> Set<String> {
+    public static func selectedCodes(degreeKey: String, categoryTitle: String) -> Set<String> {
         let raw = UserDefaults.standard.stringArray(forKey: storageKey(degreeKey: degreeKey, categoryTitle: categoryTitle)) ?? []
         return Set(
             raw.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
@@ -28,7 +28,7 @@ enum AuditRequirementSelectionStore {
         )
     }
 
-    static func setSelectedCodes(_ codes: Set<String>, degreeKey: String, categoryTitle: String) {
+    public static func setSelectedCodes(_ codes: Set<String>, degreeKey: String, categoryTitle: String) {
         let normalized = codes
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
             .filter { !$0.isEmpty }
@@ -37,7 +37,7 @@ enum AuditRequirementSelectionStore {
     }
 
     /// Toggle or switch a listed course for a choose/select/OR row.
-    static func selectCourse(
+    public static func selectCourse(
         _ code: String,
         degreeKey: String,
         categoryTitle: String,

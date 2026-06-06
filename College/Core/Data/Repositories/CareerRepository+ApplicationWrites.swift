@@ -5,6 +5,7 @@
 
 import Foundation
 import SwiftData
+import CollegeCareer
 
 extension CareerRepository {
     private static let companyNotesKey = "companyNotes"
