@@ -3,6 +3,7 @@
 // Purpose: Calendar module — CalendarGhostEvent.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 
 /// Live ghost preview while drag-creating on the week/day grid.

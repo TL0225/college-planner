@@ -3,6 +3,7 @@
 // Purpose: Calendar module — NewEventModal.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 
 /// Clean centered pop-up modal for creating a new calendar event.

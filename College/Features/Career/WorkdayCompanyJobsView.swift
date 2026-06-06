@@ -10,11 +10,10 @@ struct WorkdayCompanyJobsView: View {
     @Environment(AppContainer.self) private var container
     private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var appNotifications: AppNotificationCenter { container.appNotifications }
-    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var notifications: AppNotificationCenter { container.appNotifications }
     private var persistence: CollegePersistence { container.persistence }
     private var collegePersistence: CollegePersistence { container.persistence }
-        @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
+        @ObservedObject private var workdayCoordinator = WorkdayJobBoardSyncCoordinator.shared
 
     let company: WorkdayCompanyConfigEntry
 
@@ -181,7 +180,7 @@ struct WorkdayCompanyJobsView: View {
         .onChange(of: collegePersistence.careerDidChangeToken) { _, _ in
             refreshPostings()
         }
-        .onChange(of: coordinator.uiState.lastSuccessfulSyncAt) { _, _ in
+        .onChange(of: workdayCoordinator.uiState.lastSuccessfulSyncAt) { _, _ in
             refreshPostings()
         }
         .onChange(of: searchText) { _, newValue in
@@ -325,13 +324,13 @@ struct WorkdayCompanyJobsView: View {
                 .foregroundStyle(DesignSystem.Colors.textLight)
             Spacer(minLength: 8)
             Button {
-                Task { await coordinator.scrapeCompany(company) }
+                Task { await workdayCoordinator.scrapeCompany(company) }
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
             .buttonStyle(.borderless)
             .help(companyRefreshHelp)
-            .disabled(coordinator.isScraping(slug: company.normalizedSlug))
+            .disabled(workdayCoordinator.isScraping(slug: company.normalizedSlug))
         }
         .padding(.horizontal, 12)
         .padding(.top, 10)

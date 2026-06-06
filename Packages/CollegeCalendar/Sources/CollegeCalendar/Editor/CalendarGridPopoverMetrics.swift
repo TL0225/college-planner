@@ -6,9 +6,9 @@
 import CoreGraphics
 
 /// Shared sizing for the week/day grid-attached Add Event popover.
-enum CalendarGridPopoverMetrics {
+public enum CalendarGridPopoverMetrics {
     /// Prior width 520pt, reduced by one-third.
-    static let width: CGFloat = 347
-    static let minHeight: CGFloat = 400
-    static let maxHeight: CGFloat = 620
+    public static let width: CGFloat = 347
+    public static let minHeight: CGFloat = 400
+    public static let maxHeight: CGFloat = 620
 }

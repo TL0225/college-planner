@@ -4,6 +4,27 @@
 
 import CollegeCalendar
 import Foundation
+import SwiftData
+
+extension CalendarEvent {
+    var calendarStoredSnapshot: CalendarStoredEvent {
+        CalendarStoredEvent(
+            id: id,
+            title: title,
+            notes: notes,
+            location: location,
+            startDate: startDate,
+            endDate: endDate,
+            allDay: allDay,
+            providerSource: providerSource,
+            customColorHex: customColorHex,
+            recurrenceRule: recurrenceRule,
+            courseID: course?.id,
+            courseCode: course?.code,
+            semesterID: semester?.id
+        )
+    }
+}
 
 extension CalendarTenantKind {
     static func resolve(for event: CalendarEvent) -> CalendarTenantKind {

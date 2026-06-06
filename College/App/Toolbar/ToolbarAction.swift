@@ -2,16 +2,8 @@
 // Feature: App / Toolbar
 // Purpose: Versioned toolbar action API surface with per-feature ownership.
 
+import CollegeCalendar
 import Foundation
-
-// Owner: CalendarView — College/Features/Calendar/CalendarView.swift
-enum CalendarToolbarAction: Sendable, Equatable {
-    case previous
-    case next
-    case modeChange(CalendarViewDisplayMode)
-    case sidebarToggle
-    case sidebarPanelChange(CalendarSidebarPanel)
-}
 
 // Owner: AcademicsView — College/Features/Academics/AcademicsView.swift
 enum AcademicsToolbarAction: Sendable, Equatable {

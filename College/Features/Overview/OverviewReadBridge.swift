@@ -3,6 +3,7 @@
 // Purpose: Overview module — OverviewTaskSummary.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import Foundation
 import SwiftData
 
@@ -191,7 +192,7 @@ enum OverviewReadBridge {
         _ event: CalendarEvent,
         calendarManager: CalendarIntegrationManager
     ) -> OverviewEventSummary? {
-        guard calendarManager.shouldDisplayEvent(event) else { return nil }
+        guard calendarManager.shouldDisplayEvent(event.calendarStoredSnapshot) else { return nil }
         return OverviewEventSummary(
             id: event.id,
             title: event.title,

@@ -199,7 +199,6 @@ struct OnboardingRootView: View {
     @Environment(AppContainer.self) private var container
     private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var appNotifications: AppNotificationCenter { container.appNotifications }
-    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var notifications: AppNotificationCenter { container.appNotifications }
     private var persistence: CollegePersistence { container.persistence }
     private var collegePersistence: CollegePersistence { container.persistence }
@@ -210,7 +209,7 @@ struct OnboardingRootView: View {
     let onComplete: () -> Void
 
     @State private var draft = OnboardingDraft()
-    @State private var coordinator = OnboardingCoordinator()
+    @State private var onboardingCoordinator = OnboardingCoordinator()
 
     @State private var universityOptions: [String] = []
     @State private var catalogTypeOptions: [OnboardingCatalogTypeOption] = []
@@ -283,7 +282,7 @@ struct OnboardingRootView: View {
             Divider()
 
             ForEach(OnboardingStep.allCases) { step in
-                let isActive = coordinator.currentStep == step
+                let isActive = onboardingCoordinator.currentStep == step
                 HStack(alignment: .top, spacing: 10) {
                     Text("\(step.rawValue + 1)")
                         .font(.system(size: 12, weight: .bold, design: .rounded))
@@ -317,7 +316,7 @@ struct OnboardingRootView: View {
                     catalogSyncGateBanner
                 }
 
-                switch coordinator.currentStep {
+                switch onboardingCoordinator.currentStep {
                 case .identity:
                     identityStep
                 case .academicSetup:
@@ -338,13 +337,13 @@ struct OnboardingRootView: View {
     private var actionBar: some View {
         HStack {
             Button("Back") {
-                coordinator.goBack()
+                onboardingCoordinator.goBack()
             }
-            .disabled(!coordinator.canGoBack || coordinator.isCommitting || catalogSyncPhase == .inProgress)
+            .disabled(!onboardingCoordinator.canGoBack || onboardingCoordinator.isCommitting || catalogSyncPhase == .inProgress)
 
             Spacer()
 
-            if let message = coordinator.validationMessage, !message.isEmpty {
+            if let message = onboardingCoordinator.validationMessage, !message.isEmpty {
                 Text(message)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.orange)
@@ -357,7 +356,7 @@ struct OnboardingRootView: View {
                 handleContinue()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(coordinator.isCommitting || isForwardNavigationBlockedByCatalogSync || (coordinator.isLastStep && catalogSyncPhase == .inProgress && !handoffReady))
+            .disabled(onboardingCoordinator.isCommitting || isForwardNavigationBlockedByCatalogSync || (onboardingCoordinator.isLastStep && catalogSyncPhase == .inProgress && !handoffReady))
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 14)
@@ -365,7 +364,7 @@ struct OnboardingRootView: View {
     }
 
     private var shouldShowCatalogSyncGateBanner: Bool {
-        catalogSyncRequired && (catalogSyncPhase != .idle || coordinator.currentStep != .identity)
+        catalogSyncRequired && (catalogSyncPhase != .idle || onboardingCoordinator.currentStep != .identity)
     }
 
     private var isForwardNavigationBlockedByCatalogSync: Bool {
@@ -417,7 +416,7 @@ struct OnboardingRootView: View {
     }
 
     private var primaryActionTitle: String {
-        guard coordinator.isLastStep else { return "Continue" }
+        guard onboardingCoordinator.isLastStep else { return "Continue" }
 
         if !catalogSyncRequired {
             return "Enter Workspace"
@@ -1580,24 +1579,24 @@ struct OnboardingRootView: View {
     }
 
     private func handleContinue() {
-        let currentStep = coordinator.currentStep
+        let currentStep = onboardingCoordinator.currentStep
 
         draft.reconcileCounts()
-        coordinator.validationMessage = validateCurrentStep()
+        onboardingCoordinator.validationMessage = validateCurrentStep()
 
-        guard coordinator.validationMessage == nil else { return }
+        guard onboardingCoordinator.validationMessage == nil else { return }
 
         if currentStep == .identity && catalogSyncRequired {
             switch catalogSyncPhase {
             case .idle, .failed:
                 startCatalogSyncTask()
-                coordinator.validationMessage = "Preparing your school catalog."
+                onboardingCoordinator.validationMessage = "Preparing your school catalog."
                 return
             case .inProgress:
-                coordinator.validationMessage = "Catalog sync is still in progress."
+                onboardingCoordinator.validationMessage = "Catalog sync is still in progress."
                 return
             case .succeeded:
-                coordinator.goNext()
+                onboardingCoordinator.goNext()
                 reloadContextOptionsImmediately()
                 return
             }
@@ -1605,20 +1604,20 @@ struct OnboardingRootView: View {
             switch catalogSyncPhase {
             case .idle, .failed:
                 startCatalogSyncTask()
-                coordinator.validationMessage = "Preparing your school catalog."
+                onboardingCoordinator.validationMessage = "Preparing your school catalog."
                 return
             case .inProgress:
-                coordinator.validationMessage = "Catalog sync is still in progress."
+                onboardingCoordinator.validationMessage = "Catalog sync is still in progress."
                 return
             case .succeeded:
                 break
             }
         }
 
-        if coordinator.isLastStep {
+        if onboardingCoordinator.isLastStep {
             handleFinishContinue()
         } else {
-            coordinator.goNext()
+            onboardingCoordinator.goNext()
             scheduleReloadContextOptions()
         }
     }
@@ -1688,7 +1687,7 @@ struct OnboardingRootView: View {
     }
 
     private func handleFinishContinue() {
-        guard !coordinator.isCommitting else { return }
+        guard !onboardingCoordinator.isCommitting else { return }
 
         if catalogSyncRequired {
             switch catalogSyncPhase {
@@ -1696,7 +1695,7 @@ struct OnboardingRootView: View {
                 startCatalogSyncTask()
                 return
             case .inProgress:
-                coordinator.validationMessage = "Catalog sync is still in progress. Please wait for completion before entering your workspace."
+                onboardingCoordinator.validationMessage = "Catalog sync is still in progress. Please wait for completion before entering your workspace."
                 return
             case .succeeded:
                 break
@@ -1720,7 +1719,7 @@ struct OnboardingRootView: View {
         catalogSyncVisualPhase = .discovering
         catalogSyncProgress = 0.05
         catalogSyncMessage = "Resolving school profile..."
-        coordinator.validationMessage = nil
+        onboardingCoordinator.validationMessage = nil
         handoffReady = false
         catalogSyncStartDate = Date()
         lockedCourseDenominator = 0
@@ -1825,9 +1824,9 @@ struct OnboardingRootView: View {
             catalogSyncProgress = 1
             reloadContextOptionsImmediately()
 
-            if coordinator.currentStep == .identity {
-                coordinator.validationMessage = nil
-                coordinator.goNext()
+            if onboardingCoordinator.currentStep == .identity {
+                onboardingCoordinator.validationMessage = nil
+                onboardingCoordinator.goNext()
                 reloadContextOptionsImmediately()
             }
         } catch {
@@ -1843,7 +1842,7 @@ struct OnboardingRootView: View {
             catalogSyncPhase = .failed
             catalogSyncProgress = 0
             catalogSyncMessage = "Sync failed: \(error.localizedDescription)"
-            coordinator.validationMessage = "Catalog sync failed. Retry to continue."
+            onboardingCoordinator.validationMessage = "Catalog sync failed. Retry to continue."
             UserDefaults.standard.set(false, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
         }
     }
@@ -1883,7 +1882,7 @@ struct OnboardingRootView: View {
     }
 
     private func validateCurrentStep() -> String? {
-        switch coordinator.currentStep {
+        switch onboardingCoordinator.currentStep {
         case .identity:
             if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return "Enter your name to continue."
@@ -1939,15 +1938,15 @@ struct OnboardingRootView: View {
     }
 
     private func commitAndFinish() {
-        coordinator.isCommitting = true
+        onboardingCoordinator.isCommitting = true
 
         if collegePersistence.profile == nil {
             collegePersistence.fetchProfile()
         }
 
         guard let profile = collegePersistence.profile else {
-            coordinator.validationMessage = "Could not load your profile. Please try again."
-            coordinator.isCommitting = false
+            onboardingCoordinator.validationMessage = "Could not load your profile. Please try again."
+            onboardingCoordinator.isCommitting = false
             return
         }
 
@@ -2029,7 +2028,7 @@ struct OnboardingRootView: View {
         handoffThresholdTask = nil
 
         onboardingCompleted = true
-        coordinator.isCommitting = false
+        onboardingCoordinator.isCommitting = false
 
         // Execute the app-level handoff on the next runloop turn so state commits
         // settle before the root view swaps from onboarding to the main workspace.

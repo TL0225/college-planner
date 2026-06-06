@@ -8,10 +8,9 @@ import SwiftUI
 struct WorkdayJobBoardView: View {
     @Environment(AppContainer.self) private var container
     private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
-    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var persistence: CollegePersistence { container.persistence }
     private var collegePersistence: CollegePersistence { container.persistence }
-    @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
+    @ObservedObject private var workdayCoordinator = WorkdayJobBoardSyncCoordinator.shared
     @ObservedObject private var logoStore = WorkdayCompanyLogoStore.shared
 
     var onNavigateToBoard: () -> Void = {}
@@ -54,7 +53,7 @@ struct WorkdayJobBoardView: View {
             selectedPostingPath = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .workdayImportDidFinish)) { _ in
-            coordinator.rebuildIdleUIState()
+            workdayCoordinator.rebuildIdleUIState()
         }
     }
 
@@ -147,14 +146,14 @@ struct WorkdayJobBoardView: View {
                     .foregroundStyle(DesignSystem.Colors.textLight)
                 Spacer(minLength: 0)
                 Button {
-                    Task { await coordinator.scrapeAllEnabledCompanies() }
+                    Task { await workdayCoordinator.scrapeAllEnabledCompanies() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption.weight(.semibold))
                 }
                 .buttonStyle(.borderless)
                 .help(refreshAllCompaniesHelp)
-                .disabled(coordinator.uiState.isAnyScrapeInFlight)
+                .disabled(workdayCoordinator.uiState.isAnyScrapeInFlight)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
@@ -166,9 +165,9 @@ struct WorkdayJobBoardView: View {
                     WorkdayCompanySidebarRow(
                         company: company,
                         isSelected: selectedCompanyID == company.id,
-                        state: coordinator.uiState.companies.first { $0.slug == company.normalizedSlug },
+                        state: workdayCoordinator.uiState.companies.first { $0.slug == company.normalizedSlug },
                         newCount: collegePersistence.newOpeningsCount(companySlug: company.normalizedSlug),
-                        onScrape: { Task { await coordinator.scrapeCompany(company) } }
+                        onScrape: { Task { await workdayCoordinator.scrapeCompany(company) } }
                     )
                     .tag(company.id)
                     .listRowInsets(EdgeInsets(top: 2, leading: 6, bottom: 2, trailing: 6))

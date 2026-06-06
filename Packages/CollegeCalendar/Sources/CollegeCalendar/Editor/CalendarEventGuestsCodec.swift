@@ -6,7 +6,7 @@
 import Contacts
 import Foundation
 
-/// Encodes/decodes guest lists for `CalendarEventEntity.attendeesJSON` (Phase 3b).
+/// Encodes/decodes guest lists for `CalendarStoredEventEntity.attendeesJSON` (Phase 3b).
 enum CalendarEventGuestsCodec {
     struct GuestRecord: Codable, Sendable {
         var name: String

@@ -4,7 +4,6 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
-import CollegeCalendar
 
 /// Phase 8: week-at-a-glance planner with task time-blocks and deadline markers.
 struct CalendarWeekPlannerView: View {

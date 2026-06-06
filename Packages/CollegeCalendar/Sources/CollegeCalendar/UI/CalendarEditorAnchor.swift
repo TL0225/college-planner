@@ -1,24 +1,25 @@
-// CalendarEditorAnchor.swift
-// Feature: Calendar
-// Purpose: Calendar module — CalendarEditorAnchor.
-// Data: CollegePersistence / repositories when applicable.
-
 import SwiftUI
 
 /// Identifies a grid-attached calendar editor popover (Liquid Glass `popover(item:)`).
-struct CalendarEditorAnchor: Identifiable {
-    enum Mode {
+public struct CalendarEditorAnchor: Identifiable {
+    public enum Mode {
         case add(semesterID: UUID?, title: String?, start: Date, end: Date, allDay: Bool = false)
         case edit(eventID: UUID)
         case monthAllDayChoice(date: Date)
     }
 
-    let id = UUID()
-    var attachment: PopoverAttachmentAnchor
-    var arrowEdge: Edge
-    var mode: Mode
+    public let id = UUID()
+    public var attachment: PopoverAttachmentAnchor
+    public var arrowEdge: Edge
+    public var mode: Mode
 
-    static func addFromGrid(
+    public init(attachment: PopoverAttachmentAnchor, arrowEdge: Edge, mode: Mode) {
+        self.attachment = attachment
+        self.arrowEdge = arrowEdge
+        self.mode = mode
+    }
+
+    public static func addFromGrid(
         start: Date,
         end: Date,
         semesterID: UUID? = nil,
@@ -33,7 +34,7 @@ struct CalendarEditorAnchor: Identifiable {
         )
     }
 
-    static func edit(
+    public static func edit(
         eventID: UUID,
         arrowEdge: Edge = .trailing
     ) -> CalendarEditorAnchor {

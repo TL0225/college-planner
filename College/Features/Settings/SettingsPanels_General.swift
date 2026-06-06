@@ -3,6 +3,7 @@
 // Purpose: Settings module — SettingsGeneralPanel.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 import AppKit
 

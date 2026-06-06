@@ -2,6 +2,7 @@
 // Feature: App / Toolbar
 // Purpose: Liquid Glass toolbar visual regression snapshots.
 
+import CollegeCalendar
 import SwiftUI
 import XCTest
 @testable import College

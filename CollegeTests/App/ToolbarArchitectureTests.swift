@@ -66,7 +66,6 @@ final class ToolbarArchitectureTests: XCTestCase {
             "AcademicsSceneState.swift",
             "CareerSceneState.swift",
             "WebPortalSceneState.swift",
-            "CalendarSceneState.swift",
         ]
         let forbiddenNames: Set<String> = [
             "CalendarToolbarState.swift",

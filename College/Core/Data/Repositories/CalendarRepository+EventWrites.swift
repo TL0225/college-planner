@@ -1,4 +1,5 @@
 // CalendarRepository+EventWrites.swift
+import CollegeCalendar
 // Feature: Core/Data
 // Purpose: Core/Data persistence — — CalendarRepository+EventWrites.
 // Data: CollegePersistence / repositories when applicable.

@@ -2,6 +2,7 @@
 // Feature: App / Toolbar
 // Purpose: Shared SwiftUI toolbar chrome views (no AppKit).
 
+import CollegeCalendar
 import SwiftUI
 
 struct CalToolbarChromeView: View {

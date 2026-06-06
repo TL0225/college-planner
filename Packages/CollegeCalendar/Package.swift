@@ -1,5 +1,5 @@
 // swift-tools-version: 6.0
-// ADR 004 Phase 2a — Calendar feature extraction (Layer 1).
+// ADR 004 Phase 2a — Calendar feature extraction (Layers 1–4).
 
 import PackageDescription
 
@@ -22,6 +22,8 @@ let package = Package(
             ],
             linkerSettings: [
                 .linkedFramework("EventKit"),
+                .linkedFramework("Contacts"),
+                .linkedFramework("UserNotifications"),
             ]
         ),
         .testTarget(

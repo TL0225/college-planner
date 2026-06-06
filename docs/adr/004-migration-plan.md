@@ -2,7 +2,7 @@
 
 **Owner:** Timothy Leung  
 **Deadline:** 2026-06-19  
-**Status:** Phase 2a in progress (Layer 1 complete, package wired)
+**Status:** Phase 2a Layers 1–4 complete (CollegeCalendar package + app bridges)
 
 ## Audit summary (2026-06-05)
 
@@ -76,24 +76,40 @@ Move from `College/Features/Calendar/` into `Packages/CollegeCalendar/Sources/Co
 - `Recurrence/CalendarRecurrenceExpander.swift`
 - `ICS/ICSCalendarParser.swift`
 
-### Layer 2 — platform messaging (already in CollegePlatform)
+### Layer 2 — write pipeline + editor session (**complete**)
 
-- `CalendarEventWritePipeline.swift` (uses `CalendarChangePublisher`, `IntegrationHealthStore`)
+Moved to `Packages/CollegeCalendar/Sources/CollegeCalendar/Write/`:
+
+- `CalendarEventWritePipeline.swift`, `CalendarEventWritePipeline+Overlay.swift`
 - `CalendarEditorSession.swift`
 
-### Layer 3 — sync providers + integration manager
+Persistence writes go through `CalendarWriteRepositoryPort` / `CalendarPersistencePort` (app adapters in `College/Features/Calendar/*Port+App.swift`).
 
-- `Sync/*.swift`
-- `CalendarIntegrationManager*.swift`
-- `CalendarSyncCoordinator.swift`
-- `CalendarSyncMapDiskPersistence.swift`
+### Layer 3 — sync providers + integration manager (**complete**)
 
-### Layer 4 — UI (last; depends on App shell + bridges)
+Moved to `Packages/CollegeCalendar/Sources/CollegeCalendar/`:
 
-- `CalendarView.swift`
-- `Views/*.swift`
-- `Editor/*.swift`
-- Modals/overlays (`NewEventModal.swift`, `AddTaskOverlay.swift`, …)
+- `Integration/CalendarIntegrationManager.swift`, `+Export.swift`, `+StoreSync.swift`, `+SyncProviderAPI.swift`
+- `Integration/CalendarSyncCoordinator.swift`, `CalendarSyncMapDiskPersistence.swift`, `AppleCalendarIntegration.swift`
+- `Sync/*.swift` (Google/Apple/Outlook/iCloud providers)
+- Port surface: `CalendarIntegrationPorts.swift`, `GoogleCalendarAuthPort.swift`, `CalendarIntegrationBridge.swift`
+
+App bridges: `CalendarIntegrationPorts+App.swift`, `GoogleCalendarAuthPort+App.swift`, ingest via `CalendarSyncIngestService` (SwiftData stays in app).
+
+### Layer 4 — UI (**complete**; heavy overlays remain in app)
+
+Moved to `Packages/CollegeCalendar/Sources/CollegeCalendar/UI/` and `Views/`, `Editor/`:
+
+- `CalendarView.swift`, `CalendarSceneState.swift`, `CalendarEnvironment.swift`, `CalendarShellPorts.swift`
+- Grid/views: `CalendarWeekPlannerView.swift`, `CalendarDayHeader.swift`, `CalendarEventChipStyle.swift`, …
+- Editor chrome: `CalendarEditorPresentation.swift`, `CalendarEditorAnchor.swift`, `CalendarGridPopoverMetrics.swift`
+
+**Stays in app** (SwiftData / `AppContainer` / catalog coupling):
+
+- `AddCalendarItemOverlay.swift`, `AddTaskOverlay.swift`, `CalendarModalHost.swift`, `CalendarGridEditorHost.swift`
+- `CalendarEventEditorPopover.swift`, `CalendarEventEditorSheet.swift`, `NewEventModal.swift`
+- `Views/CalendarGhostEventOverlay.swift`
+- Bridges: `CalendarPersistencePort+App.swift`, `CalendarReadPort+App.swift`, `CalendarShellPorts+App.swift`, `CalendarOverlayPort+App.swift`, `CalendarPersistenceBridges.swift`, `CalendarReadBridge.swift`, …
 
 ## Package scaffolds
 
@@ -132,15 +148,11 @@ App-target bridges (Layer 2 prep, not Layer 1):
 
 Tests: `Packages/CollegeCalendar/Tests/CollegeCalendarTests/CalendarCacheEngineTests.swift` (perf + ICS smoke).
 
-**Blockers for full Calendar extraction:**
+**Remaining follow-ups (post Layers 1–4):**
 
-- Layer 2: `CalendarEventWritePipeline`, `CalendarEditorSession` (CollegePlatform messaging; persistence writes)
-- Layer 3: Sync providers, `CalendarIntegrationManager*`, coordinators (~20 files; heavy SwiftData + EventKit)
-- Layer 4: SwiftUI views, editor, modals (depend on App shell + `@Environment` bridges)
-- `CalendarView.swift` still duplicates private `CalendarFormatters` — dedupe when UI moves
-- No `CollegeCore` package yet; persistence models stay in app until Core extraction lands
-
-**Blocker note:** Full Calendar extract in one pass risks breaking SwiftUI previews and bridge compile order. Layer 1–2 can land without UI churn.
+- Move additional Calendar unit tests from `CollegeTests/Features/Calendar/` into `Packages/CollegeCalendar/Tests/`
+- No `CollegeCore` package yet; SwiftData models (`CalendarEvent`, `PlannerTask`) remain in app
+- `CalendarGhostEventOverlay` stays in app until editor host is fully port-driven
 
 ## CI
 

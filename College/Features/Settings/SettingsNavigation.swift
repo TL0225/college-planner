@@ -3,6 +3,7 @@
 // Purpose: Settings module — SettingsNavigateToSectionKey.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 
 // MARK: - Section navigation (cross-links)

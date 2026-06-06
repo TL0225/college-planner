@@ -1,10 +1,9 @@
 // CalendarEventChipStyle.swift
 // Feature: Calendar
-// Purpose: Calendar module — CalendarEventChipLabel.
+// Purpose: Calendar module — CalendarStoredEventChipLabel.
 // Data: CollegePersistence / repositories when applicable.
 
 import SwiftUI
-import CollegeCalendar
 
 @MainActor
 enum CalendarEventChipStyle {
@@ -22,7 +21,7 @@ enum CalendarEventChipStyle {
 
     static func resolveBaseColor(
         event: CalEvent,
-        entity: CalendarEvent?,
+        entity: CalendarStoredEvent?,
         calendarManager: CalendarIntegrationManager
     ) -> Color {
         let kindDefault = kindDefaultColor(for: event.type)
@@ -43,7 +42,7 @@ enum CalendarEventChipStyle {
 
     static func chipCornerRadius(
         event: CalEvent,
-        entity: CalendarEvent?,
+        entity: CalendarStoredEvent?,
         cellRadius: CGFloat = 8
     ) -> CGFloat {
         if let entity {
@@ -52,7 +51,7 @@ enum CalendarEventChipStyle {
         return CalendarTenantKind.personal.resolvedCornerRadius(cellRadius: cellRadius)
     }
 
-    static func textColor(event: CalEvent, baseColor: Color, entity: CalendarEvent?, calendarManager: CalendarIntegrationManager) -> Color {
+    static func textColor(event: CalEvent, baseColor: Color, entity: CalendarStoredEvent?, calendarManager: CalendarIntegrationManager) -> Color {
         if event.customColorHex != nil {
             return baseColor.opacity(0.9)
         }
@@ -70,7 +69,7 @@ enum CalendarEventChipStyle {
 }
 
 /// Shared leading accent + type icons + title row used by `EventPill` and `TimeEventBlock`.
-struct CalendarEventChipLabel: View {
+struct CalendarStoredEventChipLabel: View {
     let event: CalEvent
     let baseColor: Color
     let textColor: Color

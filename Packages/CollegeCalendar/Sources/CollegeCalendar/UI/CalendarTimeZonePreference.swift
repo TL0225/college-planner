@@ -5,18 +5,18 @@
 
 import Foundation
 
-enum CalendarTimeZonePreference {
-    static let storageKey = "calendarTimeZoneSelection"
-    static let systemValue = "__system__"
+public enum CalendarTimeZonePreference {
+    public static let storageKey = "calendarTimeZoneSelection"
+    public static let systemValue = "__system__"
 
-    static func resolvedTimeZone(selection: String) -> TimeZone {
+    public static func resolvedTimeZone(selection: String) -> TimeZone {
         if selection == systemValue {
             return .autoupdatingCurrent
         }
         return TimeZone(identifier: selection) ?? .autoupdatingCurrent
     }
 
-    static func displayTitle(for timeZone: TimeZone, locale: Locale = .autoupdatingCurrent) -> String {
+    public static func displayTitle(for timeZone: TimeZone, locale: Locale = .autoupdatingCurrent) -> String {
         // Prefer a friendly localized name, fall back to identifier.
         if let name = timeZone.localizedName(for: .standard, locale: locale), !name.isEmpty {
             return name
@@ -41,13 +41,13 @@ enum CalendarTimeZonePreference {
         return String(format: "GMT%@%02d:%02d", sign, hours, minutes)
     }
 
-    struct Option: Identifiable {
-        let id: String
-        let title: String
-        let subtitle: String
+    public struct Option: Identifiable, Sendable {
+        public let id: String
+        public let title: String
+        public let subtitle: String
     }
 
-    static func allOptions(locale: Locale = .autoupdatingCurrent) -> [Option] {
+    public static func allOptions(locale: Locale = .autoupdatingCurrent) -> [Option] {
         let tzs: [Option] = TimeZone.knownTimeZoneIdentifiers.compactMap { id in
             guard let tz = TimeZone(identifier: id) else { return nil }
             // Prefer a short city-ish title for menus (grouped by region elsewhere).
@@ -68,13 +68,13 @@ enum CalendarTimeZonePreference {
         }
     }
 
-    struct Group: Identifiable {
-        let id: String
-        let region: String
-        let options: [Option]
+    public struct Group: Identifiable, Sendable {
+        public let id: String
+        public let region: String
+        public let options: [Option]
     }
 
-    static func groupedOptions(locale: Locale = .autoupdatingCurrent) -> [Group] {
+    public static func groupedOptions(locale: Locale = .autoupdatingCurrent) -> [Group] {
         let options = allOptions(locale: locale)
         let grouped = Dictionary(grouping: options) { opt -> String in
             opt.id.split(separator: "/").first.map(String.init) ?? "Other"

@@ -9,10 +9,9 @@ import SwiftUI
 struct JobBoardMenuBarView: View {
     @Environment(AppContainer.self) private var container
     private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
-    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var persistence: CollegePersistence { container.persistence }
     private var collegePersistence: CollegePersistence { container.persistence }
-    @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
+    @ObservedObject private var workdayCoordinator = WorkdayJobBoardSyncCoordinator.shared
 
     var body: some View {
         menuContent

@@ -1,44 +1,84 @@
 // CalendarEventWritePipeline.swift
 // Feature: Calendar
-// Purpose: Calendar module — CalendarEventWriteInput.
-// Data: CollegePersistence / repositories when applicable.
+// Purpose: Single chokepoint for calendar event creates/updates/deletes from any feature surface.
 
 import CollegePlatform
 import Foundation
-import SwiftData
 
-struct CalendarEventWriteInput: Sendable {
-    var title: String
-    var startDate: Date
-    var endDate: Date
-    var allDay: Bool
-    var semesterID: UUID?
-    var courseID: UUID?
-    var notes: String?
-    var location: String?
-    var customColorHex: String?
-    var recurrenceRule: String?
-    var guestsJSON: String?
-    var brightspaceAnnouncementId: String?
+public struct CalendarEventWriteInput: Sendable {
+    public var title: String
+    public var startDate: Date
+    public var endDate: Date
+    public var allDay: Bool
+    public var semesterID: UUID?
+    public var courseID: UUID?
+    public var notes: String?
+    public var location: String?
+    public var customColorHex: String?
+    public var recurrenceRule: String?
+    public var guestsJSON: String?
+    public var brightspaceAnnouncementId: String?
+
+    public init(
+        title: String,
+        startDate: Date,
+        endDate: Date,
+        allDay: Bool,
+        semesterID: UUID? = nil,
+        courseID: UUID? = nil,
+        notes: String? = nil,
+        location: String? = nil,
+        customColorHex: String? = nil,
+        recurrenceRule: String? = nil,
+        guestsJSON: String? = nil,
+        brightspaceAnnouncementId: String? = nil
+    ) {
+        self.title = title
+        self.startDate = startDate
+        self.endDate = endDate
+        self.allDay = allDay
+        self.semesterID = semesterID
+        self.courseID = courseID
+        self.notes = notes
+        self.location = location
+        self.customColorHex = customColorHex
+        self.recurrenceRule = recurrenceRule
+        self.guestsJSON = guestsJSON
+        self.brightspaceAnnouncementId = brightspaceAnnouncementId
+    }
 }
 
-struct CalendarEventWriteOptions: Sendable {
-    var skipExport: Bool = false
-    var skipReminders: Bool = false
-    var exportGoogleCalendarID: String?
-    var exportAppleCalendarName: String?
-    var reminderLeadMinutes: [Int]?
+public struct CalendarEventWriteOptions: Sendable {
+    public var skipExport: Bool = false
+    public var skipReminders: Bool = false
+    public var exportGoogleCalendarID: String?
+    public var exportAppleCalendarName: String?
+    public var reminderLeadMinutes: [Int]?
+
+    public init(
+        skipExport: Bool = false,
+        skipReminders: Bool = false,
+        exportGoogleCalendarID: String? = nil,
+        exportAppleCalendarName: String? = nil,
+        reminderLeadMinutes: [Int]? = nil
+    ) {
+        self.skipExport = skipExport
+        self.skipReminders = skipReminders
+        self.exportGoogleCalendarID = exportGoogleCalendarID
+        self.exportAppleCalendarName = exportAppleCalendarName
+        self.reminderLeadMinutes = reminderLeadMinutes
+    }
 }
 
 /// Single chokepoint for calendar event creates/updates/deletes from any feature surface.
 @MainActor
-final class CalendarEventWritePipeline {
-    static let shared = CalendarEventWritePipeline()
+public final class CalendarEventWritePipeline {
+    public static let shared = CalendarEventWritePipeline()
 
     private let changePublisher: CalendarChangePublisher
     private let healthStore: IntegrationHealthStore
 
-    init(
+    public init(
         changePublisher: CalendarChangePublisher = CalendarChangePublisher.shared,
         healthStore: IntegrationHealthStore = IntegrationHealthStore.shared
     ) {
@@ -46,7 +86,7 @@ final class CalendarEventWritePipeline {
         self.healthStore = healthStore
     }
 
-    func create(
+    public func create(
         input: CalendarEventWriteInput,
         options: CalendarEventWriteOptions = .init()
     ) async throws -> UUID {
@@ -69,7 +109,7 @@ final class CalendarEventWritePipeline {
         return event.id
     }
 
-    func update(
+    public func update(
         eventID: UUID,
         input: CalendarEventWriteInput,
         options: CalendarEventWriteOptions = .init()
@@ -92,77 +132,67 @@ final class CalendarEventWritePipeline {
         notifyChange(reason: .userEdit, eventIDs: [eventID])
     }
 
-    func delete(eventID: UUID) async throws {
+    public func delete(eventID: UUID) async throws {
         await deleteRemoteCopies(for: eventID)
 
-        try AppDataStore.shared.calendarRepository.deleteCalendarEvent(id: eventID)
-        ModelMergeCoalescer.flushNow()
-        AppDataStore.shared.bumpProfileRevision()
-        CollegePersistence.shared.notifyCalendarDidChange()
+        guard let repo = CalendarPersistenceAccess.writeRepository else {
+            throw CalendarEventWritePipelineError.persistenceUnavailable
+        }
+        try repo.deleteCalendarEvent(id: eventID)
+        repo.flushPendingWrites()
+        repo.bumpProfileRevision()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
 
         CalendarReminderScheduler.shared.cancelReminders(eventID: eventID)
         notifyChange(reason: .delete, eventIDs: [eventID])
     }
 
-    func migrateColorOverridesFromUserDefaults() async {
+    public func migrateColorOverridesFromUserDefaults() async {
         let pairs = EventColorOverrides.allStoredOverrides()
-        guard !pairs.isEmpty else { return }
+        guard !pairs.isEmpty, let repo = CalendarPersistenceAccess.writeRepository else { return }
 
         for (eventID, hex) in pairs {
             do {
-                try AppDataStore.shared.calendarRepository.patchCalendarEventColor(
-                    id: eventID,
-                    customColorHex: hex
-                )
+                try repo.patchCalendarEventColor(id: eventID, customColorHex: hex)
                 EventColorOverrides.clearColor(for: eventID)
             } catch {
                 continue
             }
         }
-        ModelMergeCoalescer.flushNow()
+        repo.flushPendingWrites()
         notifyChange(reason: .migration, eventIDs: [])
     }
 
-    // MARK: - Private
-
-    private enum PipelineError: Error {
-        case missingEvent
-    }
-
-    private func createStoreCalendarEvent(input: CalendarEventWriteInput) throws -> CalendarEvent {
-        let store = AppDataStore.shared
-        let (semester, course) = store.calendarRepository.resolvePlannerLinks(
-            semesterID: input.semesterID,
-            courseID: input.courseID,
-            profileRepository: store.profileRepository
-        )
-        let event = try store.calendarRepository.createCalendarEvent(
+    private func createStoreCalendarEvent(input: CalendarEventWriteInput) throws -> CalendarStoredEvent {
+        guard let repo = CalendarPersistenceAccess.writeRepository else {
+            throw CalendarEventWritePipelineError.persistenceUnavailable
+        }
+        let links = repo.resolvePlannerLinks(semesterID: input.semesterID, courseID: input.courseID)
+        let event = try repo.createCalendarEvent(
             input: input,
-            semester: semester,
-            course: course
+            semesterID: links.semesterID,
+            courseID: links.courseID
         )
-        ModelMergeCoalescer.flushNow()
-        store.bumpProfileRevision()
-        CollegePersistence.shared.notifyCalendarDidChange()
+        repo.flushPendingWrites()
+        repo.bumpProfileRevision()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
         return event
     }
 
     private func updateStoreCalendarEvent(id: UUID, input: CalendarEventWriteInput) throws {
-        let store = AppDataStore.shared
-        let (semester, course) = store.calendarRepository.resolvePlannerLinks(
-            semesterID: input.semesterID,
-            courseID: input.courseID,
-            profileRepository: store.profileRepository
-        )
-        try store.calendarRepository.updateCalendarEvent(
+        guard let repo = CalendarPersistenceAccess.writeRepository else {
+            throw CalendarEventWritePipelineError.persistenceUnavailable
+        }
+        let links = repo.resolvePlannerLinks(semesterID: input.semesterID, courseID: input.courseID)
+        try repo.updateCalendarEvent(
             id: id,
             input: input,
-            semester: semester,
-            course: course
+            semesterID: links.semesterID,
+            courseID: links.courseID
         )
-        ModelMergeCoalescer.flushNow()
-        store.bumpProfileRevision()
-        CollegePersistence.shared.notifyCalendarDidChange()
+        repo.flushPendingWrites()
+        repo.bumpProfileRevision()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
 
     private func deleteRemoteCopies(for eventUUID: UUID) async {
@@ -202,7 +232,6 @@ final class CalendarEventWritePipeline {
         }
     }
 
-    @MainActor
     private func scheduleReminder(
         eventID: UUID,
         title: String,
@@ -232,14 +261,14 @@ final class CalendarEventWritePipeline {
             userInfo: ["message": message]
         )
         changePublisher.bump()
-        CollegePersistence.shared.notifyCalendarDidChange()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
 }
 
-extension CalendarChangePublisher {
+public extension CalendarChangePublisher {
     @MainActor static let shared = CalendarChangePublisher()
 }
 
-extension IntegrationHealthStore {
+public extension IntegrationHealthStore {
     @MainActor static let shared = IntegrationHealthStore()
 }

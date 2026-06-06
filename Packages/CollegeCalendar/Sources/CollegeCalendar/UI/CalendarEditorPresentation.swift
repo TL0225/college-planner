@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// How the calendar event editor is presented (drives material / chrome).
-enum CalendarEditorPresentation: Equatable {
+public enum CalendarEditorPresentation: Equatable, Sendable {
     case gridPopover
     case sidebarSheet
     case anchoredPanel
@@ -14,17 +14,17 @@ enum CalendarEditorPresentation: Equatable {
 }
 
 private struct CalendarEditorPresentationKey: EnvironmentKey {
-    static let defaultValue: CalendarEditorPresentation = .fullScreenOverlay
+    nonisolated(unsafe) static let defaultValue: CalendarEditorPresentation = .fullScreenOverlay
 }
 
-extension EnvironmentValues {
+public extension EnvironmentValues {
     var calendarEditorPresentation: CalendarEditorPresentation {
         get { self[CalendarEditorPresentationKey.self] }
         set { self[CalendarEditorPresentationKey.self] = newValue }
     }
 }
 
-extension View {
+public extension View {
     func calendarEditorPresentation(_ value: CalendarEditorPresentation) -> some View {
         environment(\.calendarEditorPresentation, value)
     }

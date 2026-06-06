@@ -5,27 +5,27 @@
 
 import Foundation
 
-actor iCloudCalendarProvider: CalendarSyncProvider {
-    let id: CalendarSyncProviderID = .icloud
+public actor iCloudCalendarProvider: CalendarSyncProvider {
+    public let id: CalendarSyncProviderID = .icloud
 
-    func connect() async throws {
+    public func connect() async throws {
         // Credentials supplied via settings UI — connectiCloud(username:password:)
     }
 
-    func disconnect() async {
+    public func disconnect() async {
         await MainActor.run { CalendarIntegrationBridge.manager?.disconnectiCloud() }
     }
 
-    func sync(showNotifications: Bool) async {
+    public func sync(showNotifications: Bool) async {
         guard let manager = await MainActor.run(body: { CalendarIntegrationBridge.manager }) else { return }
         await manager.performiCloudSync(showNotifications: showNotifications)
     }
 
-    func exportEvent(eventID: UUID) async throws {
+    public func exportEvent(eventID: UUID) async throws {
         // Phase 2b: CalDAV export.
     }
 
-    func deleteRemoteEvent(localEventID: UUID) async throws {
+    public func deleteRemoteEvent(localEventID: UUID) async throws {
         // CalDAV delete — Phase 2b.
     }
 }

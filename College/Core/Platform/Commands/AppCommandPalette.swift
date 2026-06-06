@@ -1,4 +1,5 @@
 // AppCommandPalette.swift
+import CollegeCalendar
 // Feature: Core
 // Purpose: Core module — AppCommandPalette.
 // Data: CollegePersistence / repositories when applicable.

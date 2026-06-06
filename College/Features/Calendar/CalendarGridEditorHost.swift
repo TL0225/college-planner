@@ -1,4 +1,5 @@
 // CalendarGridEditorHost.swift
+import CollegeCalendar
 // Feature: Calendar
 // Purpose: Calendar module — CalendarGridEditorHostModifier.
 // Data: CollegePersistence / repositories when applicable.

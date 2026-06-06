@@ -3,6 +3,7 @@
 // Purpose: SyllabusAI module — SyllabusReviewView.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 import SwiftData
 
@@ -1016,9 +1017,9 @@ struct SyllabusReviewView: View {
 
         for eventID in created {
             if let swiftEvent = try? AppDataStore.shared.calendarRepository.fetchCalendarEvent(id: eventID) {
-                calendarManager.exportEventToAppleCalendar(swiftEvent, calendarName: courseCode)
+                calendarManager.exportEventToAppleCalendar(swiftEvent.calendarStoredSnapshot, calendarName: courseCode)
             } else if let entity = collegePersistence.calendarEventEntity(id: eventID) {
-                calendarManager.exportEventToAppleCalendar(entity, calendarName: courseCode)
+                calendarManager.exportEventToAppleCalendar(entity.calendarStoredSnapshot, calendarName: courseCode)
             }
         }
 

@@ -1,4 +1,5 @@
 // BrightspaceImportSheet.swift
+import CollegeCalendar
 // Feature: Brightspace
 // Purpose: Brightspace module — BrightspaceImportSheet.
 // Data: CollegePersistence / repositories when applicable.
@@ -244,8 +245,8 @@ struct BrightspaceImportSheet: View {
             if importedCount > 0 {
                 collegePersistence.saveCalendarChanges()
                 for event in importedAnnouncements {
-                    calendarManager.exportEventToGoogle(event)
-                    calendarManager.exportEventToAppleCalendar(event)
+                    calendarManager.exportEventToGoogle(event.calendarStoredSnapshot)
+                    calendarManager.exportEventToAppleCalendar(event.calendarStoredSnapshot)
                 }
             }
 

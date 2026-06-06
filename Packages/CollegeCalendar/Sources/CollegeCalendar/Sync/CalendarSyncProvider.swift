@@ -1,12 +1,11 @@
 // CalendarSyncProvider.swift
 // Feature: Calendar
-// Purpose: Calendar module — CalendarSyncProviderID.
-// Data: CollegePersistence / repositories when applicable.
+// Purpose: Protocol-oriented calendar sync surface.
 
 import Foundation
 
 /// Provider identifier for sync map namespaces and routing.
-enum CalendarSyncProviderID: String, Sendable, CaseIterable {
+public enum CalendarSyncProviderID: String, Sendable, CaseIterable {
     case apple
     case google
     case outlook
@@ -14,7 +13,7 @@ enum CalendarSyncProviderID: String, Sendable, CaseIterable {
 }
 
 /// Protocol-oriented calendar sync surface. Implementations are `actor` types (Phase 2a+).
-protocol CalendarSyncProvider: Actor {
+public protocol CalendarSyncProvider: Actor {
     var id: CalendarSyncProviderID { get }
 
     func connect() async throws
@@ -25,18 +24,17 @@ protocol CalendarSyncProvider: Actor {
 }
 
 @MainActor
-enum CalendarSyncEventResolver {
-    static func calendarEvent(for eventID: UUID) -> CalendarEvent? {
-        try? AppDataStore.shared.calendarRepository.fetchCalendarEvent(id: eventID)
+public enum CalendarSyncEventResolver {
+    public static func calendarEvent(for eventID: UUID) -> CalendarStoredEvent? {
+        try? CalendarPersistenceAccess.writeRepository?.fetchCalendarEvent(id: eventID)
     }
 }
 
-/// Shared sync completion hook — Phase 4 implements reminder batch scheduling.
-enum CalendarSyncCompletionHooks {
+/// Shared sync completion hook — schedules reminders after provider import.
+public enum CalendarSyncCompletionHooks {
     @MainActor
-    static func onSyncCompleted(importedEventIDs: [UUID]) {
-        guard !importedEventIDs.isEmpty else { return }
-        let repo = AppDataStore.shared.calendarRepository
+    public static func onSyncCompleted(importedEventIDs: [UUID]) {
+        guard !importedEventIDs.isEmpty, let repo = CalendarPersistenceAccess.writeRepository else { return }
         var infos: [CalendarReminderInfo] = []
         for id in importedEventIDs {
             guard let event = try? repo.fetchCalendarEvent(id: id) else { continue }
@@ -52,4 +50,8 @@ enum CalendarSyncCompletionHooks {
         }
         CalendarReminderScheduler.shared.scheduleBatch(events: infos)
     }
+}
+
+public enum CalendarSyncProviderError: Error {
+    case missingEvent
 }

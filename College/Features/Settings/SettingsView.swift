@@ -3,6 +3,7 @@
 // Purpose: Settings module — SettingsView.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 import AppKit
 import WebKit

@@ -1,18 +1,17 @@
 // CalendarEventWritePipeline+Overlay.swift
 // Feature: Calendar
-// Purpose: Calendar module — CalendarEventWritePipelineError.
-// Data: CollegePersistence / repositories when applicable.
+// Purpose: Overlay write helpers for calendar event editor surfaces.
 
 import Foundation
 
-extension CalendarEventWritePipeline {
+public extension CalendarEventWritePipeline {
     func writeFromOverlay(
         title: String,
         start: Date,
         end: Date,
         allDay: Bool,
-        semester: PlannerSemester?,
-        course: PlannerCourse?,
+        semesterID: UUID?,
+        courseID: UUID?,
         notes: String?,
         location: String?,
         customColorHex: String?,
@@ -26,8 +25,8 @@ extension CalendarEventWritePipeline {
             startDate: start,
             endDate: end,
             allDay: allDay,
-            semesterID: semester?.id,
-            courseID: course?.id,
+            semesterID: semesterID,
+            courseID: courseID,
             notes: notes,
             location: location,
             customColorHex: customColorHex,
@@ -44,6 +43,7 @@ extension CalendarEventWritePipeline {
     }
 }
 
-enum CalendarEventWritePipelineError: Error {
+public enum CalendarEventWritePipelineError: Error {
     case missingEventID
+    case persistenceUnavailable
 }

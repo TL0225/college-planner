@@ -107,7 +107,7 @@ enum CalendarReadBridge {
         }
 
         return events.compactMap { event in
-            guard calendarManager.shouldDisplayEvent(event) else { return nil }
+            guard calendarManager.shouldDisplayEvent(event.calendarStoredSnapshot) else { return nil }
             return CalendarEventSnapshot(
                 title: event.title,
                 start: event.startDate,

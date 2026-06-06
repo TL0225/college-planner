@@ -1,4 +1,5 @@
 // AddTaskOverlay.swift
+import CollegeCalendar
 // Feature: Calendar
 // Purpose: Calendar module — AddTaskOverlay.
 // Data: CollegePersistence / repositories when applicable.

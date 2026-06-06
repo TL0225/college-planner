@@ -1,4 +1,5 @@
 // SettingsPanels_Calendar.swift
+import CollegeCalendar
 // Feature: Settings
 // Purpose: Settings module — SettingsCalendarPanel.
 // Data: CollegePersistence / repositories when applicable.

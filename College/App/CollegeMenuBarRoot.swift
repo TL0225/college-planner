@@ -286,15 +286,14 @@ private struct CollegeMenuBarTodayEvents: View {
 private struct CollegeMenuBarCareerOpenings: View {
     @Environment(AppContainer.self) private var container
     private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
-    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     private var persistence: CollegePersistence { container.persistence }
     private var collegePersistence: CollegePersistence { container.persistence }
-    @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
+    @ObservedObject private var workdayCoordinator = WorkdayJobBoardSyncCoordinator.shared
     @State private var recentPostings: [WorkdayJobPosting] = []
 
     var body: some View {
         Group {
-            if coordinator.uiState.isAnyScrapeInFlight {
+            if workdayCoordinator.uiState.isAnyScrapeInFlight {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
@@ -329,7 +328,7 @@ private struct CollegeMenuBarCareerOpenings: View {
         }
         .onAppear { refreshRecentPostings() }
         .onChange(of: collegePersistence.careerDidChangeToken) { _, _ in refreshRecentPostings() }
-        .onChange(of: coordinator.uiState.lastSuccessfulSyncAt) { _, _ in refreshRecentPostings() }
+        .onChange(of: workdayCoordinator.uiState.lastSuccessfulSyncAt) { _, _ in refreshRecentPostings() }
     }
 
     private func refreshRecentPostings() {

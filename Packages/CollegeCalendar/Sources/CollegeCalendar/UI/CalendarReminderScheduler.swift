@@ -12,18 +12,18 @@ import UserNotifications
 // Uses the event UUID as the notification identifier prefix so reminders can be
 // cancelled individually when an event is edited or deleted.
 
-final class CalendarReminderScheduler: @unchecked Sendable {
+public final class CalendarReminderScheduler: @unchecked Sendable {
 
     // MARK: Singleton
 
-    static let shared = CalendarReminderScheduler()
+    public static let shared = CalendarReminderScheduler()
     private init() {}
 
     // MARK: - Authorization
 
     /// Requests UNUserNotificationCenter permission if not already granted.
     /// Call once at app launch (best placed in AppDelegate / @main).
-    func requestAuthorizationIfNeeded() {
+    public func requestAuthorizationIfNeeded() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             #if DEBUG
             if let error {
@@ -46,7 +46,7 @@ final class CalendarReminderScheduler: @unchecked Sendable {
     ///   - leadMinutes:  Array of lead times (in minutes before start) at which to fire.
     ///                   Defaults to the user's default reminder setting.
     ///   - conferenceURL: Optional join link surfaced as an action button.
-    func schedule(
+    public func schedule(
         eventID: UUID,
         title: String,
         startDate: Date,
@@ -97,16 +97,16 @@ final class CalendarReminderScheduler: @unchecked Sendable {
     ///
     /// Uses deterministic ID construction instead of `getPendingNotificationRequests` to
     /// avoid an expensive XPC round-trip that scans *all* pending notifications.
-    func cancelReminders(eventID: UUID) {
+    public func cancelReminders(eventID: UUID) {
         cancel(eventID: eventID)
     }
 
-    func isCalendarMuted(for event: CalendarEvent) -> Bool {
+    public func isCalendarMuted(for event: CalendarStoredEvent) -> Bool {
         _ = event
         return false
     }
 
-    func cancel(eventID: UUID) {
+    public func cancel(eventID: UUID) {
         let center = UNUserNotificationCenter.current()
         // Enumerate every lead-time variant we may have ever scheduled and remove them all.
         // removePendingNotificationRequests silently ignores IDs that don't exist.
@@ -116,7 +116,7 @@ final class CalendarReminderScheduler: @unchecked Sendable {
     }
 
     /// Cancels old reminders for an event and reschedules with new parameters.
-    func reschedule(
+    public func reschedule(
         eventID: UUID,
         title: String,
         startDate: Date,
@@ -137,7 +137,7 @@ final class CalendarReminderScheduler: @unchecked Sendable {
 
     /// Schedules reminders for a batch of events imported from a sync source.
     /// Only schedules events in the future; silently skips past events.
-    func scheduleBatch(events: [CalendarReminderInfo]) {
+    public func scheduleBatch(events: [CalendarReminderInfo]) {
         for info in events {
             guard info.startDate > Date() else { continue }
             schedule(
@@ -153,7 +153,7 @@ final class CalendarReminderScheduler: @unchecked Sendable {
     // MARK: - Register Notification Category (call at launch)
 
     /// Registers the calendar reminder UNNotificationCategory with actionable buttons.
-    func registerNotificationCategories() {
+    public func registerNotificationCategories() {
         var actions: [UNNotificationAction] = [
             UNNotificationAction(
                 identifier: "SNOOZE_10",
@@ -210,10 +210,24 @@ final class CalendarReminderScheduler: @unchecked Sendable {
 
 // MARK: - CalendarReminderInfo
 
-struct CalendarReminderInfo {
-    let eventID: UUID
-    let title: String
-    let startDate: Date
-    let leadMinutes: [Int]?
-    let conferenceURL: String?
+public struct CalendarReminderInfo: Sendable {
+    public let eventID: UUID
+    public let title: String
+    public let startDate: Date
+    public let leadMinutes: [Int]?
+    public let conferenceURL: String?
+
+    public init(
+        eventID: UUID,
+        title: String,
+        startDate: Date,
+        leadMinutes: [Int]?,
+        conferenceURL: String?
+    ) {
+        self.eventID = eventID
+        self.title = title
+        self.startDate = startDate
+        self.leadMinutes = leadMinutes
+        self.conferenceURL = conferenceURL
+    }
 }

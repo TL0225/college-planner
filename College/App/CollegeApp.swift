@@ -10,6 +10,7 @@
 //  Created by Timothy Leung on 12/20/25.
 //
 
+import CollegeCalendar
 import SwiftUI
 
 import AppKit
@@ -116,6 +117,8 @@ struct CollegeApp: App {
         LaunchPreloadCoordinator.bootstrapBuiltInFeaturePreloadsIfNeeded()
         CalendarPersistencePortBootstrap.wire()
         CalendarPersistencePortBootstrap.wireReadPorts()
+        CalendarPersistencePortBootstrap.wireOverlays()
+        CalendarPersistencePortBootstrap.wireIntegrationPorts()
         ModelMigrationService.runLaunchMigrationsIfNeeded()
         WidgetRegistry.shared.bootstrapBuiltIns()
 

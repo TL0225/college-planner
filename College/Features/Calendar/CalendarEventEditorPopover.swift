@@ -1,4 +1,5 @@
 // CalendarEventEditorPopover.swift
+import CollegeCalendar
 // Feature: Calendar
 // Purpose: Calendar module — CalendarEventEditorPopover.
 // Data: CollegePersistence / repositories when applicable.
@@ -22,7 +23,7 @@ struct CalendarEventEditorPopover: View {
             get: { isPresented },
             set: { presented in
                 if !presented {
-                    editorSession.discardDraft(collegePersistence: collegePersistence)
+                    editorSession.discardDraft()
                     onDismiss()
                 }
             }

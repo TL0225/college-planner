@@ -1,11 +1,13 @@
-// CalendarToolbarSearchMatch.swift
-// Feature: App / Toolbar
-// Purpose: Calendar toolbar search result row model.
-
 import Foundation
 
-struct CalendarToolbarSearchMatch: Identifiable, Hashable, Sendable {
-    let id: UUID
-    let title: String
-    let subtitle: String
+public struct CalendarToolbarSearchMatch: Identifiable, Hashable, Sendable {
+    public let id: UUID
+    public let title: String
+    public let subtitle: String
+
+    public init(id: UUID, title: String, subtitle: String) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+    }
 }

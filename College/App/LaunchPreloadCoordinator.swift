@@ -3,6 +3,7 @@
 // Purpose: App module — FeaturePreloadDescriptor.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import Foundation
 import Observation
 

@@ -36,4 +36,12 @@ public enum CalendarTenantKind: String, CaseIterable, Sendable {
         if source.contains("outlook") || source.contains("google") { return .work }
         return .personal
     }
+
+    public static func resolve(for event: CalendarStoredEvent) -> CalendarTenantKind {
+        resolve(
+            courseCode: event.courseCode,
+            providerSource: event.providerSource,
+            hasCourse: event.courseID != nil
+        )
+    }
 }

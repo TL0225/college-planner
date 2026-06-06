@@ -1,8 +1,10 @@
 // AddCalendarItemOverlay.swift
+import CollegeCalendar
 // Feature: Calendar
 // Purpose: Calendar module — AddCalendarItemOverlay.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegePlatform
 import SwiftUI
 import SwiftData
 import MapKit
@@ -1130,12 +1132,12 @@ struct AddCalendarItemOverlay: View {
             if let selectedGoogleCalendarID,
                !selectedGoogleCalendarID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Task { @MainActor in
-                    calendarManager.exportEventToGoogle(eventToEdit, targetCalendarID: selectedGoogleCalendarID)
+                    calendarManager.exportEventToGoogle(eventToEdit.calendarStoredSnapshot, targetCalendarID: selectedGoogleCalendarID)
                 }
             }
             // Sync to Apple Calendar
             Task { @MainActor in
-                calendarManager.exportEventToAppleCalendar(eventToEdit)
+                calendarManager.exportEventToAppleCalendar(eventToEdit.calendarStoredSnapshot)
             }
             // Reschedule OS reminder
             CalendarReminderScheduler.shared.reschedule(
@@ -1174,9 +1176,9 @@ struct AddCalendarItemOverlay: View {
             if let swiftEvent = try? AppDataStore.shared.calendarRepository.fetchCalendarEvent(id: createdID) {
                 if let selectedGoogleCalendarID,
                    !selectedGoogleCalendarID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    calendarManager.exportEventToGoogle(swiftEvent, targetCalendarID: selectedGoogleCalendarID)
+                    calendarManager.exportEventToGoogle(swiftEvent.calendarStoredSnapshot, targetCalendarID: selectedGoogleCalendarID)
                 }
-                calendarManager.exportEventToAppleCalendar(swiftEvent)
+                calendarManager.exportEventToAppleCalendar(swiftEvent.calendarStoredSnapshot)
             }
             CalendarReminderScheduler.shared.schedule(
                 eventID: createdID,
@@ -1541,7 +1543,7 @@ struct AddCalendarItemOverlay: View {
         guard let eventToEdit else { return }
         guard !isColorOverridden else { return }
         guard eventToEdit.course == nil else { return }
-        guard let sourceColor = calendarManager.sourceCalendarColor(for: eventToEdit) else { return }
+        guard let sourceColor = calendarManager.sourceCalendarColor(for: eventToEdit.calendarStoredSnapshot) else { return }
 
         setDisplayedColor(sourceColor)
     }

@@ -7,20 +7,19 @@ import SwiftUI
 import Observation
 import os
 import MapKit
-import CollegeCalendar
 
 // Domain types and cache logic live in CalendarCacheEngine.swift
-typealias CalEvent = CalendarCalEvent
-typealias EventLayoutSegment = CalendarLayoutSegment
-typealias EventType = CalendarEventKind
+public typealias CalEvent = CalendarCalEvent
+public typealias EventLayoutSegment = CalendarLayoutSegment
+public typealias EventType = CalendarEventKind
 
-enum CalendarViewDisplayMode: String, CaseIterable {
+public enum CalendarViewDisplayMode: String, CaseIterable, Sendable {
     case month = "Month"
     case week = "Week"
     case day = "Day"
 }
 
-enum CalendarSidebarPanel: String, CaseIterable {
+public enum CalendarSidebarPanel: String, CaseIterable, Sendable {
     case eventList = "Event List"
     case tasks = "Tasks"
 }
@@ -28,15 +27,22 @@ enum CalendarSidebarPanel: String, CaseIterable {
 /// Shared calendar grid cache; `@Observable` limits invalidation to views that read changed buckets.
 @Observable
 @MainActor
-final class CalendarEventCacheStore {
-    var dayEventsByDate: [Date: [CalEvent]] = [:]
-    var timedLayoutsByDate: [Date: [EventLayoutSegment]] = [:]
+public final class CalendarEventCacheStore {
+    public var dayEventsByDate: [Date: [CalEvent]] = [:]
+    public var timedLayoutsByDate: [Date: [EventLayoutSegment]] = [:]
+
+    public init() {}
 }
 
 /// Shell: holds navigation state and derives the local store fetch window so `CalendarViewContent` can use bounded fetches.
-struct CalendarView: View {
-    @Binding var activePage: AppPage
+public struct CalendarView: View {
+    @Binding var isCalendarPageActive: Bool
     var cacheStore: CalendarEventCacheStore
+
+    public init(isCalendarPageActive: Binding<Bool>, cacheStore: CalendarEventCacheStore) {
+        _isCalendarPageActive = isCalendarPageActive
+        self.cacheStore = cacheStore
+    }
 
     @State private var currentDate = Date()
     @State private var activeViewMode: CalendarViewDisplayMode = .month
@@ -44,13 +50,13 @@ struct CalendarView: View {
     @SceneStorage("calendar.activeViewModeRaw") private var storedActiveViewModeRaw: String = CalendarViewDisplayMode.month.rawValue
     @State private var didRestoreState = false
 
-    @Environment(AppContainer.self) private var appContainer
+    @Environment(\.calendarPersistence) private var collegePersistence
     @State private var isEventListSidebarShown: Bool = true
     @State private var sidebarPanel: CalendarSidebarPanel = .eventList
 
-    private var calendarSceneState: CalendarSceneState { appContainer.calendarScene }
+    @Environment(\.calendarSceneState) private var calendarSceneState
 
-    var body: some View {
+    public var body: some View {
         let cal: Calendar = {
             var c = Calendar.current
             c.firstWeekday = 1
@@ -70,7 +76,7 @@ struct CalendarView: View {
             CalendarViewContent(
                 rangeStart: windowStart,
                 rangeEnd: windowEnd,
-                activePage: $activePage,
+                isCalendarPageActive: $isCalendarPageActive,
                 currentDate: $currentDate,
                 activeViewMode: $activeViewMode,
                 cacheStore: cacheStore,
@@ -100,8 +106,8 @@ struct CalendarView: View {
 
     private var contentCalendarSearchBinding: Binding<String> {
         Binding(
-            get: { calendarSceneState.toolbarSearchText },
-            set: { calendarSceneState.toolbarSearchText = $0 }
+            get: { calendarSceneState?.toolbarSearchText ?? "" },
+            set: { calendarSceneState?.toolbarSearchText = $0 }
         )
     }
 
@@ -115,10 +121,10 @@ struct CalendarView: View {
 
     @ViewBuilder
     private var calendarSearchResultsFloatingPanel: some View {
-        let searchText = calendarSceneState.toolbarSearchText
+        let searchText = calendarSceneState?.toolbarSearchText ?? ""
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if activePage == .calendar, calendarSceneState.toolbarSearchExpanded, !trimmed.isEmpty {
-            let results = calendarSceneState.toolbarSearchResults
+        if isCalendarPageActive, calendarSceneState?.toolbarSearchExpanded == true, !trimmed.isEmpty {
+            let results = calendarSceneState?.toolbarSearchResults ?? []
             VStack(alignment: .leading, spacing: 0) {
                 if results.isEmpty {
                     HStack(spacing: 8) {
@@ -193,20 +199,20 @@ private struct CalendarViewContent: View {
     let rangeStart: Date
     let rangeEnd: Date
 
-    @Binding var activePage: AppPage
+    @Binding var isCalendarPageActive: Bool
     @Binding var currentDate: Date
     @Binding var activeViewMode: CalendarViewDisplayMode
 
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(AppContainer.self) private var appContainer
+        
+    @Environment(\.calendarPersistence) private var collegePersistence
+    @Environment(\.calendarIntegrationManager) private var calendarManager
 
-    private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
-    private var calendarSceneState: CalendarSceneState { appContainer.calendarScene }
-    private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
+    @Environment(\.calendarModalCoordinator) private var modalCoordinator
+    @Environment(\.calendarSceneState) private var calendarSceneState
+    
 
     var cacheStore: CalendarEventCacheStore
-    @State private var toolbarHandlerToken: ToolbarHandlerToken?
+    @State private var toolbarHandlerToken: (any CalendarToolbarHandlerToken)?
 
     @SceneStorage("calendar.view.hasAnimatedIn") private var hasAnimatedIn = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -238,7 +244,7 @@ private struct CalendarViewContent: View {
     init(
         rangeStart: Date,
         rangeEnd: Date,
-        activePage: Binding<AppPage>,
+        isCalendarPageActive: Binding<Bool>,
         currentDate: Binding<Date>,
         activeViewMode: Binding<CalendarViewDisplayMode>,
         cacheStore: CalendarEventCacheStore,
@@ -248,7 +254,7 @@ private struct CalendarViewContent: View {
     ) {
         self.rangeStart = rangeStart
         self.rangeEnd = rangeEnd
-        _activePage = activePage
+        _isCalendarPageActive = isCalendarPageActive
         _currentDate = currentDate
         _activeViewMode = activeViewMode
         self.cacheStore = cacheStore
@@ -258,7 +264,7 @@ private struct CalendarViewContent: View {
     }
 
     private var calendarToolbarInitials: String {
-        Self.initialsFromProfileName(collegePersistence.profile?.name)
+        Self.initialsFromProfileName(collegePersistence?.profileDisplayName)
     }
 
     private static func initialsFromProfileName(_ raw: String?) -> String {
@@ -393,7 +399,7 @@ private struct CalendarViewContent: View {
             rangeStart: rangeStart,
             rangeEnd: rangeEnd,
             calendar: calendar,
-            collegePersistence: collegePersistence
+            
         )
     }
 
@@ -409,9 +415,9 @@ private struct CalendarViewContent: View {
         }
     }
 
-    private func entity(for event: CalEvent) -> CalendarEvent? {
+    private func entity(for event: CalEvent) -> CalendarStoredEvent? {
         guard let eventID = event.calendarEventID else { return nil }
-        return collegePersistence.calendarEventEntity(id: eventID)
+        return collegePersistence?.calendarEventEntity(id: eventID)
     }
 
     @MainActor
@@ -419,29 +425,15 @@ private struct CalendarViewContent: View {
         toolbarCalendarSearchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            calendarSceneState.toolbarSearchResults = []
+            calendarSceneState?.toolbarSearchResults = []
             return
         }
         toolbarCalendarSearchTask = Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
-            let matches = await CalendarEventSearchBridge.searchOffMain(
-                query: trimmed,
-                semester: nil,
-                limit: 50
-            )
-            let formatted = matches.map { hit -> CalendarToolbarSearchMatch in
-                let df = DateFormatter()
-                df.dateStyle = .medium
-                df.timeStyle = .short
-                return CalendarToolbarSearchMatch(
-                    id: hit.id,
-                    title: hit.title,
-                    subtitle: df.string(from: hit.startDate)
-                )
-            }
+let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, limit: 50)
             guard !Task.isCancelled else { return }
-            calendarSceneState.toolbarSearchResults = formatted
+            calendarSceneState?.toolbarSearchResults = formatted
         }
     }
 
@@ -462,18 +454,18 @@ private struct CalendarViewContent: View {
 
     private func prewarmEventEntitiesIfNeeded() {
         guard !didPrewarmEventEntities else { return }
-        let snapshots = CalendarReadBridge.eventSnapshots(
+        guard let calendarManager else { return }
+        let snapshots = CalendarReadAccess.reader!.eventSnapshots(
             rangeStart: rangeStart,
             rangeEnd: rangeEnd,
-            calendarManager: calendarManager,
-            collegePersistence: collegePersistence
+            calendarManager: calendarManager
         )
         let ids = snapshots.compactMap(\.calendarEventID)
         guard !ids.isEmpty else { return }
 
         didPrewarmEventEntities = true
         for id in ids {
-            _ = collegePersistence.calendarEventEntity(id: id)
+            _ = collegePersistence?.calendarEventEntity(id: id)
         }
     }
 
@@ -483,12 +475,13 @@ private struct CalendarViewContent: View {
         os_signpost(.begin, log: Self.performanceLog, name: "CalendarCacheRebuild", signpostID: signpostID)
         defer { os_signpost(.end, log: Self.performanceLog, name: "CalendarCacheRebuild", signpostID: signpostID) }
 
-        async let eventSnapshots = CalendarReadBridge.eventSnapshotsOffMain(
+        guard let calendarManager else { return }
+        let resolvedEvents = await CalendarReadAccess.reader!.eventSnapshotsOffMain(
             rangeStart: rangeStart,
             rangeEnd: rangeEnd,
             calendarManager: calendarManager
         )
-        async let taskSnapshots = CalendarReadBridge.taskSnapshotsOffMain(
+        let tasks = await CalendarReadAccess.reader!.taskSnapshotsOffMain(
             rangeStart: rangeStart,
             rangeEnd: rangeEnd
         )
@@ -497,14 +490,12 @@ private struct CalendarViewContent: View {
         cal.firstWeekday = 1
         let tzId = TimeZone.current.identifier
         let firstWeekday = cal.firstWeekday
-        let events = await eventSnapshots
-        let tasks = await taskSnapshots
 
         let result = await Task.detached(priority: .userInitiated) {
             var c = Calendar(identifier: .gregorian)
             c.timeZone = TimeZone(identifier: tzId) ?? .current
             c.firstWeekday = firstWeekday
-            return CalendarCacheEngine.buildCaches(events: events, tasks: tasks, calendar: c)
+            return CalendarCacheEngine.buildCaches(events: resolvedEvents, tasks: tasks, calendar: c)
         }.value
 
         cacheStore.dayEventsByDate = result.dayEventsByDate
@@ -604,33 +595,32 @@ private struct CalendarViewContent: View {
         .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isEventListSidebarShown)
         .animation(.spring(response: 0.34, dampingFraction: 0.88), value: sidebarPanel)
         .sheet(isPresented: isAddCalendarSheetPresented) {
-            AddCalendarItemOverlay(
+            CalendarOverlayAccess.builder?.addCalendarItemOverlay(
                 isPresented: isAddCalendarSheetPresented,
-                semester: addCalendarSheetSemester,
+                semesterID: addCalendarSheetSemester?.id,
                 initialTitle: addCalendarSheetTitle,
-                initialStartDateTime: addCalendarSheetStart,
-                initialEndDateTime: addCalendarSheetEnd,
-                eventToEdit: nil,
-                presentationStyle: .anchoredPanel
+                initialStart: addCalendarSheetStart,
+                initialEnd: addCalendarSheetEnd,
+                eventID: nil,
+                style: .anchoredPanel
             )
             .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
-            .environmentObject(collegePersistence)
             .presentationBackground(.thinMaterial)
-            .dismissOnOutsideClickForSheet()
+            
         }
         .sheet(isPresented: isEditCalendarSheetPresented) {
-            AddCalendarItemOverlay(
+            CalendarOverlayAccess.builder?.addCalendarItemOverlay(
                 isPresented: isEditCalendarSheetPresented,
-                semester: editCalendarSheetEvent?.semester,
-                initialStartDateTime: editCalendarSheetEvent?.startDate,
-                initialEndDateTime: editCalendarSheetEvent?.endDate,
-                eventToEdit: editCalendarSheetEvent,
-                presentationStyle: .anchoredPanel
+                semesterID: editCalendarSheetEvent?.semesterID,
+                initialTitle: editCalendarSheetEvent?.title,
+                initialStart: editCalendarSheetEvent?.startDate,
+                initialEnd: editCalendarSheetEvent?.endDate,
+                eventID: editCalendarSheetEvent?.id,
+                style: .anchoredPanel
             )
             .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
-            .environmentObject(collegePersistence)
             .presentationBackground(.thinMaterial)
-            .dismissOnOutsideClickForSheet()
+            
         }
         .opacity(hasAnimatedIn ? 1 : 0)
         .offset(y: hasAnimatedIn ? 0 : (motionReduced ? 0 : 12))
@@ -657,7 +647,7 @@ private struct CalendarViewContent: View {
         prewarmEventEntitiesIfNeeded()
         syncToolbarState()
         toolbarHandlerToken?.invalidate()
-        toolbarHandlerToken = toolbarDispatcher.register(owner: .calendar) { [self] action in
+        toolbarHandlerToken = CalendarToolbarAccess.dispatcher?.registerCalendarHandler { [self] action in
             handleCalendarToolbarAction(action)
         }
         guard !hasAnimatedIn else { return }
@@ -674,16 +664,12 @@ private struct CalendarViewContent: View {
     @ViewBuilder
     private func calendarCacheHandlers<Content: View>(_ content: Content) -> some View {
         content
-            .background {
-                CalendarQueryHost {
-                    scheduleCacheRebuild()
-                }
-            }
+            .background { Color.clear.frame(width: 0, height: 0) }
             .onAppear { handleCalendarAppear() }
-            .onChange(of: collegePersistence.calendarDidChangeToken) { _, _ in
+            .onChange(of: collegePersistence?.calendarDidChangeToken ?? 0) { _, _ in
                 scheduleCacheRebuild()
             }
-            .onChange(of: calendarManager.calendarVisibilityToken) { _, _ in
+            .onChange(of: calendarManager?.calendarVisibilityToken ?? 0) { _, _ in
                 scheduleCacheRebuild(delay: 0)
             }
     }
@@ -692,19 +678,19 @@ private struct CalendarViewContent: View {
     private func calendarToolbarHandlers<Content: View>(_ content: Content) -> some View {
         content
             .onChange(of: headerDateString) { _, text in
-                calendarSceneState.headerDate = text
+                calendarSceneState?.headerDate = text
             }
             .onChange(of: activeViewMode) { _, mode in
-                calendarSceneState.viewMode = mode
+                calendarSceneState?.viewMode = mode
             }
             .onChange(of: isEventListSidebarShown) { _, shown in
-                calendarSceneState.sidebarShown = shown
+                calendarSceneState?.sidebarShown = shown
             }
             .onChange(of: sidebarPanel) { _, panel in
-                calendarSceneState.sidebarPanel = panel
+                calendarSceneState?.sidebarPanel = panel
             }
             .onChange(of: calendarToolbarInitials) { _, initials in
-                calendarSceneState.profileInitials = initials
+                calendarSceneState?.profileInitials = initials
             }
             .onChange(of: calendarSearchText) { _, query in
                 scheduleToolbarCalendarSearch(query)
@@ -728,16 +714,15 @@ private struct CalendarViewContent: View {
     }
 
     private func syncToolbarState() {
-        calendarSceneState.headerDate = headerDateString
-        calendarSceneState.viewMode = activeViewMode
-        calendarSceneState.sidebarShown = isEventListSidebarShown
-        calendarSceneState.sidebarPanel = sidebarPanel
-        calendarSceneState.profileInitials = calendarToolbarInitials
+        calendarSceneState?.headerDate = headerDateString
+        calendarSceneState?.viewMode = activeViewMode
+        calendarSceneState?.sidebarShown = isEventListSidebarShown
+        calendarSceneState?.sidebarPanel = sidebarPanel
+        calendarSceneState?.profileInitials = calendarToolbarInitials
     }
 
-    private func handleCalendarToolbarAction(_ action: ToolbarAction) {
-        guard case .calendar(let calendarAction) = action else { return }
-        switch calendarAction {
+    private func handleCalendarToolbarAction(_ action: CalendarToolbarAction) {
+        switch action {
         case .previous:
             shiftDate(by: -1)
         case .next:
@@ -772,71 +757,49 @@ private struct CalendarViewContent: View {
 
     private var isAddCalendarSheetPresented: Binding<Bool> {
         Binding(
-            get: {
-                if case .addCalendarItem = modalCoordinator.activeModal { return true }
-                return false
-            },
-            set: { isPresented in
-                if !isPresented, case .addCalendarItem = modalCoordinator.activeModal {
-                    modalCoordinator.activeModal = nil
-                }
-            }
+            get: { modalCoordinator?.isAddCalendarItemPresented ?? false },
+            set: { modalCoordinator?.isAddCalendarItemPresented = $0 }
         )
     }
 
     private var isEditCalendarSheetPresented: Binding<Bool> {
         Binding(
-            get: {
-                if case .editCalendarItem = modalCoordinator.activeModal { return true }
-                return false
-            },
-            set: { isPresented in
-                if !isPresented, case .editCalendarItem = modalCoordinator.activeModal {
-                    modalCoordinator.activeModal = nil
-                }
-            }
+            get: { modalCoordinator?.isEditCalendarItemPresented ?? false },
+            set: { modalCoordinator?.isEditCalendarItemPresented = $0 }
         )
     }
 
-    private var addCalendarSheetSemester: PlannerSemester? {
-        guard case .addCalendarItem(let semesterID, _, _, _) = modalCoordinator.activeModal else { return nil }
-        guard let semesterID else { return nil }
-        return collegePersistence.semester(with: semesterID)
+    private var addCalendarSheetSemester: CalendarSemesterRecord? {
+        guard let semesterID = modalCoordinator?.addCalendarItemSemesterID else { return nil }
+        return collegePersistence?.semester(id: semesterID)
     }
 
     private var addCalendarSheetTitle: String? {
-        guard case .addCalendarItem(_, let initialTitle, _, _) = modalCoordinator.activeModal else { return nil }
-        return initialTitle
+        return modalCoordinator?.addCalendarItemInitialTitle
     }
 
     private var addCalendarSheetStart: Date? {
-        guard case .addCalendarItem(_, _, let initialStart, _) = modalCoordinator.activeModal else { return nil }
-        return initialStart
+        return modalCoordinator?.addCalendarItemInitialStart
     }
 
     private var addCalendarSheetEnd: Date? {
-        guard case .addCalendarItem(_, _, _, let initialEnd) = modalCoordinator.activeModal else { return nil }
-        return initialEnd
+        return modalCoordinator?.addCalendarItemInitialEnd
     }
 
-    private var editCalendarSheetEvent: CalendarEvent? {
-        guard case .editCalendarItem(let eventID) = modalCoordinator.activeModal else { return nil }
-        return collegePersistence.calendarEventEntity(id: eventID)
+    private var editCalendarSheetEvent: CalendarStoredEvent? {
+        guard let eventID = modalCoordinator?.editCalendarItemID else { return nil }
+        return collegePersistence?.calendarEventEntity(id: eventID)
     }
 
     private func presentAddEventFromSidebar() {
         let start = defaultSidebarStartDate()
         let end = Calendar.current.date(byAdding: .hour, value: 1, to: start) ?? start.addingTimeInterval(3600)
-        modalCoordinator.activeModal = .addCalendarItem(
-            semesterID: nil,
-            initialTitle: nil,
-            initialStart: start,
-            initialEnd: end
+        modalCoordinator?.presentAddCalendarItem(semesterID: nil, title: nil, start: start, end: end
         )
     }
 
     private func presentAddTaskFromSidebar() {
-        modalCoordinator.activeModal = .addTask(semesterID: nil, prefillCourseID: nil)
+        modalCoordinator?.presentAddTask(semesterID: nil, prefillCourseID: nil)
     }
 
     private func defaultSidebarStartDate() -> Date {
@@ -904,7 +867,7 @@ private struct CalendarViewContent: View {
                         swipeNavProgress = p
                     }
                 },
-                disabled: motionReduced || activePage != .calendar
+                disabled: motionReduced || !isCalendarPageActive
             )
             .allowsHitTesting(false)
         )
@@ -1288,7 +1251,7 @@ private struct CalendarViewContent: View {
                             }()
                             let matchedEntity = entity(for: event)
                             let pillColor = eventColor(for: event.type)
-                            let calendarTint = matchedEntity.flatMap { calendarManager.sourceCalendarColor(for: $0) } ?? pillColor.base
+                            let calendarTint = matchedEntity.flatMap { calendarManager?.sourceCalendarColor(for: $0) } ?? pillColor.base
                             let calName = calendarNameForEvent(event)
 
                             SideEventCard(
@@ -1450,13 +1413,13 @@ fileprivate struct TimeEventBlock: View {
     let event: CalEvent
     let eventWidth: CGFloat
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    @Environment(\.calendarPersistence) private var collegePersistence
+    @Environment(\.calendarIntegrationManager) private var calendarManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isHovering = false
     @GestureState private var isPressed = false
-    @State private var selectedEntity: CalendarEvent?
+    @State private var selectedEntity: CalendarStoredEvent?
     @State private var showDetail = false
 
     var body: some View {
@@ -1524,14 +1487,14 @@ fileprivate struct TimeEventBlock: View {
         }
     }
 
-    private var resolvedEntity: CalendarEvent? {
+    private var resolvedEntity: CalendarStoredEvent? {
         guard let eventID = event.calendarEventID else { return nil }
-        return collegePersistence.calendarEventEntity(id: eventID)
+        return collegePersistence?.calendarEventEntity(id: eventID)
     }
 
     private var baseColor: Color {
         if let entity = resolvedEntity,
-           let color = calendarManager.sourceCalendarColor(for: entity) {
+           let color = calendarManager?.sourceCalendarColor(for: entity) {
             return color
         }
 
@@ -1665,11 +1628,11 @@ fileprivate struct MonthCalendarCell: View {
 fileprivate struct EventPill: View {
     let event: CalEvent
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    @Environment(\.calendarPersistence) private var collegePersistence
+    @Environment(\.calendarIntegrationManager) private var calendarManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
-    @State private var selectedEntity: CalendarEvent?
+    @State private var selectedEntity: CalendarStoredEvent?
     @State private var showDetail = false
 
     var body: some View {
@@ -1724,14 +1687,14 @@ fileprivate struct EventPill: View {
         }
     }
 
-    private var resolvedEntity: CalendarEvent? {
+    private var resolvedEntity: CalendarStoredEvent? {
         guard let eventID = event.calendarEventID else { return nil }
-        return collegePersistence.calendarEventEntity(id: eventID)
+        return collegePersistence?.calendarEventEntity(id: eventID)
     }
 
     private var baseColor: Color {
         if let entity = resolvedEntity,
-           let color = calendarManager.sourceCalendarColor(for: entity) {
+           let color = calendarManager?.sourceCalendarColor(for: entity) {
             return color
         }
 
@@ -1746,7 +1709,7 @@ fileprivate struct EventPill: View {
 
     private var textColor: Color {
         if let entity = resolvedEntity,
-           calendarManager.sourceCalendarColor(for: entity) != nil {
+           calendarManager?.sourceCalendarColor(for: entity) != nil {
             return baseColor.opacity(0.9)
         }
 
@@ -1770,7 +1733,7 @@ fileprivate struct SideEventCard: View {
     let iconColor: Color
     let isAllDay: Bool
     let isPast: Bool
-    let entity: CalendarEvent?
+    let entity: CalendarStoredEvent?
 
     @State private var isHovering = false
     @State private var hoverLocation: CGPoint = .zero
@@ -1947,7 +1910,7 @@ fileprivate struct SideTaskCard: View {
 // MARK: - Event Detail Popover
 
 private struct EventDetailPopoverContent: View {
-    let entity: CalendarEvent
+    let entity: CalendarStoredEvent
 
     @Environment(\.dismiss) private var dismiss
     private var isPresentedBinding: Binding<Bool> {
@@ -1962,14 +1925,14 @@ private struct EventDetailPopoverContent: View {
     }
 
     var body: some View {
-        AddCalendarItemOverlay(
+        CalendarOverlayAccess.builder?.addCalendarItemOverlay(
             isPresented: isPresentedBinding,
-            semester: entity.semester,
+            semesterID: entity.semesterID,
             initialTitle: entity.title,
-            initialStartDateTime: entity.startDate,
-            initialEndDateTime: entity.endDate,
-            eventToEdit: entity,
-            presentationStyle: .anchoredPanel
+            initialStart: entity.startDate,
+            initialEnd: entity.endDate,
+            eventID: entity.id,
+            style: .anchoredPanel
         )
         .frame(width: 507)
         .frame(minHeight: 333, idealHeight: 373, maxHeight: 413)
@@ -2378,24 +2341,3 @@ private enum CalendarSidebarSnapshotBuilder {
     }
 }
 
-enum CalendarFeaturePreloadRegistration {
-    @MainActor
-    static func register() {
-        LaunchPreloadCoordinator.registerFeaturePreload(
-            .init(
-                id: "calendar",
-                title: "Calendar mappings",
-                criticality: .bestEffort,
-                timeoutSeconds: 2.2,
-                retryLimit: 0,
-                run: { context, onProgress, onDetail in
-                    try await context.calendarManager.preloadForLaunch(
-                        progress: { onProgress($0) },
-                        detail: { onDetail($0) }
-                    )
-                    onProgress(1)
-                }
-            )
-        )
-    }
-}

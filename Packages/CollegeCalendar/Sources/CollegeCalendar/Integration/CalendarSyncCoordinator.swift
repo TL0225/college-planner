@@ -1,25 +1,23 @@
 // CalendarSyncCoordinator.swift
 // Feature: Calendar
-// Purpose: Calendar module — CalendarSyncCoordinator.
-// Data: CollegePersistence / repositories when applicable.
+// Purpose: Routes calendar sync/export to per-provider actor implementations.
 
 import Foundation
-import SwiftData
 
 /// Routes calendar sync/export to per-provider `actor` implementations (Phase 2b facade).
 @MainActor
-enum CalendarSyncCoordinator {
-    static let apple = AppleCalendarProvider()
-    static let google = GoogleCalendarProvider()
-    static let outlook = OutlookCalendarProvider()
-    static let iCloud = iCloudCalendarProvider()
+public enum CalendarSyncCoordinator {
+    public static let apple = AppleCalendarProvider()
+    public static let google = GoogleCalendarProvider()
+    public static let outlook = OutlookCalendarProvider()
+    public static let iCloud = iCloudCalendarProvider()
 
-    static func exportAfterWrite(
+    public static func exportAfterWrite(
         eventID: UUID,
         options: CalendarEventWriteOptions,
         manager: CalendarIntegrationManager
     ) async {
-        guard let event = try? AppDataStore.shared.calendarRepository.fetchCalendarEvent(id: eventID) else {
+        guard let event = CalendarSyncEventResolver.calendarEvent(for: eventID) else {
             return
         }
 
@@ -40,7 +38,7 @@ enum CalendarSyncCoordinator {
         }
     }
 
-    static func syncAll(showNotifications: Bool) async {
+    public static func syncAll(showNotifications: Bool) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await apple.sync(showNotifications: showNotifications) }
             group.addTask { await google.sync(showNotifications: showNotifications) }

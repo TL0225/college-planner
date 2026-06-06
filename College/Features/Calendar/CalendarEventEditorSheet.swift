@@ -3,6 +3,7 @@
 // Purpose: Calendar module — CalendarEventEditorSheet.
 // Data: CollegePersistence / repositories when applicable.
 
+import CollegeCalendar
 import SwiftUI
 
 /// Centered macOS sheet content for add/edit calendar events (`ModalCoordinator` cases).

@@ -6,15 +6,35 @@
 import SwiftUI
 
 /// Week/day timed grid chip: title, time range, optional location, full-height leading accent.
-struct CalendarTimedEventChipContent: View {
-    let title: String
-    let start: Date
-    let end: Date
-    var location: String?
-    let accentColor: Color
-    var titleColor: Color = .primary
-    var secondaryColor: Color = .secondary
-    var showsLocationLine: Bool = true
+public struct CalendarTimedEventChipContent: View {
+    public let title: String
+    public let start: Date
+    public let end: Date
+    public var location: String?
+    public let accentColor: Color
+    public var titleColor: Color = .primary
+    public var secondaryColor: Color = .secondary
+    public var showsLocationLine: Bool = true
+
+    public init(
+        title: String,
+        start: Date,
+        end: Date,
+        location: String? = nil,
+        accentColor: Color,
+        titleColor: Color = .primary,
+        secondaryColor: Color = .secondary,
+        showsLocationLine: Bool = true
+    ) {
+        self.title = title
+        self.start = start
+        self.end = end
+        self.location = location
+        self.accentColor = accentColor
+        self.titleColor = titleColor
+        self.secondaryColor = secondaryColor
+        self.showsLocationLine = showsLocationLine
+    }
 
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -32,7 +52,7 @@ struct CalendarTimedEventChipContent: View {
         "\(Self.timeFormatter.string(from: start)) – \(Self.timeFormatter.string(from: end))"
     }
 
-    var body: some View {
+    public var body: some View {
         HStack(alignment: .top, spacing: 0) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
                 .fill(accentColor)

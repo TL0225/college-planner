@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Phase 8: dependency graph (foundation)
 
-public struct CalendarEventDependency: Codable, Identifiable, Equatable, Sendable {
+public struct CalendarStoredEventDependency: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID
     public var predecessorEventID: UUID
     public var successorEventID: UUID
@@ -19,9 +19,9 @@ public struct CalendarEventDependency: Codable, Identifiable, Equatable, Sendabl
 public enum CalendarDependencyStore: Sendable {
     private static let key = "calendar.dependencies.v1"
 
-    public static func load() -> [CalendarEventDependency] {
+    public static func load() -> [CalendarStoredEventDependency] {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let items = try? JSONDecoder().decode([CalendarEventDependency].self, from: data)
+              let items = try? JSONDecoder().decode([CalendarStoredEventDependency].self, from: data)
         else { return [] }
         return items
     }

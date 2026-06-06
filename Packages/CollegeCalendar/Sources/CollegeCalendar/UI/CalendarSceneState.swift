@@ -1,6 +1,6 @@
 // CalendarSceneState.swift
-// Feature: App / Toolbar
-// Owner: CalendarView — College/Features/Calendar/CalendarView.swift
+// Feature: Calendar
+// Owner: CalendarView — Packages/CollegeCalendar
 
 import Foundation
 import Observation
@@ -8,19 +8,19 @@ import Observation
 /// Calendar feature scene state. Toolbar reads `toolbarProjection`; business truth lives here.
 @Observable
 @MainActor
-final class CalendarSceneState {
-    // MARK: - Feature truth
-    var headerDate: String = ""
-    var viewMode: CalendarViewDisplayMode = .month
-    var sidebarShown: Bool = true
-    var sidebarPanel: CalendarSidebarPanel = .eventList
-    var profileInitials: String = ""
-    var toolbarSearchText: String = ""
-    var toolbarSearchResults: [CalendarToolbarSearchMatch] = []
-    var toolbarSearchExpanded: Bool = false
+public final class CalendarSceneState {
+    public var headerDate: String = ""
+    public var viewMode: CalendarViewDisplayMode = .month
+    public var sidebarShown: Bool = true
+    public var sidebarPanel: CalendarSidebarPanel = .eventList
+    public var profileInitials: String = ""
+    public var toolbarSearchText: String = ""
+    public var toolbarSearchResults: [CalendarToolbarSearchMatch] = []
+    public var toolbarSearchExpanded: Bool = false
 
-    // MARK: - Toolbar projection
-    var toolbarProjection: ToolbarProjection {
+    public init() {}
+
+    public var toolbarProjection: ToolbarProjection {
         ToolbarProjection(
             headerDate: headerDate,
             viewMode: viewMode,
@@ -29,10 +29,22 @@ final class CalendarSceneState {
         )
     }
 
-    struct ToolbarProjection: Equatable, Sendable {
-        var headerDate: String
-        var viewMode: CalendarViewDisplayMode
-        var sidebarShown: Bool
-        var sidebarPanel: CalendarSidebarPanel
+    public struct ToolbarProjection: Equatable {
+        public var headerDate: String
+        public var viewMode: CalendarViewDisplayMode
+        public var sidebarShown: Bool
+        public var sidebarPanel: CalendarSidebarPanel
+
+        public init(
+            headerDate: String,
+            viewMode: CalendarViewDisplayMode,
+            sidebarShown: Bool,
+            sidebarPanel: CalendarSidebarPanel
+        ) {
+            self.headerDate = headerDate
+            self.viewMode = viewMode
+            self.sidebarShown = sidebarShown
+            self.sidebarPanel = sidebarPanel
+        }
     }
 }

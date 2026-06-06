@@ -1,4 +1,5 @@
 // CourseDashboardView.swift
+import CollegeCalendar
 // Feature: Courses
 // Purpose: Courses module — CourseDashboardView.
 // Data: CollegePersistence / repositories when applicable.

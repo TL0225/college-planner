@@ -1,4 +1,5 @@
 // SettingsPanels_Services.swift
+import CollegeCalendar
 // Feature: Settings
 // Purpose: Settings module — ConnectedServiceRow.
 // Data: CollegePersistence / repositories when applicable.

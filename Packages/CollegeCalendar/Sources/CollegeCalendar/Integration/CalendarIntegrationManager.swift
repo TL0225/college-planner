@@ -11,7 +11,6 @@ import Foundation
 import Security
 import SwiftUI
 import os
-import CollegeCalendar
 
 // MARK: - Outlook import (file scope: `DateFormatter` + payload boxes for local store `perform` @Sendable closures)
 
@@ -52,43 +51,43 @@ private final class CalendarSyncMapMutationBox: @unchecked Sendable {
     var snapshot: [String: String] { storage }
 }
 
-enum CalendarConnectionStatus: String {
+public enum CalendarConnectionStatus: String {
     case disconnected = "CONNECT"
     case connecting = "CONNECTING..."
     case connected = "SYNCED"
 }
 
-struct ConnectedCalendar: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let source: String  // "Apple" or "Google"
-    let color: Color
-    let remoteID: String?
+public struct ConnectedCalendar: Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let source: String  // "Apple" or "Google"
+    public let color: Color
+    public let remoteID: String?
 }
 
 @MainActor
-class CalendarIntegrationManager: ObservableObject {
+public class CalendarIntegrationManager: ObservableObject {
     // Singleton likely needed if shared across views, but we'll stick to StateObject injection for now
     // or rely on EnvironmentObject if it's set up that way.
 
-    @Published var googleStatus: CalendarConnectionStatus = {
+        @Published public var googleStatus: CalendarConnectionStatus = {
         UserDefaults.standard.bool(forKey: "GoogleConnected") ? .connected : .disconnected
     }()
-    @Published var outlookStatus: CalendarConnectionStatus = .disconnected
-    @Published var iCloudStatus: CalendarConnectionStatus = .disconnected
-    @Published var appleStatus: CalendarConnectionStatus = {
+        @Published public var outlookStatus: CalendarConnectionStatus = .disconnected
+        @Published public var iCloudStatus: CalendarConnectionStatus = .disconnected
+        @Published public var appleStatus: CalendarConnectionStatus = {
         AppleCalendarIntegration.isConnected ? .connected : .disconnected
     }()
 
-    @Published var connectedCalendars: [ConnectedCalendar] = [
+        @Published public var connectedCalendars: [ConnectedCalendar] = [
         ConnectedCalendar(
             id: "Apple:Home", name: "College App", source: "Apple", color: .red, remoteID: nil)
     ]
 
-    @Published var enabledCalendarIDs: Set<String>
+        @Published public var enabledCalendarIDs: Set<String>
     /// Incremented each time any calendar is toggled on/off. Observing this in the
     /// view's calendarKey ensures an immediate data reload without full re-navigation.
-    @Published var calendarVisibilityToken: Int = 0
+        @Published public var calendarVisibilityToken: Int = 0
 
     // ISO8601DateFormatter is thread-safe (immutable after init) — no lock needed.
     nonisolated(unsafe) private static let isoFormatter = ISO8601DateFormatter()
@@ -268,7 +267,7 @@ class CalendarIntegrationManager: ObservableObject {
 
         // Purge events from CollegePersistence.
         if !localUUIDs.isEmpty {
-            CollegePersistence.shared.bulkDeleteCalendarEvents(withUUIDs: localUUIDs)
+            CalendarPersistenceAccess.persistence?.bulkDeleteCalendarEvents(withUUIDs: localUUIDs)
         }
 
         // Remove entries from sync map.
@@ -286,7 +285,7 @@ class CalendarIntegrationManager: ObservableObject {
         enabledCalendarIDs.remove(calendar.id)
         persistEnabledCalendars()
 
-        CollegePersistence.shared.notifyCalendarDidChange()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
 
     /// Removes an Apple System calendar from the app sidebar.
@@ -296,7 +295,7 @@ class CalendarIntegrationManager: ObservableObject {
         connectedCalendars.removeAll { $0.id == calendar.id }
         enabledCalendarIDs.remove(calendar.id)
         persistEnabledCalendars()
-        CollegePersistence.shared.notifyCalendarDidChange()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
 
     /// Removes an Academics course calendar entry from the sidebar and deletes the
@@ -304,8 +303,8 @@ class CalendarIntegrationManager: ObservableObject {
     func removeAcademicsCourse(_ calendar: ConnectedCalendar) {
         guard calendar.id.hasPrefix("Academics:") else { return }
         let code = String(calendar.id.dropFirst("Academics:".count))
-        CollegePersistence.shared.removeAutoLinkedCourse(code: code)
-        CollegePersistence.shared.notifyCalendarDidChange()
+        CalendarPersistenceAccess.persistence?.removeAutoLinkedCourse(code: code)
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
 
     private func persistLocalCalendars() {
@@ -489,7 +488,7 @@ class CalendarIntegrationManager: ObservableObject {
     private var googleAdaptiveBatchSize: Int = 5
     private var didPostGoogleStartupPausedNotice: Bool = false
 
-    init() {
+    public init() {
         // Warm up in-memory write-through caches from UserDefaults (read once at launch).
         let ud = UserDefaults.standard
         _syncMap = ud.dictionary(forKey: syncMapKey) as? [String: String] ?? [:]
@@ -548,22 +547,17 @@ class CalendarIntegrationManager: ObservableObject {
                 googleStatus = .disconnected
                 UserDefaults.standard.set(false, forKey: "GoogleConnected")
                 connectedCalendars.removeAll { $0.source == "Google" }
-                _ = AppNotificationCenter.shared.post(
-                    kind: .warning,
-                    title: "Google Sync Paused",
-                    message: "Reconnect Google Calendar to resume sync.",
-                    autoDismissAfter: 8
-                )
+                _ = CalendarNotificationAccess.notifications?.post(kind: .warning, title: "Google Sync Paused", message: "Reconnect Google Calendar to resume sync.", progress: nil, autoDismissAfter: 8)
             }
         }
     }
 
-    func sourceCalendarColor(for event: CalendarEvent) -> Color? {
+    public func sourceCalendarColor(for event: CalendarStoredEvent) -> Color? {
         let localID = event.id.uuidString
 
         if Self.isCollegeAppManagedEvent(event) {
             let appleID: String = {
-                let code = event.course?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let code = (event.courseCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !code.isEmpty {
                     return "Academics:\(code.uppercased())"
                 }
@@ -591,7 +585,7 @@ class CalendarIntegrationManager: ObservableObject {
 
         // 3) Local (app-managed) events
         let appleID: String = {
-            let code = event.course?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let code = (event.courseCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !code.isEmpty {
                 return "Academics:\(code.uppercased())"
             }
@@ -665,7 +659,7 @@ class CalendarIntegrationManager: ObservableObject {
     }
 
     /// Captures toggle/sync maps for off-main calendar cache filtering.
-    func makeCacheRebuildVisibilityFilter() -> CalendarVisibilityFilter {
+    public func makeCacheRebuildVisibilityFilter() -> CalendarVisibilityFilter {
         CalendarVisibilityFilter(
             enabledCalendarIDs: enabledCalendarIDs,
             disabledAcademicsIDs: disabledAcademicsIDs,
@@ -747,7 +741,7 @@ class CalendarIntegrationManager: ObservableObject {
 
     /// Returns a stable series key for Google recurring instances, suitable for grouping in the UI.
     /// - Note: Returns nil for non-Google events or non-recurring items.
-    func googleRecurringSeriesKey(for event: CalendarEvent) -> String? {
+    func googleRecurringSeriesKey(for event: CalendarStoredEvent) -> String? {
         let localID = event.id.uuidString
         guard let remoteKey = googleRemoteKey(forLocalID: localID) else { return nil }
         let parsed = parseGoogleRemoteKey(remoteKey)
@@ -777,16 +771,16 @@ class CalendarIntegrationManager: ObservableObject {
         return "Google:\(calendarID)"
     }
 
-    private nonisolated static func isCollegeAppManagedEvent(_ event: CalendarEvent) -> Bool {
+    private nonisolated static func isCollegeAppManagedEvent(_ event: CalendarStoredEvent) -> Bool {
         event.providerSource == "CollegeApp"
     }
 
-    func shouldDisplayEvent(_ event: CalendarEvent) -> Bool {
+    public func shouldDisplayEvent(_ event: CalendarStoredEvent) -> Bool {
         let localID = event.id.uuidString
 
         if Self.isCollegeAppManagedEvent(event) {
             let appleID: String = {
-                let code = event.course?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let code = (event.courseCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !code.isEmpty {
                     return "Academics:\(code.uppercased())"
                 }
@@ -814,7 +808,7 @@ class CalendarIntegrationManager: ObservableObject {
             }
             guard enabledCalendarIDs.contains(toggleID) else { return false }
             // Also respect per-course visibility toggle (app-local, never synced).
-            let code = event.course?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let code = (event.courseCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !code.isEmpty {
                 let academicsID = "Academics:\(code.uppercased())"
                 if disabledAcademicsIDs.contains(academicsID) { return false }
@@ -837,8 +831,8 @@ class CalendarIntegrationManager: ObservableObject {
             if !connectedCalendars.contains(where: { $0.id == toggleID }) { return true }
             guard enabledCalendarIDs.contains(toggleID) else { return false }
             // Also respect per-course visibility toggle (app-local, never synced).
-            if let course = event.course {
-                let code = course.code.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let codeRaw = event.courseCode {
+                let code = codeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !code.isEmpty {
                     let academicsID = "Academics:\(code.uppercased())"
                     if disabledAcademicsIDs.contains(academicsID) { return false }
@@ -849,7 +843,7 @@ class CalendarIntegrationManager: ObservableObject {
 
         // 3) Local (app-managed) events
         let appleID: String = {
-            let code = event.course?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let code = (event.courseCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if !code.isEmpty {
                 return "Academics:\(code.uppercased())"
             }
@@ -870,7 +864,7 @@ class CalendarIntegrationManager: ObservableObject {
 
     // MARK: - Apple Calendar connect/disconnect
 
-    func connectAppleCalendar() {
+    public func connectAppleCalendar() {
         if appleStatus == .connected { return }
         appleStatus = .connecting
 
@@ -926,34 +920,29 @@ class CalendarIntegrationManager: ObservableObject {
                 await MainActor.run {
                     AppleCalendarIntegration.isConnected = false
                     self.appleStatus = .disconnected
-                    AppNotificationCenter.shared.post(
-                        kind: .error,
-                        title: "Calendar Access Denied",
-                        message: error.localizedDescription,
-                        autoDismissAfter: 5
-                    )
+                    CalendarNotificationAccess.notifications?.post(kind: .error, title: "Calendar Access Denied", message: error.localizedDescription, progress: nil, autoDismissAfter: 5)
                 }
             }
         }
     }
 
-    func disconnectAppleCalendar() {
+    public func disconnectAppleCalendar() {
         AppleCalendarIntegration.isConnected = false
         appleStatus = .disconnected
         connectedCalendars.removeAll(where: { $0.source == "AppleSystem" })
         removeAppleEventStoreObserver()
-        purgeAppleCalendarEventsFromStore()
+        purgeAppleCalendarStoredEventsFromStore()
     }
 
     /// Triggers a manual re-sync of Apple Calendar without re-requesting permissions.
     /// Use this instead of `connectAppleCalendar()` for the RE-SYNC button.
-    func resyncAppleCalendarNow() {
+    public func resyncAppleCalendarNow() {
         guard appleStatus == .connected else { return }
         performAppleInitialSync(showNotifications: true)
     }
 
     /// Launch preload hook: warms available calendar sources before the user enters the app shell.
-    func preloadForLaunch(
+    public func preloadForLaunch(
         progress: ((Double) -> Void)? = nil,
         detail: ((String) -> Void)? = nil
     ) async throws {
@@ -981,14 +970,14 @@ class CalendarIntegrationManager: ObservableObject {
 
     @MainActor
     func notifyCalendarDidChangeMainActor() {
-        CollegePersistence.shared.notifyCalendarDidChange()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
 
-    private func purgeAppleCalendarEventsFromStore() {
+    private func purgeAppleCalendarStoredEventsFromStore() {
         let localUUIDs = AppleCalendarIntegration.syncMap.values.compactMap { UUID(uuidString: $0) }
         setAppleSyncMap([:])
         guard !localUUIDs.isEmpty else { return }
-        CollegePersistence.shared.bulkDeleteCalendarEvents(withUUIDs: localUUIDs)
+        CalendarPersistenceAccess.persistence?.bulkDeleteCalendarEvents(withUUIDs: localUUIDs)
         notifyCalendarDidChangeMainActor()
     }
 
@@ -1064,11 +1053,12 @@ class CalendarIntegrationManager: ObservableObject {
 
         let syncNotificationID: UUID? =
             showNotifications
-            ? AppNotificationCenter.shared.post(
+            ? CalendarNotificationAccess.notifications?.post(
                 kind: .progress,
                 title: "Syncing Apple Calendar",
                 message: "Importing events…",
-                progress: 0.2
+                progress: 0.2,
+                autoDismissAfter: nil
             ) : nil
 
         let calendar = Calendar.current
@@ -1081,9 +1071,7 @@ class CalendarIntegrationManager: ObservableObject {
         let enabledIDs = enabledAppleCalendarIdentifiersForSync()
         guard !enabledIDs.isEmpty else {
             if let syncNotificationID {
-                AppNotificationCenter.shared.complete(
-                    id: syncNotificationID,
-                    title: "Apple Calendar Synced",
+                CalendarNotificationAccess.notifications?.complete(id: syncNotificationID, kind: .success, title: "Apple Calendar Synced",
                     message: "No enabled calendars to sync",
                     autoDismissAfter: 4
                 )
@@ -1106,7 +1094,7 @@ class CalendarIntegrationManager: ObservableObject {
         let currentMap = AppleCalendarIntegration.syncMap
         let mappedLocalIDsLower = Set(currentMap.values.map { $0.lowercased() })
 
-        let snapshots: [CalendarSyncIngestService.AppleEventSnapshot] = events.compactMap { ek in
+        let snapshots: [CalendarAppleIngestSnapshot] = events.compactMap { ek in
             guard let externalID = AppleCalendarIntegration.bestExternalID(for: ek) else {
                 return nil
             }
@@ -1116,7 +1104,7 @@ class CalendarIntegrationManager: ObservableObject {
             let localUUIDFromURL = ek.url.flatMap {
                 AppleCalendarIntegration.extractLocalID(from: $0)
             }
-            return CalendarSyncIngestService.AppleEventSnapshot(
+            return CalendarAppleIngestSnapshot(
                 externalID: externalID,
                 title: title.isEmpty ? "Event" : title,
                 start: start,
@@ -1130,35 +1118,30 @@ class CalendarIntegrationManager: ObservableObject {
             )
         }
 
-        let mapUpdates: [String: String] = (try? CalendarSyncIngestService.ingestAppleSnapshots(
-            snapshots: snapshots,
-            currentMap: currentMap,
-            mappedLocalIDsLower: mappedLocalIDsLower
+        let mapUpdates: [String: String] = (try? CalendarIntegrationAccess.syncIngest?.ingestAppleSnapshots(snapshots: snapshots, currentMap: currentMap, mappedLocalIDsLower: mappedLocalIDsLower
         )) ?? [:]
 
         await MainActor.run {
             var map = AppleCalendarIntegration.syncMap
             for (k, v) in mapUpdates { map[k] = v }
             self.setAppleSyncMap(map)
-            CollegePersistence.shared.notifyCalendarDidChange()
+            CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
 
             if let syncNotificationID {
-                AppNotificationCenter.shared.complete(
-                    id: syncNotificationID,
-                    title: "Apple Calendar Synced",
+                CalendarNotificationAccess.notifications?.complete(id: syncNotificationID, kind: .success, title: "Apple Calendar Synced",
                     message: "Apple Calendar is up to date",
                     autoDismissAfter: 3
                 )
             }
         }
         // Auto-link Apple-synced events to Academics courses.
-        await CalendarCourseLinker.shared.scanAndLink()
+        await CalendarIntegrationAccess.courseLinker?.scanAndLink()
     }
 
-    // Phase 7f: `exportEventToAppleCalendar` / `exportEventToGoogle` for `CalendarEvent` live in
+    // Phase 7f: `exportEventToAppleCalendar` / `exportEventToGoogle` for `CalendarStoredEvent` live in
     // CalendarIntegrationManager+local storeExport.swift; Google/Outlook/iCloud ingest in +local storeSync.
 
-    func deleteEventFromAppleCalendar(localEventID: UUID) {
+    public func deleteEventFromAppleCalendar(localEventID: UUID) {
         guard appleStatus == .connected else { return }
 
         if let externalID = appleExternalID(forLocalID: localEventID.uuidString),
@@ -1175,7 +1158,7 @@ class CalendarIntegrationManager: ObservableObject {
                     var map = AppleCalendarIntegration.syncMap
                     map.removeValue(forKey: externalID)
                     self.setAppleSyncMap(map)
-                    CollegePersistence.shared.notifyCalendarDidChange()
+                    CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
                 } catch {
                     // Best-effort.
                 }
@@ -1188,31 +1171,27 @@ class CalendarIntegrationManager: ObservableObject {
             private static let queue = DispatchQueue(
                 label: "College.GoogleCalendar.DebugFileLogger")
 
-            private static var fileURL: URL? {
-                GoogleDebugLog.fileURL()
-            }
-
             static func log(_ message: String) {
-                queue.async {
-                    guard let url = fileURL else { return }
+                Task { @MainActor in
+                    guard let url = CalendarIntegrationAccess.googleDebugLog?.fileURL() else { return }
+                    CalendarIntegrationAccess.googleDebugLog?.ensureFileExists()
+                    queue.async {
+                        let timestamp = CalendarIntegrationManager.formatISO8601(Date())
+                        let line = "[\(timestamp)] \(message)\n"
 
-                    GoogleDebugLog.ensureFileExists()
-
-                    let timestamp = CalendarIntegrationManager.formatISO8601(Date())
-                    let line = "[\(timestamp)] \(message)\n"
-
-                    do {
-                        let data = line.data(using: .utf8) ?? Data()
-                        if FileManager.default.fileExists(atPath: url.path) {
-                            let handle = try FileHandle(forWritingTo: url)
-                            try handle.seekToEnd()
-                            try handle.write(contentsOf: data)
-                            try handle.close()
-                        } else {
-                            try data.write(to: url, options: .atomic)
+                        do {
+                            let data = line.data(using: .utf8) ?? Data()
+                            if FileManager.default.fileExists(atPath: url.path) {
+                                let handle = try FileHandle(forWritingTo: url)
+                                try handle.seekToEnd()
+                                try handle.write(contentsOf: data)
+                                try handle.close()
+                            } else {
+                                try data.write(to: url, options: .atomic)
+                            }
+                        } catch {
+                            // Ignore logging failures.
                         }
-                    } catch {
-                        // Ignore logging failures.
                     }
                 }
             }
@@ -1223,7 +1202,7 @@ class CalendarIntegrationManager: ObservableObject {
         }
     #endif
 
-    func connectGoogle() {
+    public func connectGoogle() {
         // If an earlier attempt didn't launch the auth UI (e.g., session couldn't start),
         // allow retry instead of getting stuck in CONNECTING.
         if googleStatus == .connected { return }
@@ -1232,13 +1211,13 @@ class CalendarIntegrationManager: ObservableObject {
         }
 
         #if DEBUG
-            GoogleDebugLog.ensureFileExists()
+            CalendarIntegrationAccess.googleDebugLog?.ensureFileExists()
             debugLog("connectGoogle() tapped; starting Google OAuth")
         #endif
 
         googleStatus = .connecting
 
-        GoogleAuthService.shared.signIn { [weak self] result in
+        GoogleCalendarAuthAccess.service!.signIn { [weak self] result in
             Task { @MainActor in
                 guard let self else { return }
                 switch result {
@@ -1255,12 +1234,7 @@ class CalendarIntegrationManager: ObservableObject {
                         forKey: self.primaryGoogleCalendarIDKey)
                     self.restorePersistedGoogleCalendars()
 
-                    AppNotificationCenter.shared.post(
-                        kind: .info,
-                        title: "Calendar Connected",
-                        message: "Google Calendar sync enabled",
-                        autoDismissAfter: 4
-                    )
+                    CalendarNotificationAccess.notifications?.post(kind: .info, title: "Calendar Connected", message: "Google Calendar sync enabled", progress: nil, autoDismissAfter: 4)
 
                     // Show notifications for initial sync after connection
                     self.performInitialSync(showNotifications: true)
@@ -1272,18 +1246,13 @@ class CalendarIntegrationManager: ObservableObject {
                     self.googleStatus = .disconnected
                     UserDefaults.standard.set(false, forKey: "GoogleConnected")
 
-                    AppNotificationCenter.shared.post(
-                        kind: .error,
-                        title: "Connection Failed",
-                        message: error.localizedDescription,
-                        autoDismissAfter: 5
-                    )
+                    CalendarNotificationAccess.notifications?.post(kind: .error, title: "Connection Failed", message: error.localizedDescription, progress: nil, autoDismissAfter: 5)
                 }
             }
         }
     }
 
-    func disconnectGoogle() {
+    public func disconnectGoogle() {
         stopBackgroundSync()
 
         // When unsyncing, purge all locally stored events that belong to the Google calendar.
@@ -1293,24 +1262,19 @@ class CalendarIntegrationManager: ObservableObject {
         // Clear delta-sync tokens so the next connect does a full re-sync.
         clearAllGoogleSyncTokens()
 
-        GoogleAuthService.shared.signOut()
+        GoogleCalendarAuthAccess.service!.signOut()
         clearGoogleReconnectRequirement()
         googleStatus = .disconnected
         UserDefaults.standard.set(false, forKey: "GoogleConnected")
         // Reset specific google calendars
         connectedCalendars.removeAll { $0.source == "Google" }
 
-        AppNotificationCenter.shared.post(
-            kind: .warning,
-            title: "Calendar Disconnected",
-            message: "Google Calendar sync disabled",
-            autoDismissAfter: 4
-        )
+        CalendarNotificationAccess.notifications?.post(kind: .warning, title: "Calendar Disconnected", message: "Google Calendar sync disabled", progress: nil, autoDismissAfter: 4)
     }
 
     // MARK: - Manual Re-sync
 
-    func resyncGoogleNow() {
+    public func resyncGoogleNow() {
         guard googleStatus == .connected else {
             #if DEBUG
                 debugLog("resyncGoogleNow(): ignored (not connected)")
@@ -1319,7 +1283,7 @@ class CalendarIntegrationManager: ObservableObject {
         }
 
         #if DEBUG
-            GoogleDebugLog.ensureFileExists()
+            CalendarIntegrationAccess.googleDebugLog?.ensureFileExists()
             debugLog("resyncGoogleNow(): starting manual resync")
         #endif
 
@@ -1376,12 +1340,7 @@ class CalendarIntegrationManager: ObservableObject {
         let retryMessage =
             retryAfterSeconds != nil ? "Retrying in \(Int(chosen))s" : "Retrying in \(Int(chosen))s"
         Task { @MainActor in
-            AppNotificationCenter.shared.post(
-                kind: .error,
-                title: "Sync Failed",
-                message: "Rate limit exceeded. \(retryMessage)",
-                autoDismissAfter: 5
-            )
+            CalendarNotificationAccess.notifications?.post(kind: .error, title: "Sync Failed", message: "Rate limit exceeded. \(retryMessage)", progress: nil, autoDismissAfter: 5)
         }
     }
 
@@ -1442,23 +1401,13 @@ class CalendarIntegrationManager: ObservableObject {
     private func handleGoogleReconnectRequired(message: String, syncNotificationID: UUID?) async {
         await MainActor.run {
             self.markGoogleSyncRequiresReconnect(message)
-            GoogleAuthService.shared.forceSignOut()
+            GoogleCalendarAuthAccess.service!.forceSignOut()
 
             if let syncNotificationID {
-                AppNotificationCenter.shared.update(
-                    id: syncNotificationID,
-                    title: "Google Reconnect Required",
-                    message: message,
-                    kind: .error,
-                    autoDismissAfter: 6
+                CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: "Google Reconnect Required", message: message, kind: .error, progress: nil, autoDismissAfter: 6
                 )
             } else {
-                AppNotificationCenter.shared.post(
-                    kind: .error,
-                    title: "Google Reconnect Required",
-                    message: message,
-                    autoDismissAfter: 6
-                )
+                CalendarNotificationAccess.notifications?.post(kind: .error, title: "Google Reconnect Required", message: message, progress: nil, autoDismissAfter: 6)
             }
         }
     }
@@ -1556,12 +1505,13 @@ class CalendarIntegrationManager: ObservableObject {
 
             let id: UUID? =
                 showNotifications
-                ? AppNotificationCenter.shared.post(
+                ? CalendarNotificationAccess.notifications?.post(
                     kind: .progress,
                     title: "Syncing Calendar",
                     message: "Connecting to Google Calendar...",
-                    progress: 0.1
-                ) : nil
+                    progress: 0.1,
+                autoDismissAfter: nil
+            ) : nil
             return (id, true)
         }
 
@@ -1589,12 +1539,7 @@ class CalendarIntegrationManager: ObservableObject {
         if googleSyncRequiresReconnect {
             if let syncNotificationID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: syncNotificationID,
-                        title: "Google Reconnect Required",
-                        message: "Reconnect Google Calendar to resume sync.",
-                        kind: .warning,
-                        autoDismissAfter: 5
+                    CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: "Google Reconnect Required", message: "Reconnect Google Calendar to resume sync.", kind: .warning, progress: nil, autoDismissAfter: 5
                     )
                 }
             }
@@ -1604,13 +1549,12 @@ class CalendarIntegrationManager: ObservableObject {
 
         do {
             try Task.checkCancellation()
-            let token = try await GoogleAuthService.shared.validAccessToken()
+            let token = try await GoogleCalendarAuthAccess.service!.validAccessToken()
             try Task.checkCancellation()
 
             if let syncNotificationID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: syncNotificationID, message: "Fetching calendar list...", progress: 0.3)
+                    CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: nil, message: "Fetching calendar list...", kind: nil, progress: 0.3, autoDismissAfter: nil)
                 }
             }
 
@@ -1623,8 +1567,7 @@ class CalendarIntegrationManager: ObservableObject {
 
             if let syncNotificationID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: syncNotificationID, message: "Importing events...", progress: 0.6)
+                    CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: nil, message: "Importing events...", kind: nil, progress: 0.6, autoDismissAfter: nil)
                 }
             }
 
@@ -1642,12 +1585,7 @@ class CalendarIntegrationManager: ObservableObject {
                 )
             } else if let syncNotificationID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: syncNotificationID,
-                        title: "Sync Failed",
-                        message: "Failed to get access token: \(error.localizedDescription)",
-                        kind: .error,
-                        autoDismissAfter: 5
+                    CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: "Sync Failed", message: "Failed to get access token: \(error.localizedDescription)", kind: .error, progress: nil, autoDismissAfter: 5
                     )
                 }
             }
@@ -1655,8 +1593,8 @@ class CalendarIntegrationManager: ObservableObject {
 
         // Auto-link newly synced events to Academics courses + fix the calendarDidChangeToken
         // gap (Google sync never called notifyCalendarDidChange previously).
-        await CalendarCourseLinker.shared.scanAndLink()
-        CollegePersistence.shared.notifyCalendarDidChange()
+        await CalendarIntegrationAccess.courseLinker?.scanAndLink()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
 
         await MainActor.run {
             self.isSyncInFlight = false
@@ -1827,12 +1765,7 @@ class CalendarIntegrationManager: ObservableObject {
             #endif
             if let syncNotificationID = syncNotificationID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: syncNotificationID,
-                        title: "Sync Completed",
-                        message: "No enabled calendars to sync",
-                        kind: .warning,
-                        autoDismissAfter: 4
+                    CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: "Sync Completed", message: "No enabled calendars to sync", kind: .warning, progress: nil, autoDismissAfter: 4
                     )
                 }
             }
@@ -1954,12 +1887,7 @@ class CalendarIntegrationManager: ObservableObject {
                         ? "Rate limit exceeded" : "HTTP \(httpResponse.statusCode)"
                     if let syncNotificationID = syncNotificationID {
                         await MainActor.run {
-                            AppNotificationCenter.shared.update(
-                                id: syncNotificationID,
-                                title: "Sync Failed",
-                                message: errorMessage,
-                                kind: .error,
-                                autoDismissAfter: 5
+                            CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: "Sync Failed", message: errorMessage, kind: .error, progress: nil, autoDismissAfter: 5
                             )
                         }
                     }
@@ -1978,8 +1906,7 @@ class CalendarIntegrationManager: ObservableObject {
 
                 if isFirstPage, let syncNotificationID = syncNotificationID {
                     await MainActor.run {
-                        AppNotificationCenter.shared.update(
-                            id: syncNotificationID, message: "Syncing changes...", progress: 0.9)
+                        CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: nil, message: "Syncing changes...", kind: nil, progress: 0.9, autoDismissAfter: nil)
                     }
                 }
 
@@ -2002,12 +1929,7 @@ class CalendarIntegrationManager: ObservableObject {
                 #endif
                 if let syncNotificationID = syncNotificationID {
                     await MainActor.run {
-                        AppNotificationCenter.shared.update(
-                            id: syncNotificationID,
-                            title: "Sync Failed",
-                            message: "Network error: \(error.localizedDescription)",
-                            kind: .error,
-                            autoDismissAfter: 5
+                        CalendarNotificationAccess.notifications?.update(id: syncNotificationID, title: "Sync Failed", message: "Network error: \(error.localizedDescription)", kind: .error, progress: nil, autoDismissAfter: 5
                         )
                     }
                 }
@@ -2366,7 +2288,7 @@ class CalendarIntegrationManager: ObservableObject {
         }
     }
 
-    func deleteEventFromGoogle(localEventID: UUID) {
+    public func deleteEventFromGoogle(localEventID: UUID) {
         // 1. Check Auth & Look up Google ID
         guard googleStatus == .connected else {
             #if DEBUG
@@ -2384,7 +2306,7 @@ class CalendarIntegrationManager: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let token = try await GoogleAuthService.shared.validAccessToken()
+                let token = try await GoogleCalendarAuthAccess.service!.validAccessToken()
                 await self.deleteEventFromGoogle(localEventID: localEventID, token: token)
             } catch {
                 #if DEBUG
@@ -2618,7 +2540,7 @@ class CalendarIntegrationManager: ObservableObject {
 
     // MARK: - Outlook (Microsoft Graph) Integration
 
-    func connectOutlook() {
+    public func connectOutlook() {
         if outlookStatus == .connected { return }
         if outlookStatus == .connecting { outlookStatus = .disconnected }
         outlookStatus = .connecting
@@ -2629,36 +2551,30 @@ class CalendarIntegrationManager: ObservableObject {
                 case .success:
                     self.outlookStatus = .connected
                     UserDefaults.standard.set(true, forKey: "OutlookConnected")
-                    AppNotificationCenter.shared.post(
-                        kind: .info, title: "Calendar Connected",
-                        message: "Outlook Calendar sync enabled", autoDismissAfter: 4)
+                    CalendarNotificationAccess.notifications?.post(kind: .info, title: "Calendar Connected", message: "Outlook Calendar sync enabled", progress: nil, autoDismissAfter: 4)
                     self.performOutlookInitialSync(showNotifications: true)
                     self.startOutlookBackgroundSync()
                 case .failure(let error):
                     self.outlookStatus = .disconnected
                     UserDefaults.standard.set(false, forKey: "OutlookConnected")
                     if case OutlookAuthError.userCancelled = error { return }
-                    AppNotificationCenter.shared.post(
-                        kind: .error, title: "Connection Failed",
-                        message: error.localizedDescription, autoDismissAfter: 5)
+                    CalendarNotificationAccess.notifications?.post(kind: .error, title: "Connection Failed", message: error.localizedDescription, progress: nil, autoDismissAfter: 5)
                 }
             }
         }
     }
 
-    func disconnectOutlook() {
+    public func disconnectOutlook() {
         stopOutlookBackgroundSync()
         purgeOutlookEventsFromStore()
         OutlookAuthService.shared.signOut()
         outlookStatus = .disconnected
         UserDefaults.standard.set(false, forKey: "OutlookConnected")
         connectedCalendars.removeAll { $0.source == "Outlook" }
-        AppNotificationCenter.shared.post(
-            kind: .warning, title: "Calendar Disconnected",
-            message: "Outlook Calendar sync disabled", autoDismissAfter: 4)
+        CalendarNotificationAccess.notifications?.post(kind: .warning, title: "Calendar Disconnected", message: "Outlook Calendar sync disabled", progress: nil, autoDismissAfter: 4)
     }
 
-    func resyncOutlookNow() {
+    public func resyncOutlookNow() {
         guard outlookStatus == .connected else { return }
         Task { [weak self] in await self?.syncOutlook(showNotifications: true) }
     }
@@ -2709,9 +2625,9 @@ class CalendarIntegrationManager: ObservableObject {
         let notifID: UUID? =
             showNotifications
             ? await MainActor.run {
-                AppNotificationCenter.shared.post(
+                CalendarNotificationAccess.notifications?.post(
                     kind: .progress, title: "Syncing Outlook",
-                    message: "Connecting...", progress: 0.1)
+                    message: "Connecting...", progress: 0.1, autoDismissAfter: nil)
             } : nil
 
         do {
@@ -2719,17 +2635,14 @@ class CalendarIntegrationManager: ObservableObject {
             await fetchOutlookCalendarList(token: token)
             if let id = notifID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: id, message: "Importing events...", progress: 0.5)
+                    CalendarNotificationAccess.notifications?.update(id: id, title: nil, message: "Importing events...", kind: nil, progress: 0.5, autoDismissAfter: nil)
                 }
             }
             await fetchOutlookEvents(token: token, syncNotificationID: notifID)
         } catch {
             if let id = notifID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: id, title: "Sync Failed",
-                        message: error.localizedDescription, kind: .error, autoDismissAfter: 5)
+                    CalendarNotificationAccess.notifications?.update(id: id, title: "Sync Failed", message: error.localizedDescription, kind: .error, progress: nil, autoDismissAfter: 5)
                 }
             }
         }
@@ -2775,8 +2688,7 @@ class CalendarIntegrationManager: ObservableObject {
         guard !calendarIDs.isEmpty else {
             if let id = syncNotificationID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.complete(
-                        id: id, title: "Outlook Synced", message: "No enabled calendars",
+                    CalendarNotificationAccess.notifications?.complete(id: id, kind: .success, title: "Outlook Synced", message: "No enabled calendars",
                         autoDismissAfter: 3)
                 }
             }
@@ -2815,8 +2727,7 @@ class CalendarIntegrationManager: ObservableObject {
 
         if let id = syncNotificationID {
             await MainActor.run {
-                AppNotificationCenter.shared.complete(
-                    id: id, title: "Outlook Synced", message: "Calendar is up to date",
+                CalendarNotificationAccess.notifications?.complete(id: id, kind: .success, title: "Outlook Synced", message: "Calendar is up to date",
                     autoDismissAfter: 4)
             }
         }
@@ -2827,7 +2738,7 @@ class CalendarIntegrationManager: ObservableObject {
         let ids = outlookSyncMap.values.compactMap { UUID(uuidString: $0) }
         outlookSyncMap = [:]
         guard !ids.isEmpty else { return }
-        CollegePersistence.shared.bulkDeleteCalendarEvents(withUUIDs: ids)
+        CalendarPersistenceAccess.persistence?.bulkDeleteCalendarEvents(withUUIDs: ids)
         notifyCalendarDidChangeMainActor()
     }
 
@@ -2844,7 +2755,7 @@ class CalendarIntegrationManager: ObservableObject {
 
     var iCloudUsername: String? { iCloudKeychainGet(iCloudUsernameKey) }
 
-    func connectiCloud(username: String, password: String) {
+    public func connectiCloud(username: String, password: String) {
         iCloudStatus = .connecting
         Task { [weak self] in
             guard let self else { return }
@@ -2855,9 +2766,7 @@ class CalendarIntegrationManager: ObservableObject {
                 await MainActor.run {
                     self.iCloudStatus = .connected
                     UserDefaults.standard.set(true, forKey: "iCloudCalDAVConnected")
-                    AppNotificationCenter.shared.post(
-                        kind: .info, title: "iCloud Connected",
-                        message: "iCloud Calendar sync enabled", autoDismissAfter: 4)
+                    CalendarNotificationAccess.notifications?.post(kind: .info, title: "iCloud Connected", message: "iCloud Calendar sync enabled", progress: nil, autoDismissAfter: 4)
                 }
                 self.startiCloudBackgroundSync()
                 Task { [weak self] in await self?.synciCloud(showNotifications: true) }
@@ -2867,15 +2776,13 @@ class CalendarIntegrationManager: ObservableObject {
                     let msg =
                         (error as? CalDAVConnectionError)?.localizedDescription
                         ?? error.localizedDescription
-                    AppNotificationCenter.shared.post(
-                        kind: .error, title: "iCloud Connection Failed",
-                        message: msg, autoDismissAfter: 5)
+                    CalendarNotificationAccess.notifications?.post(kind: .error, title: "iCloud Connection Failed", message: msg, progress: nil, autoDismissAfter: 5)
                 }
             }
         }
     }
 
-    func disconnectiCloud() {
+    public func disconnectiCloud() {
         stopiCloudBackgroundSync()
         purgeiCloudEventsFromStore()
         iCloudKeychainDelete(iCloudUsernameKey)
@@ -2883,12 +2790,10 @@ class CalendarIntegrationManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "iCloudCalDAVConnected")
         iCloudStatus = .disconnected
         connectedCalendars.removeAll { $0.source == "iCloudCalDAV" }
-        AppNotificationCenter.shared.post(
-            kind: .warning, title: "iCloud Disconnected",
-            message: "iCloud Calendar sync disabled", autoDismissAfter: 4)
+        CalendarNotificationAccess.notifications?.post(kind: .warning, title: "iCloud Disconnected", message: "iCloud Calendar sync disabled", progress: nil, autoDismissAfter: 4)
     }
 
-    func resyncICloudNow() {
+    public func resyncICloudNow() {
         guard iCloudStatus == .connected else { return }
         Task { [weak self] in await self?.synciCloud(showNotifications: true) }
     }
@@ -2945,9 +2850,9 @@ class CalendarIntegrationManager: ObservableObject {
         let notifID: UUID? =
             showNotifications
             ? await MainActor.run {
-                AppNotificationCenter.shared.post(
+                CalendarNotificationAccess.notifications?.post(
                     kind: .progress, title: "Syncing iCloud", message: "Fetching calendars...",
-                    progress: 0.2)
+                    progress: 0.2, autoDismissAfter: nil)
             } : nil
 
         do {
@@ -2966,8 +2871,7 @@ class CalendarIntegrationManager: ObservableObject {
             }
             if let id = notifID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: id, message: "Importing events...", progress: 0.6)
+                    CalendarNotificationAccess.notifications?.update(id: id, title: nil, message: "Importing events...", kind: nil, progress: 0.6, autoDismissAfter: nil)
                 }
             }
 
@@ -2990,17 +2894,14 @@ class CalendarIntegrationManager: ObservableObject {
             }
             if let id = notifID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.complete(
-                        id: id, title: "iCloud Synced", message: "Calendar is up to date",
+                    CalendarNotificationAccess.notifications?.complete(id: id, kind: .success, title: "iCloud Synced", message: "Calendar is up to date",
                         autoDismissAfter: 4)
                 }
             }
         } catch {
             if let id = notifID {
                 await MainActor.run {
-                    AppNotificationCenter.shared.update(
-                        id: id, title: "Sync Failed", message: error.localizedDescription,
-                        kind: .error, autoDismissAfter: 5)
+                    CalendarNotificationAccess.notifications?.update(id: id, title: "Sync Failed", message: error.localizedDescription, kind: .error, progress: nil, autoDismissAfter: 5)
                 }
             }
         }

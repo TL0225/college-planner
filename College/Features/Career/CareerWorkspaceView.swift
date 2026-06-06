@@ -18,10 +18,10 @@ enum CareerSubView: String, CaseIterable, Identifiable, Hashable {
 }
 
 struct CareerWorkspaceView: View {
+    @Environment(AppContainer.self) private var appContainer
     private var collegePersistence: CollegePersistence { appContainer.persistence }
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion = false
-    @Environment(AppContainer.self) private var appContainer
 
     private var persistence: CollegePersistence { appContainer.persistence }
     private var careerScene: CareerSceneState { appContainer.careerScene }
@@ -151,6 +151,7 @@ private enum CareerRelativeFormatting {
 }
 
 struct JobBoardView: View {
+    @Environment(AppContainer.self) private var appContainer
         private var collegePersistence: CollegePersistence { appContainer.persistence }
     @State private var applications: [JobApplication] = []
 
@@ -380,6 +381,7 @@ struct JobBoardView: View {
 }
 
 private struct CareerLaneColumn: View {
+    @Environment(AppContainer.self) private var appContainer
         private var collegePersistence: CollegePersistence { appContainer.persistence }
         let status: CareerApplicationStatus
     let items: [JobApplication]
@@ -517,6 +519,7 @@ private struct CareerLaneColumn: View {
 }
 
 private struct CareerCardView: View {
+    @Environment(AppContainer.self) private var appContainer
         private var collegePersistence: CollegePersistence { appContainer.persistence }
     let item: JobApplication
     let isSelected: Bool
@@ -859,6 +862,7 @@ private enum ResumeLibraryFilter: String, CaseIterable, Identifiable {
 }
 
 struct ResumeManagerView: View {
+    @Environment(AppContainer.self) private var appContainer
         @Binding var selectedJobID: UUID?
     private var collegePersistence: CollegePersistence { appContainer.persistence }
     @State private var resumes: [VaultDocument] = []
@@ -1248,6 +1252,7 @@ private enum NetworkingContactFilter: String, CaseIterable, Identifiable {
 }
 
 struct NetworkingTrackerView: View {
+    @Environment(AppContainer.self) private var appContainer
         private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Binding var selectedJobID: UUID?
 
@@ -1788,6 +1793,7 @@ private struct NetworkingAddContactTile: View {
 }
 
 private struct NetworkingHybridFollowUpDetailPane: View {
+    @Environment(AppContainer.self) private var appContainer
         @Binding var selection: NetworkingFollowUpItem?
     @Binding var selectedJobID: UUID?
     private var collegePersistence: CollegePersistence { appContainer.persistence }
@@ -2121,6 +2127,7 @@ private struct NetworkingHybridFollowUpDetailPane: View {
 }
 
 private struct CareerApplicationFormSheet: View {
+    @Environment(AppContainer.self) private var appContainer
         private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(\.dismiss) private var dismiss
     let existingApplicationID: UUID?

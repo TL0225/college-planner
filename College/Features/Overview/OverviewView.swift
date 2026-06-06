@@ -8,6 +8,7 @@
 //  College
 //
 
+import CollegeCalendar
 import SwiftUI
 import CoreLocation
 import PDFKit

@@ -120,7 +120,10 @@ struct BrightspaceView: View {
         }
         .sheet(isPresented: $showImportSheet) {
             BrightspaceImportSheet(
-                items: $coordinator.pendingImportItems,
+                items: Binding(
+                    get: { brightspaceCoordinator.pendingImportItems },
+                    set: { brightspaceCoordinator.pendingImportItems = $0 }
+                ),
                 isPresented: $showImportSheet
             )
             .dismissOnOutsideClickForSheet()

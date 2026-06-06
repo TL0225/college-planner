@@ -14,10 +14,10 @@ enum CalendarEventDisplayColorResolver {
         kindDefault: Color
     ) -> Color {
         if let hex = normalizedHex(customColorHex) {
-            return Color(hex: hex)
+            return Color(calendarHex: hex)
         }
         if let legacyEventID, let legacy = EventColorOverrides.storedHex(for: legacyEventID) {
-            return Color(hex: legacy)
+            return Color(calendarHex: legacy)
         }
         if let sourceCalendarColor {
             return sourceCalendarColor
@@ -26,7 +26,7 @@ enum CalendarEventDisplayColorResolver {
     }
 
     static func resolve(
-        for event: CalendarEvent,
+        for event: CalendarStoredEvent,
         sourceCalendarColor: Color?,
         kindDefault: Color
     ) -> Color {
