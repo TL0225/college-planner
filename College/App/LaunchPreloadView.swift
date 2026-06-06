@@ -7,7 +7,8 @@ import SwiftUI
 import AppKit
 
 struct LaunchPreloadView: View {
-    @Environment(LaunchPreloadCoordinator.self) private var preload
+    @Environment(AppContainer.self) private var appContainer
+    private var preload: LaunchPreloadCoordinator { appContainer.launchPreloadCoordinator }
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @State private var didAppear = false
