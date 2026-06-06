@@ -22,9 +22,13 @@ struct CareerWorkspaceView: View {
     @EnvironmentObject private var notifications: AppNotificationCenter
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion = false
-    @Environment(CareerToolbarState.self) private var careerToolbar
+    @Environment(AppContainer.self) private var appContainer
+
+    private var careerScene: CareerSceneState { appContainer.careerScene }
+    private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
 
     @State private var showAddSheet = false
+    @State private var toolbarHandlerToken: ToolbarHandlerToken?
     @State private var editingJobID: UUID?
     @State private var selectedJobID: UUID?
     @AppStorage(CareerBoardLayout.storageKey) private var boardLayoutRaw: String = CareerBoardLayout.kanban.rawValue
@@ -36,11 +40,11 @@ struct CareerWorkspaceView: View {
     }
 
     private var activeSubview: CareerSubView {
-        careerToolbar.selectedView
+        careerScene.selectedView
     }
 
     private func setActiveSubview(_ view: CareerSubView) {
-        careerToolbar.select(view)
+        careerScene.select(view)
     }
 
     var body: some View {
@@ -60,16 +64,18 @@ struct CareerWorkspaceView: View {
         .onAppear {
             registerCareerWindowToolbar()
         }
-        .onChange(of: careerToolbar.selectedView) { _, newValue in
+        .onChange(of: careerScene.selectedView) { _, newValue in
             if newValue == .openings {
                 WorkdayJobBoardSyncCoordinator.shared.markOpeningsViewed()
             }
         }
         .onChange(of: boardLayoutRaw) { _, _ in
-            careerToolbar.boardLayout = boardLayout
+            careerScene.boardLayout = boardLayout
         }
         .onDisappear {
-            careerToolbar.clearHandlers()
+            careerScene.clearHandlers()
+            toolbarHandlerToken?.invalidate()
+            toolbarHandlerToken = nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .careerOpenAddApplication)) { _ in
             editingJobID = nil
@@ -119,9 +125,23 @@ struct CareerWorkspaceView: View {
     }
 
     private func registerCareerWindowToolbar() {
-        careerToolbar.boardLayout = boardLayout
-        careerToolbar.onBoardLayoutChange = { layout in
+        careerScene.boardLayout = boardLayout
+        careerScene.onBoardLayoutChange = { layout in
             boardLayoutRaw = layout.rawValue
+        }
+        toolbarHandlerToken?.invalidate()
+        toolbarHandlerToken = toolbarDispatcher.register(owner: .career) { [self] action in
+            guard case .career(let careerAction) = action else { return }
+            switch careerAction {
+            case .addApplication:
+                editingJobID = nil
+                showAddSheet = true
+            case .copyBoardMarkdown:
+                let apps = (try? collegePersistence.careerRepository.fetchApplications(limit: 500)) ?? []
+                let md = CareerBoardMarkdownExport.table(from: apps)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(md, forType: .string)
+            }
         }
     }
 }

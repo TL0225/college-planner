@@ -19,8 +19,6 @@ struct BrightspaceView: View {
     @EnvironmentObject private var collegePersistence: CollegePersistence
     @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
     @EnvironmentObject private var appNotifications: AppNotificationCenter
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
-
     @State private var showImportSheet: Bool = false
     @State private var showSavePasswordSheet: Bool = false
     @State private var pendingCredentialHost: String = ""
@@ -92,13 +90,6 @@ struct BrightspaceView: View {
             } else {
                 coordinator.restoreIfNeeded()
             }
-            syncBrightspaceToolbarState()
-            toolbarCoordinator.onBsBack    = { [self] in coordinator.goBack() }
-            toolbarCoordinator.onBsForward = { [self] in coordinator.goForward() }
-            toolbarCoordinator.onBsReload  = { [self] in coordinator.reload() }
-            toolbarCoordinator.onBsPortalHome = { [self] in coordinator.loadPortalHome() }
-            toolbarCoordinator.onBsFind    = { [self] in coordinator.presentFindNavigator() }
-            toolbarCoordinator.profileInitials = brightspaceToolbarInitials
             #if DEBUG
             if isTabVisible {
                 coordinator.debugLogBrightspaceFocusSnapshot()
@@ -116,12 +107,8 @@ struct BrightspaceView: View {
             activity.webpageURL = coordinator.currentURL
             activity.isEligibleForHandoff = true
         }
-        .onChange(of: coordinator.canGoBack)    { _, val in toolbarCoordinator.bsCanGoBack   = val }
-        .onChange(of: coordinator.canGoForward) { _, val in toolbarCoordinator.bsCanGoForward = val }
-        .onChange(of: coordinator.isLoading)    { _, val in toolbarCoordinator.bsIsLoading    = val }
         .onAppear { refreshProfileShell() }
         .onChange(of: collegePersistence.profileRevision) { _, _ in refreshProfileShell() }
-        .onChange(of: brightspaceToolbarInitials) { _, val in toolbarCoordinator.profileInitials = val }
         .onChange(of: coordinator.offerSavePassword) { _, offer in
             guard let offer else { return }
             pendingCredentialHost     = offer.host
@@ -176,12 +163,6 @@ struct BrightspaceView: View {
             .presentationBackground(.thinMaterial)
             .dismissOnOutsideClickForSheet()
         }
-    }
-
-    private func syncBrightspaceToolbarState() {
-        toolbarCoordinator.bsCanGoBack    = coordinator.canGoBack
-        toolbarCoordinator.bsCanGoForward = coordinator.canGoForward
-        toolbarCoordinator.bsIsLoading    = coordinator.isLoading
     }
 
     private func refreshProfileShell() {

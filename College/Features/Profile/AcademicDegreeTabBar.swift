@@ -14,6 +14,8 @@ struct AcademicDegreeTabBar: View {
     var showOverviewPill: Bool = false
     /// When true, pills are centered in the row (Edit Profile). When false, uses horizontal scroll (Academics toolbar).
     var centersContent: Bool = false
+    /// When true, styles controls for `MainWindowToolbar` (plain icons, no extra capsule backgrounds).
+    var toolbarHosted: Bool = false
     var allowsAdd: Bool = true
     var allowsDelete: Bool = true
     var onAdd: () -> Void
@@ -77,7 +79,7 @@ struct AcademicDegreeTabBar: View {
                 degreePill(profile: profile, id: profile.id)
             }
 
-            if allowsAdd {
+            if allowsAdd && !toolbarHosted {
                 addButton
             }
         }
@@ -257,14 +259,56 @@ extension View {
 
 // MARK: - Window toolbar host
 
+enum AcademicsToolbarProfileActions {
+    @MainActor
+    static func addProfile(
+        collegePersistence: CollegePersistence,
+        academicsScene: AcademicsSceneState
+    ) {
+        let profiles = AcademicProfileReadBridge.profiles()
+        let level = profiles.first(where: { $0.id == academicsScene.selectedAcademicProfileID })?.degreeLevel
+            ?? profiles.first?.degreeLevel
+            ?? collegePersistence.primaryDegreeLevel(default: DegreeConfiguration.undergraduate)
+        if let created = collegePersistence.addAcademicProfile(degreeLevel: level) {
+            academicsScene.selectedAcademicProfileID = created.id
+        }
+    }
+}
+
+struct AcademicsToolbarAddProfileButton: View {
+    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var appContainer
+
+    private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
+
+    var body: some View {
+        Button {
+            AcademicsToolbarProfileActions.addProfile(
+                collegePersistence: collegePersistence,
+                academicsScene: academicsScene
+            )
+        } label: {
+            Image(systemName: "plus")
+                .font(ToolbarMetrics.iconFont)
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 28)
+                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "academic.profile.add"))
+    }
+}
+
 struct AcademicsDegreeScopeToolbar: View {
     @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(AcademicsToolbarState.self) private var academicsToolbar
+    @Environment(AppContainer.self) private var appContainer
+
+    private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
 
     private var selectedBinding: Binding<UUID?> {
         Binding(
-            get: { academicsToolbar.selectedAcademicProfileID },
-            set: { academicsToolbar.selectedAcademicProfileID = $0 }
+            get: { academicsScene.selectedAcademicProfileID },
+            set: { academicsScene.selectedAcademicProfileID = $0 }
         )
     }
 
@@ -275,15 +319,14 @@ struct AcademicsDegreeScopeToolbar: View {
             selectedID: selectedBinding,
             showOverviewPill: false,
             centersContent: profiles.count < 3,
-            allowsAdd: true,
+            toolbarHosted: true,
+            allowsAdd: false,
             allowsDelete: false,
             onAdd: {
-                let level = profiles.first(where: { $0.id == academicsToolbar.selectedAcademicProfileID })?.degreeLevel
-                    ?? profiles.first?.degreeLevel
-                    ?? collegePersistence.primaryDegreeLevel(default: DegreeConfiguration.undergraduate)
-                if let created = collegePersistence.addAcademicProfile(degreeLevel: level) {
-                    academicsToolbar.selectedAcademicProfileID = created.id
-                }
+                AcademicsToolbarProfileActions.addProfile(
+                    collegePersistence: collegePersistence,
+                    academicsScene: academicsScene
+                )
             },
             onDelete: { _ in },
             onReorder: { ordered in

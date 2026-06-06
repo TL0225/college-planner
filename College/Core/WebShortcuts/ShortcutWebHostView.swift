@@ -13,7 +13,11 @@ struct ShortcutWebHostView: View {
     @Binding var activePage: AppPage
     var isTabVisible: Bool = true
 
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
+    @Environment(AppContainer.self) private var appContainer
+
+    private var webPortalScene: WebPortalSceneState { appContainer.webPortalScene }
+    private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
+    @State private var toolbarHandlerToken: ToolbarHandlerToken?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,53 +40,72 @@ struct ShortcutWebHostView: View {
             wireToolbarIfVisible()
             syncToolbarChrome()
         }
+        .onDisappear {
+            if isTabVisible {
+                toolbarHandlerToken?.invalidate()
+                toolbarHandlerToken = nil
+            }
+        }
         .onChange(of: shortcut.urlString) { _, _ in
             coordinator.sync(shortcut: shortcut)
         }
-        .onChange(of: shortcut.title) { _, _ in
-            toolbarCoordinator.bsTitle = shortcut.title
+        .onChange(of: shortcut.title) { _, title in
+            webPortalScene.title = title
         }
         .onChange(of: isTabVisible) { _, visible in
-            if visible { wireToolbarIfVisible() }
+            if visible {
+                wireToolbarIfVisible()
+            } else {
+                toolbarHandlerToken?.invalidate()
+                toolbarHandlerToken = nil
+            }
         }
         .onChange(of: coordinator.canGoBack) { _, val in
             guard isTabVisible else { return }
-            toolbarCoordinator.bsCanGoBack = val
+            webPortalScene.canGoBack = val
         }
         .onChange(of: coordinator.canGoForward) { _, val in
             guard isTabVisible else { return }
-            toolbarCoordinator.bsCanGoForward = val
+            webPortalScene.canGoForward = val
         }
         .onChange(of: coordinator.isLoading) { _, val in
             guard isTabVisible else { return }
-            toolbarCoordinator.bsIsLoading = val
+            webPortalScene.isLoading = val
         }
         .onChange(of: coordinator.pageTitle) { _, val in
             guard isTabVisible else { return }
             let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                toolbarCoordinator.bsTitle = trimmed
-            } else {
-                toolbarCoordinator.bsTitle = shortcut.title
-            }
+            webPortalScene.title = trimmed.isEmpty ? shortcut.title : trimmed
         }
     }
 
     private func wireToolbarIfVisible() {
         guard isTabVisible else { return }
-        toolbarCoordinator.onBsBack = { coordinator.goBack() }
-        toolbarCoordinator.onBsForward = { coordinator.goForward() }
-        toolbarCoordinator.onBsReload = { coordinator.reload() }
-        toolbarCoordinator.onBsPortalHome = { coordinator.loadHome() }
-        toolbarCoordinator.onBsFind = {}
-        toolbarCoordinator.bsTitle = shortcut.title
+        webPortalScene.title = shortcut.title
         syncToolbarChrome()
+
+        toolbarHandlerToken?.invalidate()
+        toolbarHandlerToken = toolbarDispatcher.register(owner: .webPortal(nil)) { action in
+            guard case .web(let webAction) = action else { return }
+            switch webAction {
+            case .back:
+                coordinator.goBack()
+            case .forward:
+                coordinator.goForward()
+            case .reload:
+                coordinator.reload()
+            case .portalHome:
+                coordinator.loadHome()
+            case .findInPage:
+                break
+            }
+        }
     }
 
     private func syncToolbarChrome() {
-        toolbarCoordinator.bsCanGoBack = coordinator.canGoBack
-        toolbarCoordinator.bsCanGoForward = coordinator.canGoForward
-        toolbarCoordinator.bsIsLoading = coordinator.isLoading
+        webPortalScene.canGoBack = coordinator.canGoBack
+        webPortalScene.canGoForward = coordinator.canGoForward
+        webPortalScene.isLoading = coordinator.isLoading
     }
 }
 

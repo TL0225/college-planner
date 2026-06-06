@@ -246,8 +246,6 @@ struct AIAssistantView: View {
     @Binding var activePage: AppPage
     @Environment(\.accessibilityReduceMotion) private var motionReduced
     @Environment(\.scenePhase) private var scenePhase
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
-
     @EnvironmentObject private var collegePersistence: CollegePersistence
     @State private var assistantContextEvents: [CalendarEvent] = []
     @State private var assistantContextTasks: [PlannerTask] = []
@@ -408,10 +406,6 @@ struct AIAssistantView: View {
         !isResponding
     }
 
-    private func updateToolbarState() {
-        toolbarCoordinator.assistantCanRegenerate = false
-    }
-
     var body: some View {
         GeometryReader { proxy in
             let shellTopInset = proxy.safeAreaInsets.top
@@ -437,20 +431,12 @@ struct AIAssistantView: View {
         .onAppear {
             refreshAssistantPlannerContext()
             Task { await refreshAssistantModelAvailability() }
-            toolbarCoordinator.onAssistantLibrary = nil
-            toolbarCoordinator.onAssistantRegenerate = nil
-            updateToolbarState()
         }
         .onChange(of: collegePersistence.calendarDidChangeToken) { _, _ in
             refreshAssistantPlannerContext()
         }
         .onDisappear {
             persistMessagesImmediatelyFromState()
-            if toolbarCoordinator.activePage == .assistant {
-                toolbarCoordinator.onAssistantLibrary = nil
-                toolbarCoordinator.onAssistantRegenerate = nil
-                toolbarCoordinator.assistantCanRegenerate = false
-            }
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -461,7 +447,6 @@ struct AIAssistantView: View {
             scheduleInitialMessageLoad()
         }
         .onChange(of: messages) { _, updated in
-            updateToolbarState()
             if isResponding {
                 scheduleDebouncedPersistWhileResponding()
             } else {
@@ -470,7 +455,6 @@ struct AIAssistantView: View {
             }
         }
         .onChange(of: isResponding) { _, responding in
-            updateToolbarState()
             if !responding {
                 persistMessagesImmediatelyFromState()
             }

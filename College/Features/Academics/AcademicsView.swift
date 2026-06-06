@@ -73,14 +73,17 @@ struct AcademicsView: View {
     @Binding var activePage: AppPage
     @Binding var isInspectorPresented: Bool
 
-    @Environment(AcademicMetricsStore.self) private var academicMetricsStore
-    @Environment(AuditSnapshotStore.self) private var auditSnapshotStore
+    @Environment(AppContainer.self) private var appContainer
     @EnvironmentObject var collegePersistence: CollegePersistence
     @EnvironmentObject private var appDataStore: AppDataStore
-    @Environment(ModalCoordinator.self) private var modalCoordinator
 
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
-    @Environment(AcademicsToolbarState.self) private var academicsToolbar
+    private var academicMetricsStore: AcademicMetricsStore { appContainer.academicMetricsStore }
+    private var auditSnapshotStore: AuditSnapshotStore { appContainer.auditSnapshotStore }
+    private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
+    private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
+    private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
+
+    @State private var toolbarHandlerToken: ToolbarHandlerToken?
 
     private var profile: Profile? { ProfileReadBridge.primaryProfile(collegePersistence: collegePersistence) }
 
@@ -91,7 +94,7 @@ struct AcademicsView: View {
     }
 
     private var selectedAcademicProfile: AcademicProfile? {
-        if let id = academicsToolbar.selectedAcademicProfileID,
+        if let id = academicsScene.selectedAcademicProfileID,
            let match = academicProfiles.first(where: { $0.id == id }) {
             return match
         }
@@ -164,11 +167,11 @@ struct AcademicsView: View {
         let programCreditRows = layout?.programCreditRows ?? []
 
         GeometryReader { proxy in
-            let sidebarWidth = toolbarCoordinator.academicsSidebarShown ? leftSidebarWidth : 0
+            let sidebarWidth = academicsScene.statsSidebarShown ? leftSidebarWidth : 0
             let contentWidth = max(0, proxy.size.width - sidebarWidth)
 
             HStack(alignment: .top, spacing: 0) {
-                if toolbarCoordinator.academicsSidebarShown {
+                if academicsScene.statsSidebarShown {
                     AcademicsLeftStatsSidebar(
                         profile: profile,
                         academicProfile: selectedAcademicProfile,
@@ -199,7 +202,6 @@ struct AcademicsView: View {
                         scrollToProgramID: $requirementsScrollTargetID
                     )
                     .environmentObject(collegePersistence)
-                    .environment(toolbarCoordinator)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .modifier(AcademicsEntranceModifier(index: 1, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
 
@@ -276,27 +278,39 @@ struct AcademicsView: View {
             collegePersistence.fetchSemesters()
             collegePersistence.fetchProfile()
             collegePersistence.reconcileDeclaredProgramDegreeMetadata()
-            toolbarCoordinator.onAcademicsSidebarToggle = {
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                    toolbarCoordinator.academicsSidebarShown.toggle()
-                }
-            }
-            toolbarCoordinator.onAddCourse = {
-                let activePlanSemesters = collegePersistence.getActivePlan()?.semestersArray ?? []
-                let source = activePlanSemesters.isEmpty ? collegePersistence.semesters : activePlanSemesters
-                let semester = AcademicTermResolver.resolveCurrentSemester(from: source)
-                    ?? source.first(where: { !$0.isPlanned })
-                    ?? source.last
-                if let semesterID = semester?.id {
-                    modalCoordinator.activeModal = .addCatalogCourse(semesterID: semesterID)
-                } else {
-                    modalCoordinator.activeModal = .addCatalogCourseGlobal(tagAsGenEd: false)
-                }
+            toolbarHandlerToken?.invalidate()
+            toolbarHandlerToken = toolbarDispatcher.register(owner: .academics) { action in
+                handleAcademicsToolbarAction(action)
             }
 
             guard !hasAnimatedIn else { return }
             withAnimation(motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88)) {
                 hasAnimatedIn = true
+            }
+        }
+        .onDisappear {
+            toolbarHandlerToken?.invalidate()
+            toolbarHandlerToken = nil
+        }
+    }
+
+    private func handleAcademicsToolbarAction(_ action: ToolbarAction) {
+        guard case .academics(let academicsAction) = action else { return }
+        switch academicsAction {
+        case .statsSidebarToggle:
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                academicsScene.statsSidebarShown.toggle()
+            }
+        case .addCourse:
+            let activePlanSemesters = collegePersistence.getActivePlan()?.semestersArray ?? []
+            let source = activePlanSemesters.isEmpty ? collegePersistence.semesters : activePlanSemesters
+            let semester = AcademicTermResolver.resolveCurrentSemester(from: source)
+                ?? source.first(where: { !$0.isPlanned })
+                ?? source.last
+            if let semesterID = semester?.id {
+                modalCoordinator.activeModal = .addCatalogCourse(semesterID: semesterID)
+            } else {
+                modalCoordinator.activeModal = .addCatalogCourseGlobal(tagAsGenEd: false)
             }
         }
     }
@@ -560,7 +574,9 @@ struct AcademicsAuditPanel: View {
     @Binding var scrollToProgramID: String?
 
     @EnvironmentObject var collegePersistence: CollegePersistence
-    @Environment(AuditSnapshotStore.self) private var auditSnapshotStore
+    @Environment(AppContainer.self) private var appContainer
+
+    private var auditSnapshotStore: AuditSnapshotStore { appContainer.auditSnapshotStore }
 
     private var auditRefreshToken: String {
         "\(majors.joined(separator: "\u{1e}"))|\(minors.joined(separator: "\u{1e}"))"
@@ -1378,7 +1394,9 @@ struct RequirementsBreakdownView: View {
     @State private var specializationSelections: [String: String] = [:]
     @State private var requirementSelections: [String: Set<String>] = [:]
     @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    @Environment(AppContainer.self) private var appContainer
+
+    private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
     @State private var dropTargetCategoryID: UUID?
     /// Drives `.scrollPosition` for the requirements `List` (reliable with lazy rows).
     @State private var listScrollAnchorID: String?
@@ -1564,8 +1582,6 @@ struct RequirementsBreakdownView: View {
     private var firstOptionalProgramIndex: Int? {
         auditDegrees.firstIndex(where: { !$0.isGraduationRequirement })
     }
-
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
 
     /// The right-canvas Requirements Breakdown. Previously hidden behind the
     /// `academicsSidebarShown` toolbar toggle (the old narrow-inspector design);

@@ -43,9 +43,11 @@ struct CalendarView: View {
     @SceneStorage("calendar.activeViewModeRaw") private var storedActiveViewModeRaw: String = CalendarViewDisplayMode.month.rawValue
     @State private var didRestoreState = false
 
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
+    @Environment(AppContainer.self) private var appContainer
     @State private var isEventListSidebarShown: Bool = true
     @State private var sidebarPanel: CalendarSidebarPanel = .eventList
+
+    private var calendarSceneState: CalendarSceneState { appContainer.calendarScene }
 
     var body: some View {
         let cal: Calendar = {
@@ -97,8 +99,8 @@ struct CalendarView: View {
 
     private var contentCalendarSearchBinding: Binding<String> {
         Binding(
-            get: { toolbarCoordinator.calendarToolbarSearchText },
-            set: { toolbarCoordinator.calendarToolbarSearchText = $0 }
+            get: { calendarSceneState.toolbarSearchText },
+            set: { calendarSceneState.toolbarSearchText = $0 }
         )
     }
 
@@ -112,10 +114,10 @@ struct CalendarView: View {
 
     @ViewBuilder
     private var calendarSearchResultsFloatingPanel: some View {
-        let searchText = toolbarCoordinator.calendarToolbarSearchText
+        let searchText = calendarSceneState.toolbarSearchText
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if activePage == .calendar, toolbarCoordinator.calendarToolbarSearchExpanded, !trimmed.isEmpty {
-            let results = toolbarCoordinator.calendarToolbarSearchResults
+        if activePage == .calendar, calendarSceneState.toolbarSearchExpanded, !trimmed.isEmpty {
+            let results = calendarSceneState.toolbarSearchResults
             VStack(alignment: .leading, spacing: 0) {
                 if results.isEmpty {
                     HStack(spacing: 8) {
@@ -196,10 +198,14 @@ private struct CalendarViewContent: View {
 
     @EnvironmentObject private var calendarManager: CalendarIntegrationManager
     @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-    @Environment(AppToolbarCoordinator.self) private var toolbarCoordinator
+    @Environment(AppContainer.self) private var appContainer
+
+    private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
+    private var calendarSceneState: CalendarSceneState { appContainer.calendarScene }
+    private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
 
     var cacheStore: CalendarEventCacheStore
+    @State private var toolbarHandlerToken: ToolbarHandlerToken?
 
     @SceneStorage("calendar.view.hasAnimatedIn") private var hasAnimatedIn = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -412,7 +418,7 @@ private struct CalendarViewContent: View {
         toolbarCalendarSearchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            toolbarCoordinator.calendarToolbarSearchResults = []
+            calendarSceneState.toolbarSearchResults = []
             return
         }
         toolbarCalendarSearchTask = Task {
@@ -434,7 +440,7 @@ private struct CalendarViewContent: View {
                 )
             }
             guard !Task.isCancelled else { return }
-            toolbarCoordinator.calendarToolbarSearchResults = formatted
+            calendarSceneState.toolbarSearchResults = formatted
         }
     }
 
@@ -649,21 +655,9 @@ private struct CalendarViewContent: View {
         scheduleCacheRebuild(delay: 0)
         prewarmEventEntitiesIfNeeded()
         syncToolbarState()
-        toolbarCoordinator.onCalPrev    = { [self] in shiftDate(by: -1) }
-        toolbarCoordinator.onCalNext    = { [self] in shiftDate(by: 1) }
-        toolbarCoordinator.onCalModeChange = { [self] mode in activeViewMode = mode }
-        toolbarCoordinator.onCalSidebarToggle = { [self] in
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
-                isEventListSidebarShown.toggle()
-            }
-        }
-        toolbarCoordinator.onCalSidebarPanelChange = { [self] panel in
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-                sidebarPanel = panel
-                if !isEventListSidebarShown {
-                    isEventListSidebarShown = true
-                }
-            }
+        toolbarHandlerToken?.invalidate()
+        toolbarHandlerToken = toolbarDispatcher.register(owner: .calendar) { [self] action in
+            handleCalendarToolbarAction(action)
         }
         guard !hasAnimatedIn else { return }
         withAnimation(motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88)) {
@@ -697,19 +691,19 @@ private struct CalendarViewContent: View {
     private func calendarToolbarHandlers<Content: View>(_ content: Content) -> some View {
         content
             .onChange(of: headerDateString) { _, text in
-                toolbarCoordinator.calHeaderDate = text
+                calendarSceneState.headerDate = text
             }
             .onChange(of: activeViewMode) { _, mode in
-                toolbarCoordinator.calViewMode = mode
+                calendarSceneState.viewMode = mode
             }
             .onChange(of: isEventListSidebarShown) { _, shown in
-                toolbarCoordinator.calSidebarShown = shown
+                calendarSceneState.sidebarShown = shown
             }
             .onChange(of: sidebarPanel) { _, panel in
-                toolbarCoordinator.calSidebarPanel = panel
+                calendarSceneState.sidebarPanel = panel
             }
             .onChange(of: calendarToolbarInitials) { _, initials in
-                toolbarCoordinator.profileInitials = initials
+                calendarSceneState.profileInitials = initials
             }
             .onChange(of: calendarSearchText) { _, query in
                 scheduleToolbarCalendarSearch(query)
@@ -725,15 +719,42 @@ private struct CalendarViewContent: View {
             .onChange(of: activeViewMode) { _, _ in scheduleFilterSnapshotRefresh() }
             .onChange(of: currentDate) { _, _ in scheduleFilterSnapshotRefresh() }
             .onChange(of: cacheStore.dayEventsByDate.count) { _, _ in scheduleFilterSnapshotRefresh() }
-            .onDisappear { cancelCalendarBackgroundTasks() }
+            .onDisappear {
+                cancelCalendarBackgroundTasks()
+                toolbarHandlerToken?.invalidate()
+                toolbarHandlerToken = nil
+            }
     }
 
     private func syncToolbarState() {
-        toolbarCoordinator.calHeaderDate    = headerDateString
-        toolbarCoordinator.calViewMode      = activeViewMode
-        toolbarCoordinator.calSidebarShown  = isEventListSidebarShown
-        toolbarCoordinator.calSidebarPanel  = sidebarPanel
-        toolbarCoordinator.profileInitials  = calendarToolbarInitials
+        calendarSceneState.headerDate = headerDateString
+        calendarSceneState.viewMode = activeViewMode
+        calendarSceneState.sidebarShown = isEventListSidebarShown
+        calendarSceneState.sidebarPanel = sidebarPanel
+        calendarSceneState.profileInitials = calendarToolbarInitials
+    }
+
+    private func handleCalendarToolbarAction(_ action: ToolbarAction) {
+        guard case .calendar(let calendarAction) = action else { return }
+        switch calendarAction {
+        case .previous:
+            shiftDate(by: -1)
+        case .next:
+            shiftDate(by: 1)
+        case .modeChange(let mode):
+            activeViewMode = mode
+        case .sidebarToggle:
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
+                isEventListSidebarShown.toggle()
+            }
+        case .sidebarPanelChange(let panel):
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                sidebarPanel = panel
+                if !isEventListSidebarShown {
+                    isEventListSidebarShown = true
+                }
+            }
+        }
     }
 
 

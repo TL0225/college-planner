@@ -1,0 +1,55 @@
+name: Toolbar architecture
+
+on:
+  push:
+    paths:
+      - "College/App/**"
+      - "College/App/Toolbar/**"
+      - "CollegeTests/App/**"
+      - "CollegeTests/Support/ToolbarSnapshotHarness.swift"
+      - "CollegeTests/__Snapshots__/ToolbarVisual/**"
+      - "scripts/check-feature-imports.sh"
+      - "scripts/run_toolbar_tests.sh"
+      - "College.xcodeproj/**"
+      - ".github/workflows/toolbar-architecture.yml"
+  pull_request:
+    paths:
+      - "College/App/**"
+      - "College/App/Toolbar/**"
+      - "CollegeTests/App/**"
+      - "CollegeTests/Support/ToolbarSnapshotHarness.swift"
+      - "CollegeTests/__Snapshots__/ToolbarVisual/**"
+      - "scripts/check-feature-imports.sh"
+      - "scripts/run_toolbar_tests.sh"
+      - "College.xcodeproj/**"
+      - ".github/workflows/toolbar-architecture.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  toolbar-gate:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Forbidden symbol grep (toolbar modules)
+        run: |
+          set -euo pipefail
+          violations=0
+          while IFS= read -r file; do
+            if grep -q "NSToolbarDelegate\|AppToolbarCoordinator\|import AppKit" "$file"; then
+              echo "Forbidden symbol in $file"
+              violations=$((violations + 1))
+            fi
+          done < <(find College/App/Toolbar -name '*.swift'; echo College/App/MainWindowToolbar.swift)
+          if [[ "$violations" -gt 0 ]]; then
+            exit 1
+          fi
+
+      - name: Cross-feature imports (warn-only)
+        run: bash scripts/check-feature-imports.sh warn
+
+      - name: Toolbar XCTest suite
+        run: bash scripts/run_toolbar_tests.sh

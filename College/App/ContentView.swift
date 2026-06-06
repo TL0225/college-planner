@@ -18,14 +18,11 @@ import AppKit
 
 struct ContentView: View {
     @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    @Environment(AppContainer.self) private var appContainer
     @EnvironmentObject private var appNotifications: AppNotificationCenter
     @EnvironmentObject private var securityManager: SecurityManager
     @EnvironmentObject private var calendarManager: CalendarIntegrationManager
     @EnvironmentObject private var locationPermissionService: LocationPermissionService
-    @Environment(AppActivityCoordinator.self) private var appActivity
-    @Environment(CalendarToolbarState.self) private var calendarToolbar
-    @Environment(WebPortalToolbarState.self) private var webPortalToolbar
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
@@ -83,15 +80,15 @@ struct ContentView: View {
     private var addSemesterSheetPresented: Binding<Bool> {
         Binding(
             get: {
-                if case .addSemester = modalCoordinator.activeModal { return true }
+                if case .addSemester = appContainer.modalCoordinator.activeModal { return true }
                 return false
             },
             set: { isPresented in
                 guard !isPresented else { return }
-                guard case .addSemester = modalCoordinator.activeModal else { return }
+                guard case .addSemester = appContainer.modalCoordinator.activeModal else { return }
                 addSemesterPlan = nil
-                modalCoordinator.addSemesterPreferredPlanID = nil
-                modalCoordinator.activeModal = nil
+                appContainer.modalCoordinator.addSemesterPreferredPlanID = nil
+                appContainer.modalCoordinator.activeModal = nil
             }
         )
     }
@@ -99,7 +96,7 @@ struct ContentView: View {
     private var calendarEventSheetPresented: Binding<Bool> {
         Binding(
             get: {
-                guard let modal = modalCoordinator.activeModal else { return false }
+                guard let modal = appContainer.modalCoordinator.activeModal else { return false }
                 switch modal {
                 case .addCalendarItem, .editCalendarItem:
                     return true
@@ -109,10 +106,10 @@ struct ContentView: View {
             },
             set: { isPresented in
                 guard !isPresented else { return }
-                guard let modal = modalCoordinator.activeModal else { return }
+                guard let modal = appContainer.modalCoordinator.activeModal else { return }
                 switch modal {
                 case .addCalendarItem, .editCalendarItem:
-                    modalCoordinator.activeModal = nil
+                    appContainer.modalCoordinator.activeModal = nil
                 default:
                     break
                 }
@@ -122,9 +119,9 @@ struct ContentView: View {
 
     @ViewBuilder
     private var modalOverlays: some View {
-        ModalOverlayRouter(coordinator: modalCoordinator, activePage: $activePage)
+        ModalOverlayRouter(coordinator: appContainer.modalCoordinator, activePage: $activePage)
         CalendarModalHost()
-            .environment(modalCoordinator)
+            .environment(appContainer.modalCoordinator)
             .environmentObject(collegePersistence)
     }
 
@@ -258,14 +255,17 @@ struct ContentView: View {
     @State private var isAcademicsInspectorPresented = true
     @State private var isDocumentsInspectorPresented = false
     private var isCourseDashboardActive: Bool {
-        if case .courseDashboard = modalCoordinator.activeModal { return true }
+        if case .courseDashboard = appContainer.modalCoordinator.activeModal { return true }
         return false
     }
 
     @ViewBuilder
     private var mainNavigationSplitView: some View {
         NavigationSplitView(columnVisibility: $navigationSplitViewVisibility) {
-            SidebarView(activePage: $activePage)
+            SidebarView(
+                activePage: $activePage,
+                columnVisibility: $navigationSplitViewVisibility
+            )
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
                 .background(.clear)
         } detail: {
@@ -279,6 +279,7 @@ struct ContentView: View {
                         academicsInspectorPresented: $isAcademicsInspectorPresented
                     )
                 }
+                .glassToolbarEnvironment(density: ToolbarDensity.derived(from: navigationSplitViewVisibility))
                 .focusedSceneValue(\.activePage, activePage)
                 .modifier(PortalWindowSearchModifier(activePage: activePage, searchText: $toolbarSearchText))
         }
@@ -302,7 +303,7 @@ struct ContentView: View {
         case .settings:
             return ""
         case .webShortcut:
-            let title = webPortalToolbar.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = appContainer.webPortalScene.title.trimmingCharacters(in: .whitespacesAndNewlines)
             return title.isEmpty ? activePage.windowChromeTitle : title
         default:
             return activePage.windowChromeTitle
@@ -338,7 +339,7 @@ struct ContentView: View {
                     .zIndex(5)
             }
 
-            if case let .courseDashboard(courseCode, defaultCourseName, defaultCreditsText, courseID) = modalCoordinator.activeModal {
+            if case let .courseDashboard(courseCode, defaultCourseName, defaultCreditsText, courseID) = appContainer.modalCoordinator.activeModal {
                 CourseDashboardView(
                     activePage: $activePage,
                     courseCode: courseCode,
@@ -346,12 +347,12 @@ struct ContentView: View {
                     defaultCreditsText: defaultCreditsText,
                     courseID: courseID,
                     onClose: {
-                        modalCoordinator.activeModal = nil
-                        modalCoordinator.courseDashboardTaskOverlay = nil
+                        appContainer.modalCoordinator.activeModal = nil
+                        appContainer.modalCoordinator.courseDashboardTaskOverlay = nil
                     }
                 )
                 .environmentObject(collegePersistence)
-                .environment(modalCoordinator)
+                .environment(appContainer.modalCoordinator)
                 .environmentObject(appNotifications)
                 .environmentObject(securityManager)
                 .environmentObject(calendarManager)
@@ -363,7 +364,7 @@ struct ContentView: View {
         .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: onboardingCatalogSyncInFlight)
         .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: menuBarCatalogStatus.isCatalogImporting)
         .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: pendingLMSConnectProviders)
-        .animation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced), value: modalCoordinator.activeModal)
+        .animation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced), value: appContainer.modalCoordinator.activeModal)
         .background(MainContentRenderSignal())
         // Force a full rebuild of the main content on each unlock.
         .id(unlockTransitionToken)
@@ -404,8 +405,8 @@ struct ContentView: View {
         }
 
         guard securityManager.isUnlocked else {
-            modalCoordinator.activeModal = nil
-            modalCoordinator.courseDashboardTaskOverlay = nil
+            appContainer.modalCoordinator.activeModal = nil
+            appContainer.modalCoordinator.courseDashboardTaskOverlay = nil
             bridgeDismissTask?.cancel()
             bridgeDismissTask = nil
             unlockTransitionToken = UUID()
@@ -492,7 +493,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var contentInactiveDimLayer: some View {
-        if appActivity.shouldApplyInactiveDim {
+        if appContainer.appActivity.shouldApplyInactiveDim {
             Rectangle()
                 .fill(Color(nsColor: .labelColor).opacity(0.08))
                 .ignoresSafeArea()
@@ -591,7 +592,7 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear)
-            .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: appActivity.shouldApplyInactiveDim)
+            .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: appContainer.appActivity.shouldApplyInactiveDim)
             .background(WindowRefreshView { window in
                 hostWindow = window
                 if let window {
@@ -636,7 +637,7 @@ struct ContentView: View {
 
     private var contentRootWithPresentation: some View {
         contentRootWithWindowChrome
-            .animation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced), value: modalCoordinator.activeModal)
+            .animation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced), value: appContainer.modalCoordinator.activeModal)
         .task {
             await revealMainNavigationShellIfNeeded()
         }
@@ -674,7 +675,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: calendarEventSheetPresented) {
             CalendarEventEditorSheet(zoomNamespace: calendarEditorZoom)
-                .environment(modalCoordinator)
+                .environment(appContainer.modalCoordinator)
                 .environmentObject(collegePersistence)
                 .environmentObject(calendarManager)
         }
@@ -697,16 +698,16 @@ struct ContentView: View {
             activePage = .settings
             _ = section
         }
-        .onChange(of: appActivity.isAppActive) { _, isActive in
+        .onChange(of: appContainer.appActivity.isAppActive) { _, isActive in
             guard isActive else { return }
             syncWindowTitleToActivePage()
             DispatchQueue.main.async {
                 syncWindowTitleToActivePage()
             }
         }
-        .onChange(of: modalCoordinator.activeModal) { _, new in
+        .onChange(of: appContainer.modalCoordinator.activeModal) { _, new in
             if case .courseDashboard = new { return }
-            modalCoordinator.courseDashboardTaskOverlay = nil
+            appContainer.modalCoordinator.courseDashboardTaskOverlay = nil
             if case .addSemester = new {
                 resolveAddSemesterPlanIfNeeded()
             }
@@ -803,7 +804,7 @@ struct ContentView: View {
     @MainActor
     private func resolveAddSemesterPlanIfNeeded() {
         guard addSemesterPlan == nil else { return }
-        if let preferredID = modalCoordinator.addSemesterPreferredPlanID,
+        if let preferredID = appContainer.modalCoordinator.addSemesterPreferredPlanID,
            let preferred = collegePersistence.plans.first(where: { $0.id == preferredID }) {
             addSemesterPlan = preferred
             return
@@ -834,7 +835,7 @@ struct ContentView: View {
                 )
                 .environmentObject(collegePersistence)
                 .environmentObject(appNotifications)
-                .environment(modalCoordinator)
+                .environment(appContainer.modalCoordinator)
             } else {
                 ProgressView()
                     .frame(width: 560, height: 320)
@@ -1342,19 +1343,14 @@ private struct PortalWindowSearchModifier: ViewModifier {
 }
 
 #Preview {
+    let appContainer = AppContainer.makeMainWindow()
     ContentView()
         .environmentObject(CollegePersistence.shared)
         .environmentObject(AppDataStore.shared)
-        .environment(ModalCoordinator())
         .environmentObject(AppNotificationCenter.shared)
         .environmentObject(CalendarIntegrationManager())
         .environmentObject(LocationPermissionService())
         .environmentObject(SecurityManager.shared)
-        .environment(AppActivityCoordinator.shared)
-        .environment(CalendarToolbarState())
-        .environment(WebPortalToolbarState())
-        .environment(AcademicsToolbarState())
-        .environment(CareerToolbarState())
-        .environment(AuditSnapshotStore())
+        .appContainerEnvironment(appContainer)
         .modelContainer(AppDataStore.shared.profileContainer)
 }

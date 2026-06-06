@@ -21,17 +21,12 @@ struct CollegeApp: App {
 
     @StateObject private var collegePersistence = CollegePersistence.shared
     @StateObject private var appDataStore = AppDataStore.shared
-    @State private var academicMetricsStore = AcademicMetricsStore()
-    @State private var auditSnapshotStore = AuditSnapshotStore()
-    @State private var modalCoordinator = ModalCoordinator()
     @StateObject private var appNotifications = AppNotificationCenter.shared
     @StateObject private var locationPermissionService = LocationPermissionService()
     @StateObject private var calendarManager = CalendarIntegrationManager()
-    @State private var appToolbarCoordinator = AppToolbarCoordinator()
+    @State private var appContainer = AppContainer.makeMainWindow()
     @StateObject private var securityManager = SecurityManager.shared
     @StateObject private var brightspaceCoordinator = BrightspaceWebCoordinator()
-    @State private var launchPreloadCoordinator = LaunchPreloadCoordinator()
-    @State private var appActivity = AppActivityCoordinator.shared
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted: Bool = false
     @State private var showSessionInterruptedAlert = false
@@ -39,10 +34,6 @@ struct CollegeApp: App {
     @State private var launchMinimumDisplayElapsed = false
     @State private var launchSplashShownAt: Date?
     private let launchSplashMinimumSeconds: TimeInterval = 1.4
-    @State private var calendarToolbar = CalendarToolbarState()
-    @State private var webPortalToolbar = WebPortalToolbarState()
-    @State private var careerToolbar = CareerToolbarState()
-    @State private var academicsToolbar = AcademicsToolbarState()
     @AppStorage(CalendarTimeZonePreference.storageKey) private var calendarTimeZoneSelection: String = CalendarTimeZonePreference.systemValue
     @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
 
@@ -62,7 +53,7 @@ struct CollegeApp: App {
         CollegeTestRuntime.isUnitTestProcess && !forceUITestMainUI
     }
     private var canLeaveLaunchScreen: Bool {
-        forceUITestMainUI || (launchPreloadCoordinator.isCompleted && launchMinimumDisplayElapsed)
+        forceUITestMainUI || (appContainer.launchPreloadCoordinator.isCompleted && launchMinimumDisplayElapsed)
     }
 
     /// XCTest snapshots were missing the main window entirely until the app was activated
@@ -74,7 +65,7 @@ struct CollegeApp: App {
 
     private var shouldShowOnboarding: Bool {
         if forceUITestMainUI { return false }
-        guard launchPreloadCoordinator.isCompleted, collegePersistence.isStoreLoaded else { return false }
+        guard appContainer.launchPreloadCoordinator.isCompleted, collegePersistence.isStoreLoaded else { return false }
 
         // Finished onboarding is stored in UserDefaults, not inferred from SQLite alone.
         if onboardingCompleted { return false }
@@ -223,17 +214,14 @@ struct CollegeApp: App {
         }
         .environmentObject(collegePersistence)
         .environmentObject(appDataStore)
-        .environment(launchPreloadCoordinator)
+        .appContainerEnvironment(appContainer)
         .environment(\.timeZone, selectedTimeZone)
         .environment(\.calendar, selectedCalendar)
-        .environment(modalCoordinator)
         .environmentObject(appNotifications)
         .environmentObject(calendarManager)
         .environmentObject(locationPermissionService)
         .environmentObject(securityManager)
         .environmentObject(brightspaceCoordinator)
-        .environment(appActivity)
-        .environment(appToolbarCoordinator)
         .modelContainer(appDataStore.profileContainer)
     }
 
@@ -243,24 +231,15 @@ struct CollegeApp: App {
             .environmentObject(collegePersistence)
             .environmentObject(appDataStore)
             .modelContainer(appDataStore.profileContainer)
-            .environment(academicMetricsStore)
             .environment(\.timeZone, selectedTimeZone)
             .environment(\.calendar, selectedCalendar)
-            .environment(modalCoordinator)
             .environmentObject(appNotifications)
             .environmentObject(calendarManager)
             .environmentObject(locationPermissionService)
             .environmentObject(securityManager)
             .environmentObject(brightspaceCoordinator)
-            .environment(launchPreloadCoordinator)
-            .environment(appActivity)
+            .appContainerEnvironment(appContainer)
             .environment(WidgetRegistry.shared)
-            .environment(appToolbarCoordinator)
-            .environment(calendarToolbar)
-            .environment(webPortalToolbar)
-            .environment(careerToolbar)
-            .environment(academicsToolbar)
-            .environment(auditSnapshotStore)
             .onOpenURL { url in
                 _ = CollegeInboundURLDispatcher.handle(url) { _ in
                 }
@@ -269,10 +248,10 @@ struct CollegeApp: App {
             .onAppear {
                 guard !isHostedUnitTest else { return }
                 Task { @MainActor in
-                    academicMetricsStore.refresh()
+                    appContainer.academicMetricsStore.refresh()
                 }
                 DebugLogger.shared.lifecycle("WindowGroup ContentView appeared")
-                applyInactiveServiceThrottle(appActivity.isResourceThrottled)
+                applyInactiveServiceThrottle(appContainer.appActivity.isResourceThrottled)
                 AppNotificationCenter.shared.requestPermission()
                 CalendarReminderScheduler.shared.registerNotificationCategories()
                 CalendarReminderScheduler.shared.requestAuthorizationIfNeeded()
@@ -336,7 +315,7 @@ struct CollegeApp: App {
                 }
             } else {
                 LaunchPreloadView()
-                    .environment(launchPreloadCoordinator)
+                    .environment(appContainer.launchPreloadCoordinator)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.thinMaterial)
                     .onAppear {
@@ -345,7 +324,7 @@ struct CollegeApp: App {
                         }
                     }
                     .task {
-                        launchPreloadCoordinator.startIfNeeded(
+                        appContainer.launchPreloadCoordinator.startIfNeeded(
                             collegePersistence: collegePersistence,
                             calendarManager: calendarManager,
                             brightspaceCoordinator: brightspaceCoordinator,
@@ -364,7 +343,7 @@ struct CollegeApp: App {
                 }
                 launchMinimumDisplayElapsed = true
             }
-            .onChange(of: launchPreloadCoordinator.isCompleted) { _, completed in
+            .onChange(of: appContainer.launchPreloadCoordinator.isCompleted) { _, completed in
                 guard completed, !forceUITestMainUI else { return }
                 guard let shownAt = launchSplashShownAt else { return }
                 if Date().timeIntervalSince(shownAt) >= launchSplashMinimumSeconds {
@@ -379,7 +358,7 @@ struct CollegeApp: App {
                 guard loaded else { return }
                 UITestPersistenceSeeder.seedMinimalPlannerDataIfNeeded()
             }
-            .onChange(of: launchPreloadCoordinator.isCompleted) { _, completed in
+            .onChange(of: appContainer.launchPreloadCoordinator.isCompleted) { _, completed in
                 guard completed else { return }
                 if SessionTerminationTracker.consumePendingAbruptTerminationPrompt() {
                     pendingCrashReportURL = CrashReportStore.consumePendingCrashReportURL()
@@ -428,20 +407,20 @@ struct CollegeApp: App {
             @unknown default:
                 DebugLogger.shared.lifecycle("scenePhase -> unknown")
             }
-            appActivity.handleScenePhase(newPhase)
+            appContainer.appActivity.handleScenePhase(newPhase)
         }
-        .onChange(of: appActivity.isResourceThrottled) { _, throttled in
+        .onChange(of: appContainer.appActivity.isResourceThrottled) { _, throttled in
             applyInactiveServiceThrottle(throttled)
         }
         Settings {
             Group {
                 if collegePersistence.isStoreLoaded {
                     MacStandaloneSettingsRoot()
-                        .environmentObject(securityManager)
-                        .environmentObject(calendarManager)
-                        .environmentObject(collegePersistence)
-                        .environmentObject(appNotifications)
-                        .environment(appActivity)
+                    .environmentObject(securityManager)
+                    .environmentObject(calendarManager)
+                    .environmentObject(collegePersistence)
+                    .environmentObject(appNotifications)
+                    .environment(appContainer.appActivity)
                 } else {
                     ProgressView(String(localized: "app.launch.loading"))
                         .controlSize(.large)

@@ -8,9 +8,8 @@ import AppKit
 
 struct SidebarView: View {
     @Binding var activePage: AppPage
-    /// When the leading column is shown, ``SafeSidebarToggleView`` sits in this column’s branded header row (alongside portal chrome), not only in ``AppToolbarCoordinator`` — when collapsed to detail‑only it appears only in the window toolbar instead.
-    var showLeadingMainSidebarToggle: Bool = false
-    var onMainSidebarToggleIntent: (() -> Void)? = nil
+    /// When the leading column is shown, ``SafeSidebarToggleView`` sits in this column’s branded header row (alongside portal chrome), not only in ``MainWindowToolbar`` — when collapsed to detail‑only it appears only in the window toolbar instead.
+    @Binding var columnVisibility: NavigationSplitViewVisibility
 
     @EnvironmentObject private var collegePersistence: CollegePersistence
     @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
@@ -70,7 +69,7 @@ struct SidebarView: View {
             let topChromeInset = max(32, proxy.safeAreaInsets.top + 6)
             sidebarPane(cornerRadius: 18) {
                 VStack(alignment: .leading, spacing: 0) {
-                    navigationContent(compactHeight: compactHeight, topChromeInset: topChromeInset, showLeadingMainSidebarToggle: showLeadingMainSidebarToggle)
+                    navigationContent(compactHeight: compactHeight, topChromeInset: topChromeInset, showLeadingMainSidebarToggle: showsLeadingSidebarToggle)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                     Rectangle()
@@ -96,11 +95,20 @@ struct SidebarView: View {
         profileShell = ProfileReadBridge.shellSnapshot(collegePersistence: collegePersistence)
     }
 
+    private var showsLeadingSidebarToggle: Bool {
+        switch columnVisibility {
+        case .all, .doubleColumn, .automatic:
+            return true
+        default:
+            return false
+        }
+    }
+
     private func navigationContent(compactHeight: Bool, topChromeInset: CGFloat, showLeadingMainSidebarToggle: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
                 if showLeadingMainSidebarToggle {
-                    SafeSidebarToggleView(onToggleIntent: onMainSidebarToggleIntent)
+                    SafeSidebarToggleView(columnVisibility: $columnVisibility)
                 }
 
                 ZStack {

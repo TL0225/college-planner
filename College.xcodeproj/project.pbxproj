@@ -20,9 +20,19 @@
 		BB0000030000000000000003 /* CollegePlatform in Frameworks */ = {isa = PBXBuildFile; productRef = BB0000020000000000000002 /* CollegePlatform */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		1C7487702EF688EC00021529 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 1C7487582EF688EA00021529 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1C74875F2EF688EA00021529;
+			remoteInfo = College;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		1C7487602EF688EA00021529 /* College.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = College.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1C74876F2EF688EC00021529 /* CollegeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CollegeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0003022F0C000000000002 /* FoundationModels.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FoundationModels.framework; path = System/Library/Frameworks/FoundationModels.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -34,6 +44,13 @@
 			);
 			target = 1C74875F2EF688EA00021529 /* College */;
 		};
+		1C7487732EF688EC00021529 /* Exceptions for "CollegeTests" folder in "CollegeTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 1C74876E2EF688EC00021529 /* CollegeTests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +60,14 @@
 				1C1B1CE42EFC2B8200849BEC /* Exceptions for "College" folder in "College" target */,
 			);
 			path = College;
+			sourceTree = "<group>";
+		};
+		1C7487722EF688EC00021529 /* CollegeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				1C7487732EF688EC00021529 /* Exceptions for "CollegeTests" folder in "CollegeTests" target */,
+			);
+			path = CollegeTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -66,6 +91,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1C74876C2EF688EC00021529 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -81,6 +113,7 @@
 			isa = PBXGroup;
 			children = (
 				1C7487622EF688EA00021529 /* College */,
+				1C7487722EF688EC00021529 /* CollegeTests */,
 				1C7487612EF688EA00021529 /* Products */,
 				1C63E2F42FBA9B1E00D181E3 /* Recovered References */,
 			);
@@ -90,6 +123,7 @@
 			isa = PBXGroup;
 			children = (
 				1C7487602EF688EA00021529 /* College.app */,
+				1C74876F2EF688EC00021529 /* CollegeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -129,6 +163,29 @@
 			productReference = 1C7487602EF688EA00021529 /* College.app */;
 			productType = "com.apple.product-type.application";
 		};
+		1C74876E2EF688EC00021529 /* CollegeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1C7487862EF688EC00021529 /* Build configuration list for PBXNativeTarget "CollegeTests" */;
+			buildPhases = (
+				1C74876B2EF688EC00021529 /* Sources */,
+				1C74876C2EF688EC00021529 /* Frameworks */,
+				1C74876D2EF688EC00021529 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1C7487712EF688EC00021529 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				1C7487722EF688EC00021529 /* CollegeTests */,
+			);
+			name = CollegeTests;
+			packageProductDependencies = (
+			);
+			productName = CollegeTests;
+			productReference = 1C74876F2EF688EC00021529 /* CollegeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -141,6 +198,10 @@
 				TargetAttributes = {
 					1C74875F2EF688EA00021529 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					1C74876E2EF688EC00021529 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 1C74875F2EF688EA00021529;
 					};
 				};
 			};
@@ -166,12 +227,20 @@
 			projectRoot = "";
 			targets = (
 				1C74875F2EF688EA00021529 /* College */,
+				1C74876E2EF688EC00021529 /* CollegeTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		1C74875E2EF688EA00021529 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1C74876D2EF688EC00021529 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -188,17 +257,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1C74876B2EF688EC00021529 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		1C7487712EF688EC00021529 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1C74875F2EF688EA00021529 /* College */;
+			targetProxy = 1C7487702EF688EC00021529 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		1C7487812EF688EC00021529 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = arm64;
-				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
-				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -234,6 +315,7 @@
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -249,6 +331,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -261,10 +344,8 @@
 		1C7487822EF688EC00021529 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ARCHS = arm64;
-				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
-				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -300,6 +381,7 @@
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -309,6 +391,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = NO;
@@ -321,8 +404,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
-				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
-				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -345,6 +426,7 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = College/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Blueprint;
@@ -364,6 +446,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
+				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.College;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = NO;
@@ -385,8 +468,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
-				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
-				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -399,7 +480,6 @@
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_TESTABILITY = YES;
 				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = NO;
 				ENABLE_RESOURCE_ACCESS_BLUETOOTH = NO;
 				ENABLE_RESOURCE_ACCESS_CALENDARS = NO;
@@ -408,10 +488,11 @@
 				ENABLE_RESOURCE_ACCESS_LOCATION = YES;
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
+				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
+				"EXCLUDED_ARCHS[sdk=macosx*]" = x86_64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = College/Info.plist;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS $(inherited)";
 				INFOPLIST_KEY_CFBundleDisplayName = Blueprint;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -429,12 +510,14 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
+				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.College;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = Nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -443,6 +526,65 @@
 				SWIFT_VERSION = 6.3;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				XROS_DEPLOYMENT_TARGET = 26.2;
+			};
+			name = Release;
+		};
+		1C7487872EF688EC00021529 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CollegeTests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Timothy.CollegeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.3;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/College.app/Contents/MacOS/College";
+			};
+			name = Debug;
+		};
+		1C7487882EF688EC00021529 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CollegeTests/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Timothy.CollegeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.3;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/College.app/Contents/MacOS/College";
 			};
 			name = Release;
 		};
@@ -463,6 +605,15 @@
 			buildConfigurations = (
 				1C7487842EF688EC00021529 /* Debug */,
 				1C7487852EF688EC00021529 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1C7487862EF688EC00021529 /* Build configuration list for PBXNativeTarget "CollegeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C7487872EF688EC00021529 /* Debug */,
+				1C7487882EF688EC00021529 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
