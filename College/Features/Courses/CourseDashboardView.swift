@@ -11,14 +11,15 @@ import MapKit
 ///
 /// Important: Dynamic fields (course name, code, tags, grade, tasks) are derived from existing app data.
 struct CourseDashboardView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-
-    @State private var plannerRefreshToken = 0
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var securityManager: SecurityManager { container.securityManager }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
+                @State private var plannerRefreshToken = 0
     @State private var dashboardPayload = CourseDashboardReadBridge.Payload(course: nil, tasks: [], events: [])
 
     private var profile: Profile? {
@@ -1705,11 +1706,7 @@ struct CourseDashboardView: View {
             plannedCourse: plannedCourse,
             onClose: { isSyllabusPresented = false }
         )
-        .environmentObject(collegePersistence)
-        .environmentObject(notifications)
-        .environmentObject(securityManager)
-        .environmentObject(calendarManager)
-    }
+        }
 
     private var immediateActionTitle: String {
         if let t = immediateActionTask {

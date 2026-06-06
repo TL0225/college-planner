@@ -7,8 +7,9 @@ import SwiftUI
 import Combine
 
 struct GPACalculatorPopoverView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     private enum Tab: String, CaseIterable {
         case gpa = "GPA"
         case gpaTable = "GPA Table"

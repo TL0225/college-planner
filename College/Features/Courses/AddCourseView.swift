@@ -7,11 +7,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct AddCourseView: View {
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var isPresented: Bool
     let semester: PlannerSemester
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject var notifications: AppNotificationCenter
-    var courseToEdit: CourseEntity?
+    private var collegePersistence: CollegePersistence { container.persistence }
+        var courseToEdit: CourseEntity?
     
     @State private var courseID: String = ""
     @State private var credits: String = ""

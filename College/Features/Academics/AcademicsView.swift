@@ -74,9 +74,9 @@ struct AcademicsView: View {
     @Binding var isInspectorPresented: Bool
 
     @Environment(AppContainer.self) private var appContainer
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appDataStore: AppDataStore
-
+    private var persistence: CollegePersistence { appContainer.persistence }
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
+    private var appDataStore: AppDataStore { appContainer.appDataStore }
     private var academicMetricsStore: AcademicMetricsStore { appContainer.academicMetricsStore }
     private var auditSnapshotStore: AuditSnapshotStore { appContainer.auditSnapshotStore }
     private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
@@ -184,8 +184,6 @@ struct AcademicsView: View {
                         minors: minors,
                         showGraduationSheet: $showGraduationSheet
                     )
-                    .environmentObject(collegePersistence)
-                    .environment(modalCoordinator)
                     .frame(width: leftSidebarWidth, height: proxy.size.height, alignment: .topLeading)
                     .modifier(AcademicsEntranceModifier(index: 0, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
 
@@ -201,7 +199,6 @@ struct AcademicsView: View {
                         isInspectorPresented: $isInspectorPresented,
                         scrollToProgramID: $requirementsScrollTargetID
                     )
-                    .environmentObject(collegePersistence)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .modifier(AcademicsEntranceModifier(index: 1, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
 
@@ -271,8 +268,7 @@ struct AcademicsView: View {
                 inProgressCredits: buckets.inProgress,
                 plannedCredits: buckets.planned
             )
-            .environmentObject(collegePersistence)
-        }
+            }
         .onAppear {
             
             collegePersistence.fetchSemesters()
@@ -573,9 +569,10 @@ struct AcademicsAuditPanel: View {
     @Binding var isInspectorPresented: Bool
     @Binding var scrollToProgramID: String?
 
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(AppContainer.self) private var appContainer
 
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var auditSnapshotStore: AuditSnapshotStore { appContainer.auditSnapshotStore }
 
     private var auditRefreshToken: String {
@@ -733,13 +730,13 @@ struct AcademicsAuditPanel: View {
 // MARK: - Academic Landscape UI Extensions
 
 struct LandscapeDashboard: View {
-    let profile: Profile?
+        let profile: Profile?
     let academicProfile: AcademicProfile?
     let plannerGPAFormatted: String
     let plannerCreditsEarned: Int
     let plannerCreditsRequired: Int
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @State private var majorProgramsPopover = false
     @State private var minorProgramsPopover = false
 
@@ -1103,10 +1100,9 @@ struct LandscapeTimelineCard: View {
 }
 
 struct LandscapeCurriculumCard: View {
-    let semester: PlannerSemester
+        let semester: PlannerSemester
     @State private var isCollapsed = false
-    @EnvironmentObject var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     private var sortedCourses: [PlannerCourse] {
         (semester.courses ?? []).sorted { $0.sortOrder < $1.sortOrder }
     }
@@ -1393,9 +1389,10 @@ struct RequirementsBreakdownView: View {
     /// credit-progress calculators outside this View.
     @State private var specializationSelections: [String: String] = [:]
     @State private var requirementSelections: [String: Set<String>] = [:]
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(AppContainer.self) private var appContainer
 
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
     @State private var dropTargetCategoryID: UUID?
     /// Drives `.scrollPosition` for the requirements `List` (reliable with lazy rows).

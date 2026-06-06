@@ -17,6 +17,8 @@
 import SwiftUI
 
 struct GraduationTimelineConfigSheet: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let academicProfile: AcademicProfile?
     let requiredCredits: Int
     let completedCredits: Int
@@ -24,8 +26,7 @@ struct GraduationTimelineConfigSheet: View {
     let plannedCredits: Int
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { container.persistence }
     /// Per-term cap state, keyed by `"<year>-<season>"`. Initialized from the
     /// stored `GraduationPlanTermEntity` rows (or the recommended even-split
     /// when none exist yet). Saving flushes this map back into local store.

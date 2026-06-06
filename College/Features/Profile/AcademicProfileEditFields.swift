@@ -8,11 +8,14 @@ import SwiftData
 
 /// Per-degree editor: institution, program, details, contact, and advisor — scoped to one `AcademicProfile`.
 struct AcademicProfileEditFields: View {
+    @Environment(AppContainer.self) private var container
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
     @Bindable var academicProfile: AcademicProfile
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-    private var menuBarCatalogStatus: CollegeMenuBarStatusModel { CollegeMenuBarStatusModel.shared }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        private var menuBarCatalogStatus: CollegeMenuBarStatusModel { CollegeMenuBarStatusModel.shared }
 
     private let githubService = GitHubDataService()
 

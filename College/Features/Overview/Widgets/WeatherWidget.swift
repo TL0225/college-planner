@@ -14,9 +14,10 @@ import SwiftUI
 import CoreLocation
 
 struct WeatherWidget: View {
+    @Environment(AppContainer.self) private var container
+    private var locationPermissionService: LocationPermissionService { container.locationPermissionService }
     @EnvironmentObject var weatherService: WeatherService
-    @EnvironmentObject var locationService: LocationPermissionService
-
+    var locationService: LocationPermissionService { container.locationPermissionService }
     var body: some View {
         ZStack {
             LinearGradient(

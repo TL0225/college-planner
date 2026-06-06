@@ -8,7 +8,8 @@ import AppKit
 
 @MainActor
 struct NetworkingAddContactSheet: View {
-    @EnvironmentObject private var persistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
 
     @State private var fullName: String = ""

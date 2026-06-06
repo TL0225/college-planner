@@ -8,9 +8,10 @@ import SwiftUI
 // MARK: - Add Role sheet
 
 struct AddRoleSheet: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var stage: CareerApplicationStatus = .interested
     @State private var jobTitle: String = ""
     @State private var company: String = ""

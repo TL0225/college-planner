@@ -9,8 +9,10 @@ import AppKit
 // MARK: - SettingsCalendarPanel
 
 struct SettingsCalendarPanel: View {
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
     // MARK: Event popover density + intelligence
     @AppStorage("calendar.popoverDetailLevel") private var popoverDetailLevelRaw: String = CalendarPopoverDetailLevel.compact.rawValue
     @AppStorage("calendar.popoverShowLeaveBy") private var popoverShowLeaveBy: Bool = true

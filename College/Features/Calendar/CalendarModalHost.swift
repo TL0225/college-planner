@@ -7,9 +7,10 @@ import SwiftUI
 
 /// Global floating modal host for calendar events and tasks (unified Tahoe-style overlay).
 struct CalendarModalHost: View {
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
+    private var collegePersistence: CollegePersistence { container.persistence }
     var body: some View {
         ZStack {
             switch modalCoordinator.activeModal {
@@ -77,7 +78,6 @@ struct CalendarModalHost: View {
             eventToEdit: eventToEdit,
             presentationStyle: .floatingCards
         )
-        .environmentObject(collegePersistence)
         .transition(.opacity.combined(with: .scale(scale: 0.985)))
         .zIndex(300)
     }
@@ -101,7 +101,6 @@ struct CalendarModalHost: View {
             prefillCourseID: prefillCourseID,
             presentationStyle: .fullScreenOverlay
         )
-        .environmentObject(collegePersistence)
         .transition(.opacity.combined(with: .scale(scale: 0.985)))
         .zIndex(300)
     }

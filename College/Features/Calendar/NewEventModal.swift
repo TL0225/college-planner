@@ -7,7 +7,9 @@ import SwiftUI
 
 /// Clean centered pop-up modal for creating a new calendar event.
 struct NewEventModal: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Binding var isPresented: Bool

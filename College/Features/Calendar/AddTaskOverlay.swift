@@ -7,8 +7,9 @@ import SwiftUI
 
 /// Add/edit task UI used by the Calendar page.
 struct AddTaskOverlay: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     enum PresentationStyle {
         case fullScreenOverlay
         case anchoredPanel

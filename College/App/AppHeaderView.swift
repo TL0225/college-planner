@@ -122,8 +122,8 @@ struct AppHeaderView: View {
 }
 
 private struct BrightspaceHeaderControls: View {
-    @EnvironmentObject private var brightspaceCoordinator: BrightspaceWebCoordinator
-
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
     var body: some View {
         HStack(spacing: 24) {
             HStack(spacing: 20) {

@@ -10,6 +10,7 @@
 //  Created by Timothy Leung on 12/20/25.
 //
 
+import CollegeCalendar
 import SwiftUI
 import SwiftData
 import os
@@ -17,12 +18,15 @@ import UniformTypeIdentifiers
 import AppKit
 
 struct ContentView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
     @Environment(AppContainer.self) private var appContainer
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @EnvironmentObject private var locationPermissionService: LocationPermissionService
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { appContainer.brightspaceCoordinator }
+    private var coordinator: BrightspaceWebCoordinator { appContainer.brightspaceCoordinator }
+    private var persistence: CollegePersistence { appContainer.persistence }
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
+    private var appNotifications: AppNotificationCenter { appContainer.appNotifications }
+    private var securityManager: SecurityManager { appContainer.securityManager }
+    private var calendarManager: CalendarIntegrationManager { appContainer.calendarManager }
+    private var locationPermissionService: LocationPermissionService { appContainer.locationPermissionService }
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
@@ -121,8 +125,6 @@ struct ContentView: View {
     private var modalOverlays: some View {
         ModalOverlayRouter(coordinator: appContainer.modalCoordinator, activePage: $activePage)
         CalendarModalHost()
-            .environment(appContainer.modalCoordinator)
-            .environmentObject(collegePersistence)
     }
 
     /// Heavy tabs mounted on first visit (avoids startup crash / stall from Settings + Assistant init).
@@ -150,9 +152,16 @@ struct ContentView: View {
 
         case .calendar:
             CalendarView(
-                activePage: $activePage,
+                isCalendarPageActive: .constant(true),
                 cacheStore: calendarEventCacheStore
             )
+            .calendarPackageEnvironment(
+                integrationManager: appContainer.calendarManager,
+                sceneState: appContainer.calendarScene
+            )
+            .onAppear {
+                CalendarPersistencePortBootstrap.wireShell(container: appContainer)
+            }
 
         case .assistant:
             AIAssistantView(activePage: $activePage)
@@ -183,7 +192,6 @@ struct ContentView: View {
 
         case .settings:
             SettingsView(activePage: $activePage)
-                .environmentObject(locationPermissionService)
 
         #if DEBUG
         case .debug:
@@ -351,11 +359,6 @@ struct ContentView: View {
                         appContainer.modalCoordinator.courseDashboardTaskOverlay = nil
                     }
                 )
-                .environmentObject(collegePersistence)
-                .environment(appContainer.modalCoordinator)
-                .environmentObject(appNotifications)
-                .environmentObject(securityManager)
-                .environmentObject(calendarManager)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .transition(.opacity)
                 .zIndex(20)
@@ -506,7 +509,6 @@ struct ContentView: View {
 
     private var contentNotificationLayer: some View {
         AppNotificationHost()
-            .environmentObject(appNotifications)
             .zIndex(500)
     }
 
@@ -529,7 +531,6 @@ struct ContentView: View {
     private var contentLockLayer: some View {
         if securityManager.encryptionEnabled && !securityManager.isUnlocked {
             UnlockView()
-                .environmentObject(securityManager)
                 .zIndex(950)
                 .transition(.opacity)
         }
@@ -664,7 +665,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: $isAskCollegePresented) {
             AIAssistantView(activePage: $activePage)
-            .environmentObject(collegePersistence)
             .frame(minWidth: 520, minHeight: 640)
             .onDisappear {
                 if let restore = askCollegeRestorePage {
@@ -675,9 +675,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: calendarEventSheetPresented) {
             CalendarEventEditorSheet(zoomNamespace: calendarEditorZoom)
-                .environment(appContainer.modalCoordinator)
-                .environmentObject(collegePersistence)
-                .environmentObject(calendarManager)
         }
         .sheet(isPresented: addSemesterSheetPresented) {
             addSemesterSheetContent
@@ -833,9 +830,6 @@ struct ContentView: View {
                     isPresented: addSemesterSheetPresented,
                     plan: planForAddSemester
                 )
-                .environmentObject(collegePersistence)
-                .environmentObject(appNotifications)
-                .environment(appContainer.modalCoordinator)
             } else {
                 ProgressView()
                     .frame(width: 560, height: 320)
@@ -1087,12 +1081,14 @@ private struct PostUnlockBridgeView: View {
 }
 
 private struct ModalOverlayRouter: View {
+    @Environment(AppContainer.self) private var appContainer
+    private var persistence: CollegePersistence { appContainer.persistence }
     var coordinator: ModalCoordinator
     @Binding var activePage: AppPage
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
+    private var appNotifications: AppNotificationCenter { appContainer.appNotifications }
+    private var securityManager: SecurityManager { appContainer.securityManager }
+    private var calendarManager: CalendarIntegrationManager { appContainer.calendarManager }
 
     @ViewBuilder
     private var courseDashboardTaskLayer: some View {
@@ -1116,7 +1112,6 @@ private struct ModalOverlayRouter: View {
                     prefillCourseID: prefillCourseID,
                     presentationStyle: .fullScreenOverlay
                 )
-                .environmentObject(collegePersistence)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(220)
             case .edit(let taskID):
@@ -1132,7 +1127,6 @@ private struct ModalOverlayRouter: View {
                     taskToEdit: task,
                     presentationStyle: .fullScreenOverlay
                 )
-                .environmentObject(collegePersistence)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(220)
             }
@@ -1155,8 +1149,6 @@ private struct ModalOverlayRouter: View {
                     ),
                     experience: nil
                 )
-                .environmentObject(CollegePersistence.shared)
-                .environmentObject(appNotifications)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(100)
 
@@ -1171,8 +1163,6 @@ private struct ModalOverlayRouter: View {
                     ),
                     experience: experience
                 )
-                .environmentObject(CollegePersistence.shared)
-                .environmentObject(appNotifications)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(100)
 
@@ -1187,8 +1177,6 @@ private struct ModalOverlayRouter: View {
                     ),
                     achievement: nil
                 )
-                .environmentObject(CollegePersistence.shared)
-                .environmentObject(appNotifications)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(100)
 
@@ -1203,8 +1191,6 @@ private struct ModalOverlayRouter: View {
                     ),
                     achievement: achievement
                 )
-                .environmentObject(CollegePersistence.shared)
-                .environmentObject(appNotifications)
                 .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 .zIndex(100)
 
@@ -1223,10 +1209,6 @@ private struct ModalOverlayRouter: View {
                         defaultCreditsText: selection.defaultCreditsText,
                         onClose: { coordinator.activeModal = nil }
                     )
-                    .environmentObject(CollegePersistence.shared)
-                    .environmentObject(appNotifications)
-                    .environmentObject(securityManager)
-                    .environmentObject(calendarManager)
                     .transition(.opacity.combined(with: .scale(scale: 0.985)))
                 }
                 .zIndex(200)
@@ -1278,21 +1260,18 @@ private struct ModalOverlayRouter: View {
                         targetSemesterID: nil,
                         tagAsGenEd: true
                     )
-                    .environmentObject(collegePersistence)
                     .dismissOnOutsideClickForSheet()
                 case .addCatalogCourseGlobal(let tagAsGenEd):
                     GenEdAddCourseModal(
                         targetSemesterID: nil,
                         tagAsGenEd: tagAsGenEd
                     )
-                    .environmentObject(collegePersistence)
                     .dismissOnOutsideClickForSheet()
                 case .addCatalogCourse(let semesterID):
                     GenEdAddCourseModal(
                         targetSemesterID: semesterID,
                         tagAsGenEd: false
                     )
-                    .environmentObject(collegePersistence)
                     .dismissOnOutsideClickForSheet()
                 case .assignRequirementCourse(let assignment):
                     GenEdAddCourseModal(
@@ -1300,7 +1279,6 @@ private struct ModalOverlayRouter: View {
                         tagAsGenEd: false,
                         fulfillmentAssignment: assignment
                     )
-                    .environmentObject(collegePersistence)
                     .dismissOnOutsideClickForSheet()
                 default:
                     EmptyView()
@@ -1345,12 +1323,5 @@ private struct PortalWindowSearchModifier: ViewModifier {
 #Preview {
     let appContainer = AppContainer.makeMainWindow()
     ContentView()
-        .environmentObject(CollegePersistence.shared)
-        .environmentObject(AppDataStore.shared)
-        .environmentObject(AppNotificationCenter.shared)
-        .environmentObject(CalendarIntegrationManager())
-        .environmentObject(LocationPermissionService())
-        .environmentObject(SecurityManager.shared)
         .appContainerEnvironment(appContainer)
-        .modelContainer(AppDataStore.shared.profileContainer)
 }

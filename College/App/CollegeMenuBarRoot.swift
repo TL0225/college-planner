@@ -46,10 +46,11 @@ struct CollegeMenuBarLabel: View {
 
 /// Single menu bar panel: catalog scrape status, today’s schedule, and career openings.
 struct CollegeMenuBarRoot: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     private var catalogStatus = CollegeMenuBarStatusModel.shared
     @AppStorage("ui.menuBarCalendarEnabled") private var menuBarCalendarEnabled = true
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { container.persistence }
     var body: some View {
         VStack(alignment: .leading, spacing: CollegeMenuBarMetrics.sectionSpacing) {
             catalogSection
@@ -219,8 +220,7 @@ struct CollegeMenuBarRoot: View {
                 systemImage: "briefcase.fill"
             )
             CollegeMenuBarCareerOpenings()
-                .environmentObject(collegePersistence)
-        }
+                }
     }
 
     // MARK: Actions
@@ -246,7 +246,9 @@ struct CollegeMenuBarRoot: View {
 // MARK: - Today events (embedded)
 
 private struct CollegeMenuBarTodayEvents: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var todayEvents: [OverviewEventSummary] = []
 
     var body: some View {
@@ -282,7 +284,11 @@ private struct CollegeMenuBarTodayEvents: View {
 // MARK: - Career openings (embedded)
 
 private struct CollegeMenuBarCareerOpenings: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
     @State private var recentPostings: [WorkdayJobPosting] = []
 

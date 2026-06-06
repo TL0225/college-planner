@@ -16,10 +16,12 @@ import SwiftUI
 // MARK: - AppNavBar
 
 struct AppNavBar: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
     @Namespace private var tabIndicator
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
 
     private struct NavTab {

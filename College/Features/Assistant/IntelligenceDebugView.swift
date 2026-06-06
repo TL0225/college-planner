@@ -7,7 +7,8 @@ import SwiftUI
 
 /// Debug view to test and monitor IntelligenceService
 struct IntelligenceDebugView: View {
-    @Environment(LaunchPreloadCoordinator.self) private var launchPreloadCoordinator
+    @Environment(AppContainer.self) private var container
+    private var launchPreloadCoordinator: LaunchPreloadCoordinator { container.launchPreloadCoordinator }
     @State private var prerequisiteText = "Prerequisite: (CS 1110 or CS 1112) AND MATH 1920"
     @State private var courseCode = "CS 2110"
     @State private var parseResult: String = ""

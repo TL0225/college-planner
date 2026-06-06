@@ -7,9 +7,14 @@ import SwiftUI
 import AppKit
 
 struct WorkdayCompanyJobsView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
 
     let company: WorkdayCompanyConfigEntry
 

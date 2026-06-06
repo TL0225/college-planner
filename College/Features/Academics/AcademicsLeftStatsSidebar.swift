@@ -20,6 +20,8 @@ import SwiftData
 // MARK: - Top-level sidebar
 
 struct AcademicsLeftStatsSidebar: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let profile: Profile?
     let academicProfile: AcademicProfile?
     let plannerGPAFormatted: String
@@ -34,9 +36,8 @@ struct AcademicsLeftStatsSidebar: View {
     /// `showGraduationSheet`; the sheet itself is presented from the parent.
     @Binding var showGraduationSheet: Bool
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     private var primaryMajor: String {
         majors.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
@@ -427,6 +428,8 @@ private struct MiniStatGridRow: View {
 /// 4-row legend below it. Uses the same arithmetic as the legacy
 /// `CumulativeStatsBar` from `AcademicsView.swift` but in the new palette.
 private struct StackedProgressLegendBlock: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let profile: Profile
     let sapStats: (attempted: Int, completed: Int, rate: Double)
     let graduationCreditsRequired: Int
@@ -440,7 +443,7 @@ private struct StackedProgressLegendBlock: View {
     )
     private var plannerSemesters: [PlannerSemester]
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var appeared = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -595,6 +598,8 @@ private struct StackedProgressLegendBlock: View {
 // MARK: - Vertical compact semester list
 
 private struct SemesterListCompact: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Query(
         sort: [
             SortDescriptor(\PlannerSemester.year, order: .reverse),
@@ -603,7 +608,7 @@ private struct SemesterListCompact: View {
     )
     private var plannerSemesters: [PlannerSemester]
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var semesterPendingDeleteID: UUID?
 
     private var summaries: [AcademicsPlannerSemesterSummary] {
@@ -683,9 +688,11 @@ private enum PlannerSemesterSeason: String, CaseIterable, Identifiable {
 }
 
 private struct SemesterRowCompact: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let summary: AcademicsPlannerSemesterSummary
     let onRequestDelete: () -> Void
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var isHovered = false
     @State private var isEditing = false
     @State private var draftSeason: PlannerSemesterSeason = .fall

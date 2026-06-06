@@ -39,9 +39,10 @@ enum InteractionType: String, CaseIterable {
 
 /// Modal sheet to log a networking touchpoint for a recruiter contact.
 struct LogInteractionSheet: View {
+    @Environment(AppContainer.self) private var container
     @Bindable var contact: RecruiterContact
 
-    @EnvironmentObject private var persistence: CollegePersistence
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedType: InteractionType = .email

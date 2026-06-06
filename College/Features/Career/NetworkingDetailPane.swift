@@ -114,11 +114,12 @@ private struct NetworkingTimelineRow: View {
 
 @MainActor
 struct NetworkingDetailPane: View {
+    @Environment(AppContainer.self) private var container
     @Bindable var contact: RecruiterContact
     @Binding var selectedContactID: UUID?
     @Binding var selectedJobID: UUID?
 
-    @EnvironmentObject private var persistence: CollegePersistence
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingLogInteractionSheet = false

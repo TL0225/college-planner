@@ -65,11 +65,13 @@ private struct DocumentsDeferredInspectorModifier<InspectorContent: View>: ViewM
 }
 
 struct DocumentsView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     private let perfLog = OSLog(subsystem: "Timothy.College", category: "DocumentsViewPerf")
     @Binding var searchText: String
     @Binding var isInspectorPresented: Bool
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @StateObject private var cloudIntegration = CloudIntegrationService.shared
 
     @SceneStorage("documents.view.hasAnimatedIn") private var hasAnimatedIn = false

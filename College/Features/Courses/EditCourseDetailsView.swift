@@ -11,12 +11,13 @@ import UniformTypeIdentifiers
 ///
 /// Data is persisted in `CourseOverrideEntity` so user edits are not overwritten by re-scrapes.
 struct EditCourseDetailsView: View {
-	@EnvironmentObject private var collegePersistence: CollegePersistence
-	@EnvironmentObject private var notifications: AppNotificationCenter
-	@EnvironmentObject private var securityManager: SecurityManager
-	@EnvironmentObject private var calendarManager: CalendarIntegrationManager
-
-	let courseCode: String
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var securityManager: SecurityManager { container.securityManager }
+    private var persistence: CollegePersistence { container.persistence }
+	private var collegePersistence: CollegePersistence { container.persistence }
+				let courseCode: String
 	let defaultCourseName: String
 	let defaultCreditsText: String
 	let onClose: () -> Void
@@ -164,10 +165,6 @@ struct EditCourseDetailsView: View {
 				plannedCourse: plannedCourse,
 				onClose: { isSyllabusAnalysisPresented = false }
 			)
-			.environmentObject(collegePersistence)
-			.environmentObject(notifications)
-			.environmentObject(securityManager)
-			.environmentObject(calendarManager)
 			.dismissOnOutsideClickForSheet()
 		}
 		.alert("Hide Course?", isPresented: $isDeleteConfirmationPresented) {

@@ -26,6 +26,9 @@ import AppKit
 
 struct AppPageHeader<Actions: View>: View {
 
+    @Environment(AppContainer.self) private var container
+    private var securityManager: SecurityManager { container.securityManager }
+    private var persistence: CollegePersistence { container.persistence }
     // MARK: Configuration
 
     let title: String
@@ -47,9 +50,7 @@ struct AppPageHeader<Actions: View>: View {
 
     // MARK: Environment
 
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+        private var collegePersistence: CollegePersistence { container.persistence }
     private var profile: Profile? {
         ProfileReadBridge.primaryProfile(collegePersistence: collegePersistence)
     }

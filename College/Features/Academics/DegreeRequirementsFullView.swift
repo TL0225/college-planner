@@ -9,9 +9,11 @@ import SwiftUI
 // Full-page sheet that lists every requirement category and course for a degree/minor.
 
 struct DegreeRequirementsFullView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let degree: AcademicsAuditPanel.AuditDegree
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - Data

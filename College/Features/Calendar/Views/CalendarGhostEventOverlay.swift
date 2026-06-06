@@ -15,16 +15,16 @@ struct CalendarGhostEvent: Equatable {
 }
 
 struct CalendarGhostEventOverlay: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let ghost: CalendarGhostEvent
     let hourHeight: CGFloat
     let calendar: Calendar
     @Binding var calendarEditorAnchor: CalendarEditorAnchor?
     var onAddPopoverDismiss: () -> Void
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-
+    private var collegePersistence: CollegePersistence { container.persistence }
+        private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     private var blockHeight: CGFloat {
         max(24, CGFloat(ghost.end.timeIntervalSince(ghost.start) / 60) * (hourHeight / 60))
     }
@@ -62,8 +62,6 @@ struct CalendarGhostEventOverlay: View {
                     },
                     onLiveUpdate: nil
                 )
-                .environmentObject(collegePersistence)
-                .environmentObject(calendarManager)
                 .environment(modalCoordinator)
             }
     }

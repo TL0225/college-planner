@@ -10,9 +10,10 @@ import Darwin.Mach
 import Observation
 
 struct SettingsAssistantPanel: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { container.persistence }
     @StateObject private var aiStorageVM = AIStorageViewModel()
     @State private var runtimeDiagnostics = SettingsRuntimeDiagnosticsModel()
     @State private var selectedModelSpec: ModelSpec = .jsonWorker

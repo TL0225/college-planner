@@ -14,12 +14,14 @@
 import SwiftUI
 
 struct AddSemesterView: View {
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var isPresented: Bool
     let plan: PlannerPlan
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject var notifications: AppNotificationCenter
-    @Environment(ModalCoordinator.self) var modalCoordinator
-
+    private var collegePersistence: CollegePersistence { container.persistence }
+        private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     // MARK: - Local state
 
     @State private var selectedSeason: Season = .fall

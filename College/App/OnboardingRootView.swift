@@ -196,9 +196,14 @@ private final class OnboardingCoordinator {
 }
 
 struct OnboardingRootView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @AppStorage(OnboardingPreferenceBridge.completedKey) private var onboardingCompleted = false
 

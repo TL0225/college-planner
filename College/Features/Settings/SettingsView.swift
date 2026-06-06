@@ -44,13 +44,13 @@ enum SettingsFeaturePreloadRegistration {
 // MARK: - SettingsView
 
 struct SettingsView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
     /// When set (standalone Settings window), drives section selection and window toolbar chrome.
     var session: SettingsSessionController? = nil
 
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+            private var collegePersistence: CollegePersistence { container.persistence }
     @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
 
     @State private var localSelectedSection: SettingsNavSection = .profile
@@ -208,8 +208,7 @@ struct SettingsView: View {
             SettingsAcademicsPanel()
         case .calendar:
             SettingsCalendarPanel()
-                .environmentObject(calendarManager)
-        case .career:
+                case .career:
             SettingsCareerPanel()
         case .assistant:
             SettingsAssistantPanel()
@@ -223,8 +222,7 @@ struct SettingsView: View {
             SettingsAppPanel()
         case .privacyAndData:
             SettingsPrivacyPanel()
-                .environmentObject(securityManager)
-        }
+                }
     }
 }
 

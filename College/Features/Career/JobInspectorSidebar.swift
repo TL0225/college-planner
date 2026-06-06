@@ -132,9 +132,11 @@ private struct JobInspectorInfoCard: View {
 // MARK: - Sidebar
 
 struct JobInspectorSidebar: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Bindable var job: JobApplication
     @Binding var selectedJobID: UUID?
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     private static let deadlineFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .medium

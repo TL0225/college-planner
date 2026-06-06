@@ -6,7 +6,9 @@
 import SwiftUI
 
 struct CareerFollowUpsWidget: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var dataRefreshToken = 0
 
     private var rows: [OverviewCareerFollowUpSummary] {

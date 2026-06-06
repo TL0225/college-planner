@@ -8,7 +8,9 @@ import SwiftData
 
 /// Global sheet used to add courses from the active university catalog.
 struct GenEdAddCourseModal: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
 
     let targetSemesterID: UUID?

@@ -197,10 +197,11 @@ private struct CalendarViewContent: View {
     @Binding var currentDate: Date
     @Binding var activeViewMode: CalendarViewDisplayMode
 
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(AppContainer.self) private var appContainer
 
+    private var calendarManager: CalendarIntegrationManager { appContainer.calendarManager }
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var modalCoordinator: ModalCoordinator { appContainer.modalCoordinator }
     private var calendarSceneState: CalendarSceneState { appContainer.calendarScene }
     private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
@@ -614,7 +615,6 @@ private struct CalendarViewContent: View {
                 presentationStyle: .anchoredPanel
             )
             .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
-            .environmentObject(collegePersistence)
             .presentationBackground(.thinMaterial)
             .dismissOnOutsideClickForSheet()
         }
@@ -628,7 +628,6 @@ private struct CalendarViewContent: View {
                 presentationStyle: .anchoredPanel
             )
             .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
-            .environmentObject(collegePersistence)
             .presentationBackground(.thinMaterial)
             .dismissOnOutsideClickForSheet()
         }
@@ -1447,12 +1446,11 @@ private struct CalendarViewContent: View {
 
 // Block for Time Grid
 fileprivate struct TimeEventBlock: View {
-    let event: CalEvent
+        let event: CalEvent
     let eventWidth: CGFloat
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isHovering = false
     @GestureState private var isPressed = false
@@ -1663,11 +1661,10 @@ fileprivate struct MonthCalendarCell: View {
 }
 
 fileprivate struct EventPill: View {
-    let event: CalEvent
+        let event: CalEvent
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
     @State private var selectedEntity: CalendarEvent?
     @State private var showDetail = false

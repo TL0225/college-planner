@@ -9,8 +9,10 @@ import UniformTypeIdentifiers
 import os
 
 struct DegreeView: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @State private var plannerRefreshToken = 0
     @State private var showMajorDetails = false
     @State private var showMinorDetails = false
@@ -221,8 +223,10 @@ private struct MultiMajorDetailsMainContent: View {
 }
 
 struct DegreeSidebar: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var selectedPlan: PlannerPlan?
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var plannerRefreshToken = 0
 
     private var plans: [PlannerPlan] {
@@ -617,8 +621,10 @@ private struct RequirementCard: View {
 }
 
 struct DegreeMainContent: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @Binding var selectedPlan: PlannerPlan?
     @State private var plannerRefreshToken = 0
 
@@ -733,9 +739,11 @@ struct DegreeMainContent: View {
 }
 
 struct SemesterCard: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Bindable var semester: PlannerSemester
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @State private var draggingCourse: PlannerCourse?
     @State private var isDropTargeted: Bool = false
     @State private var isReorderingInMemory: Bool = false
@@ -888,8 +896,10 @@ struct SemesterCard: View {
 }
 
 struct CourseCard: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @Bindable var course: PlannerCourse
     let accentColor: Color
     @Binding var draggingCourse: PlannerCourse?

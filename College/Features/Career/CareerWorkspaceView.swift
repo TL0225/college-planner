@@ -18,12 +18,12 @@ enum CareerSubView: String, CaseIterable, Identifiable, Hashable {
 }
 
 struct CareerWorkspaceView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion = false
     @Environment(AppContainer.self) private var appContainer
 
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var careerScene: CareerSceneState { appContainer.careerScene }
     private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
 
@@ -54,11 +54,9 @@ struct CareerWorkspaceView: View {
             Group {
                 if let editingJobID {
                     CareerApplicationFormSheet(existingApplicationID: editingJobID)
-                        .environmentObject(collegePersistence)
-                } else {
+                        } else {
                     AddRoleSheet()
-                        .environmentObject(collegePersistence)
-                }
+                        }
             }
         }
         .onAppear {
@@ -107,11 +105,9 @@ struct CareerWorkspaceView: View {
                 )
             case .openings:
                 WorkdayJobBoardView(onNavigateToBoard: { setActiveSubview(.board) })
-                    .environmentObject(collegePersistence)
-            case .stats:
+                    case .stats:
                 CareerStatsView()
-                    .environmentObject(collegePersistence)
-            case .resumes:
+                    case .resumes:
                 ResumeManagerView(selectedJobID: $selectedJobID)
             case .stories:
                 InterviewPrepView()
@@ -155,7 +151,7 @@ private enum CareerRelativeFormatting {
 }
 
 struct JobBoardView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        private var collegePersistence: CollegePersistence { appContainer.persistence }
     @State private var applications: [JobApplication] = []
 
     @Binding var selectedJobID: UUID?
@@ -210,8 +206,7 @@ struct JobBoardView: View {
         } inspector: {
             if let job = selectedBoardJob {
                 JobInspectorSidebar(job: job, selectedJobID: $selectedJobID)
-                    .environmentObject(collegePersistence)
-            }
+                    }
         }
         .onMoveCommand { direction in
             guard boardLayout == .kanban, keyboardNavigationEnabled else { return }
@@ -254,7 +249,6 @@ struct JobBoardView: View {
                         selectedJobID: $selectedJobID,
                         reduceMotion: motionReduced
                     )
-                    .environmentObject(collegePersistence)
                     .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
                     .background(
                         Color.clear
@@ -386,9 +380,8 @@ struct JobBoardView: View {
 }
 
 private struct CareerLaneColumn: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    let status: CareerApplicationStatus
+        private var collegePersistence: CollegePersistence { appContainer.persistence }
+        let status: CareerApplicationStatus
     let items: [JobApplication]
     @Binding var selectedJobID: UUID?
     let showQuickAdd: Bool
@@ -524,7 +517,7 @@ private struct CareerLaneColumn: View {
 }
 
 private struct CareerCardView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        private var collegePersistence: CollegePersistence { appContainer.persistence }
     let item: JobApplication
     let isSelected: Bool
     @State private var isHovered = false
@@ -866,8 +859,8 @@ private enum ResumeLibraryFilter: String, CaseIterable, Identifiable {
 }
 
 struct ResumeManagerView: View {
-    @Binding var selectedJobID: UUID?
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        @Binding var selectedJobID: UUID?
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @State private var resumes: [VaultDocument] = []
     @State private var showingImporter = false
     @State private var selectedResumeID: UUID?
@@ -1255,7 +1248,7 @@ private enum NetworkingContactFilter: String, CaseIterable, Identifiable {
 }
 
 struct NetworkingTrackerView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Binding var selectedJobID: UUID?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1333,8 +1326,7 @@ struct NetworkingTrackerView: View {
         .onAppear { refreshNetworkingKPIs() }
         .sheet(isPresented: $showAddContactSheet) {
             NetworkingAddContactSheet()
-                .environmentObject(collegePersistence)
-        }
+                }
         .onChange(of: collegePersistence.careerDidChangeToken) { _, _ in
             store?.refresh()
             networkingGridEpoch &+= 1
@@ -1796,9 +1788,9 @@ private struct NetworkingAddContactTile: View {
 }
 
 private struct NetworkingHybridFollowUpDetailPane: View {
-    @Binding var selection: NetworkingFollowUpItem?
+        @Binding var selection: NetworkingFollowUpItem?
     @Binding var selectedJobID: UUID?
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @AppStorage("career.networking.outreachDrafts.v1") private var outreachDraftsJSON = "{}"
 
     @State private var draftText = ""
@@ -2129,7 +2121,7 @@ private struct NetworkingHybridFollowUpDetailPane: View {
 }
 
 private struct CareerApplicationFormSheet: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(\.dismiss) private var dismiss
     let existingApplicationID: UUID?
 

@@ -6,8 +6,10 @@
 import SwiftUI
 
 struct AchievementsView: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) var modalCoordinator
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @Bindable var profile: Profile
 
     var body: some View {
@@ -42,7 +44,8 @@ struct AchievementsView: View {
 }
 
 struct AchievementCard: View {
-    @Environment(ModalCoordinator.self) var modalCoordinator
+    @Environment(AppContainer.self) private var container
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @Bindable var achievement: Achievement
     @State private var isHovering = false
 
@@ -117,9 +120,12 @@ struct AchievementCard: View {
 }
 
 struct AddAchievementOverlay: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject var notifications: AppNotificationCenter
-    @Binding var isPresented: Bool
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @Binding var isPresented: Bool
     let achievement: Achievement?
     
     var isEditMode: Bool {

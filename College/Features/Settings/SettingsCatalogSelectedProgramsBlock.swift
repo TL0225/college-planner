@@ -18,6 +18,10 @@ import SwiftUI
 /// 4. Tapping "Scrape selected programs" hands `WorkItem`s straight to
 ///    `CatalogProgramRequirementsHydrator.runUserInitiatedRequirementsSync(...)`.
 struct SettingsCatalogSelectedProgramsBlock: View {
+    @Environment(AppContainer.self) private var container
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
     /// Inline status banner state. We render this directly in the Settings sidebar so the user
     /// gets immediate feedback when they tap "Scrape selected programs" without relying on
     /// macOS system notifications (which may be disabled). Each scrape transitions through
@@ -44,10 +48,8 @@ struct SettingsCatalogSelectedProgramsBlock: View {
     /// parent can OR this into its `isAnySyncRunning` lock and grey out sibling controls.
     let onSyncStateChange: (Bool) -> Void
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-
-    @State private var allPrograms: [CatalogProgramRequirementsHydrator.SelectableProgram] = []
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @State private var allPrograms: [CatalogProgramRequirementsHydrator.SelectableProgram] = []
     @State private var selectedIDs: Set<String> = CatalogSelectedProgramsStore.allSelected()
     @State private var search: String = ""
     @State private var expandedSections: Set<String> = []

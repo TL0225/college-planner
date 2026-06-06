@@ -7,7 +7,9 @@ import SwiftUI
 
 /// Phase 9: menu bar today summary (local store-first reads).
 struct CalendarMenuBarSummary: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var todayEvents: [OverviewEventSummary] = []
 
     var body: some View {

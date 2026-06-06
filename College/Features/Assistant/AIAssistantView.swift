@@ -243,10 +243,12 @@ private struct AssistantComposerTextField: NSViewRepresentable {
 }
 
 struct AIAssistantView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
     @Environment(\.accessibilityReduceMotion) private var motionReduced
     @Environment(\.scenePhase) private var scenePhase
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var assistantContextEvents: [CalendarEvent] = []
     @State private var assistantContextTasks: [PlannerTask] = []
     @State private var plannerSnapshotCache: AssistantPlannerSnapshot?

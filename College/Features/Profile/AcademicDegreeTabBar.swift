@@ -276,9 +276,10 @@ enum AcademicsToolbarProfileActions {
 }
 
 struct AcademicsToolbarAddProfileButton: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(AppContainer.self) private var appContainer
 
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
 
     var body: some View {
@@ -300,9 +301,10 @@ struct AcademicsToolbarAddProfileButton: View {
 }
 
 struct AcademicsDegreeScopeToolbar: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(AppContainer.self) private var appContainer
 
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
 
     private var selectedBinding: Binding<UUID?> {

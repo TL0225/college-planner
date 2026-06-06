@@ -13,8 +13,10 @@
 import SwiftUI
 
 struct ScheduleWidget: View {
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
+    private var persistence: CollegePersistence { container.persistence }
+        private var collegePersistence: CollegePersistence { container.persistence }
     @AppStorage("calendarHiddenCourseCodes") private var hiddenCourseCodesRaw: String = ""
     @State private var dataRefreshToken = 0
 

@@ -8,11 +8,12 @@ import SwiftUI
 // MARK: - All degrees progress ribbon
 
 struct AllDegreesProgressCard: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let profiles: [AcademicProfile]
     var onSelect: (UUID) -> Void
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { container.persistence }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(String(localized: "overview.degrees.progress.title"))

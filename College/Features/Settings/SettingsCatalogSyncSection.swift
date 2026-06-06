@@ -10,10 +10,12 @@ import UniformTypeIdentifiers
 // MARK: - Academic catalog sync (multi-school)
 
 struct SettingsCatalogSyncSection: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-
-    @State private var availableSchools: [String] = []
+    @Environment(AppContainer.self) private var container
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @State private var availableSchools: [String] = []
     @State private var selectedSchools: Set<String> = []
     @State private var schoolSearch = ""
     @State private var isLoadingSchools = false
@@ -832,7 +834,12 @@ struct SettingsCatalogSyncSection: View {
         let archiveIndex = schoolID.isEmpty ? nil : CatalogArchiveStore.loadIndex(schoolID: schoolID)
         let storeDiagnostics = schoolID.isEmpty ? nil : CatalogStoreCoordinator.shared.diagnostics(for: schoolID)
         let ingestObs = CatalogIngestObservability.summarizeRecent()
-        let reviewQueueCount = CatalogReviewQueue.load().count
+        let reviewItems = CatalogReviewQueue.load()
+        let reviewQueueCount = reviewItems.count
+        let criticalReviewCount = reviewItems.filter { $0.severity == .critical }.count
+        let warningReviewCount = reviewItems.filter { $0.severity == .warning }.count
+        let layoutFingerprint = schoolID.isEmpty ? nil : CatalogLayoutFingerprintStore.latest(forSchoolID: schoolID)
+        let structuralDiff = schoolID.isEmpty ? nil : CatalogStructuralDiffStore.load(schoolID: schoolID)
 
         if pdfReport != nil || integrity != nil || archiveIndex != nil {
             VStack(alignment: .leading, spacing: 8) {
@@ -882,9 +889,17 @@ struct SettingsCatalogSyncSection: View {
                 Text("Ingest observability — failures \(Int((ingestObs.failureRate * 100).rounded()))% · avg duration \(Int(ingestObs.avgDurationMs.rounded()))ms · avg OCR usage \(Int((ingestObs.avgOCRRate * 100).rounded()))%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Parser capability \(CatalogParserCapability.version) · review queue \(reviewQueueCount)")
+                Text("Parser capability \(CatalogParserCapability.version) · review \(reviewQueueCount) (\(criticalReviewCount) critical, \(warningReviewCount) warning)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if let layoutFingerprint {
+                    Text("Layout fingerprint — profile \(layoutFingerprint.layoutProfileID) · updated \(layoutFingerprint.recordedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if !schoolID.isEmpty {
+                    SettingsCatalogReviewDiagnosticsView(schoolID: schoolID)
+                }
 
                 if !schoolID.isEmpty {
                     Button(String(localized: "settings.general.catalog_cancel_import", defaultValue: "Request catalog import cancel")) {

@@ -7,7 +7,8 @@ import SwiftUI
 // import LocalAuthentication
 
 struct UnlockView: View {
-    @EnvironmentObject private var securityManager: SecurityManager
+    @Environment(AppContainer.self) private var container
+    private var securityManager: SecurityManager { container.securityManager }
     @State private var isWorking = false
     @State private var isAuthenticating = false
     @State private var authenticationAttemptToken: UUID? = nil
@@ -184,6 +185,5 @@ struct UnlockView: View {
 
 #Preview {
     UnlockView()
-        .environmentObject(SecurityManager.shared)
-}
+        }
 

@@ -7,12 +7,14 @@ import SwiftUI
 import SwiftData
 
 struct SyllabusReviewView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-
-    @Environment(\.calendar) private var calendar
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var securityManager: SecurityManager { container.securityManager }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+                @Environment(\.calendar) private var calendar
     @Environment(\.timeZone) private var timeZone
 
     let courseCode: String

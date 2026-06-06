@@ -19,14 +19,7 @@ import SwiftData
 struct CollegeApp: App {
     @NSApplicationDelegateAdaptor(CollegeAppDelegate.self) private var collegeAppDelegate
 
-    @StateObject private var collegePersistence = CollegePersistence.shared
-    @StateObject private var appDataStore = AppDataStore.shared
-    @StateObject private var appNotifications = AppNotificationCenter.shared
-    @StateObject private var locationPermissionService = LocationPermissionService()
-    @StateObject private var calendarManager = CalendarIntegrationManager()
     @State private var appContainer = AppContainer.makeMainWindow()
-    @StateObject private var securityManager = SecurityManager.shared
-    @StateObject private var brightspaceCoordinator = BrightspaceWebCoordinator()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("onboarding.completed.v1") private var onboardingCompleted: Bool = false
     @State private var showSessionInterruptedAlert = false
@@ -65,18 +58,18 @@ struct CollegeApp: App {
 
     private var shouldShowOnboarding: Bool {
         if forceUITestMainUI { return false }
-        guard appContainer.launchPreloadCoordinator.isCompleted, collegePersistence.isStoreLoaded else { return false }
+        guard appContainer.launchPreloadCoordinator.isCompleted, appContainer.persistence.isStoreLoaded else { return false }
 
         // Finished onboarding is stored in UserDefaults, not inferred from SQLite alone.
         if onboardingCompleted { return false }
 
-        let noPlans = collegePersistence.plans.isEmpty
-            && ((try? appDataStore.profileRepository.fetchPlans(limit: 1).isEmpty) ?? true)
-        let noSemesters = collegePersistence.semesters.isEmpty
-            && ((try? appDataStore.profileRepository.fetchSemesters(limit: 1).isEmpty) ?? true)
+        let noPlans = appContainer.persistence.plans.isEmpty
+            && ((try? appContainer.appDataStore.profileRepository.fetchPlans(limit: 1).isEmpty) ?? true)
+        let noSemesters = appContainer.persistence.semesters.isEmpty
+            && ((try? appContainer.appDataStore.profileRepository.fetchSemesters(limit: 1).isEmpty) ?? true)
         guard noPlans, noSemesters else { return false }
 
-        if hasEstablishedAcademicIdentity(in: collegePersistence) { return false }
+        if hasEstablishedAcademicIdentity(in: appContainer.persistence) { return false }
 
         return true
     }
@@ -121,6 +114,8 @@ struct CollegeApp: App {
         RuntimeTelemetryMonitor.shared.startIfNeeded()
         RuntimeTelemetryMonitor.shared.markServiceState("app", state: "initializing")
         LaunchPreloadCoordinator.bootstrapBuiltInFeaturePreloadsIfNeeded()
+        CalendarPersistencePortBootstrap.wire()
+        CalendarPersistencePortBootstrap.wireReadPorts()
         ModelMigrationService.runLaunchMigrationsIfNeeded()
         WidgetRegistry.shared.bootstrapBuiltIns()
 
@@ -212,33 +207,17 @@ struct CollegeApp: App {
                 UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.showDeepCatalogPromptKey)
             }
         }
-        .environmentObject(collegePersistence)
-        .environmentObject(appDataStore)
         .appContainerEnvironment(appContainer)
         .environment(\.timeZone, selectedTimeZone)
         .environment(\.calendar, selectedCalendar)
-        .environmentObject(appNotifications)
-        .environmentObject(calendarManager)
-        .environmentObject(locationPermissionService)
-        .environmentObject(securityManager)
-        .environmentObject(brightspaceCoordinator)
-        .modelContainer(appDataStore.profileContainer)
     }
 
     @ViewBuilder
     private func mainRoot() -> some View {
         ContentView()
-            .environmentObject(collegePersistence)
-            .environmentObject(appDataStore)
-            .modelContainer(appDataStore.profileContainer)
+            .appContainerEnvironment(appContainer)
             .environment(\.timeZone, selectedTimeZone)
             .environment(\.calendar, selectedCalendar)
-            .environmentObject(appNotifications)
-            .environmentObject(calendarManager)
-            .environmentObject(locationPermissionService)
-            .environmentObject(securityManager)
-            .environmentObject(brightspaceCoordinator)
-            .appContainerEnvironment(appContainer)
             .environment(WidgetRegistry.shared)
             .onOpenURL { url in
                 _ = CollegeInboundURLDispatcher.handle(url) { _ in
@@ -315,7 +294,7 @@ struct CollegeApp: App {
                 }
             } else {
                 LaunchPreloadView()
-                    .environment(appContainer.launchPreloadCoordinator)
+                    .appContainerEnvironment(appContainer)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(.thinMaterial)
                     .onAppear {
@@ -325,9 +304,9 @@ struct CollegeApp: App {
                     }
                     .task {
                         appContainer.launchPreloadCoordinator.startIfNeeded(
-                            collegePersistence: collegePersistence,
-                            calendarManager: calendarManager,
-                            brightspaceCoordinator: brightspaceCoordinator,
+                            collegePersistence: appContainer.persistence,
+                            calendarManager: appContainer.calendarManager,
+                            brightspaceCoordinator: appContainer.brightspaceCoordinator,
                             cloudIntegration: CloudIntegrationService.shared
                         )
                     }
@@ -354,7 +333,7 @@ struct CollegeApp: App {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { activateForUITestsIfNeeded() }
             }
-            .onChange(of: collegePersistence.isStoreLoaded) { _, loaded in
+            .onChange(of: appContainer.persistence.isStoreLoaded) { _, loaded in
                 guard loaded else { return }
                 UITestPersistenceSeeder.seedMinimalPlannerDataIfNeeded()
             }
@@ -414,13 +393,9 @@ struct CollegeApp: App {
         }
         Settings {
             Group {
-                if collegePersistence.isStoreLoaded {
+                if appContainer.persistence.isStoreLoaded {
                     MacStandaloneSettingsRoot()
-                    .environmentObject(securityManager)
-                    .environmentObject(calendarManager)
-                    .environmentObject(collegePersistence)
-                    .environmentObject(appNotifications)
-                    .environment(appContainer.appActivity)
+                    .appContainerEnvironment(appContainer)
                 } else {
                     ProgressView(String(localized: "app.launch.loading"))
                         .controlSize(.large)

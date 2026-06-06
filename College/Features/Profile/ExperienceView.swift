@@ -7,10 +7,11 @@ import SwiftUI
 
 // MARK: - Experience List View
 struct ExperienceView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Bindable var profile: Profile
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) var modalCoordinator
-
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     var body: some View {
         // Main Card
         VStack(alignment: .leading, spacing: 24) {
@@ -47,8 +48,9 @@ struct ExperienceView: View {
 }
 
 struct ExperienceCard: View {
+    @Environment(AppContainer.self) private var container
     @Bindable var experience: Experience
-    @Environment(ModalCoordinator.self) var modalCoordinator
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @State private var isHovering = false
 
     var body: some View {
@@ -139,9 +141,12 @@ struct ExperienceCard: View {
 }
 
 struct AddExperienceView: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject var notifications: AppNotificationCenter
-    @Binding var isPresented: Bool
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @Binding var isPresented: Bool
     let experience: Experience?  // nil for add, non-nil for edit
 
     @State private var title: String = ""

@@ -7,11 +7,13 @@ import SwiftUI
 
 /// Grid-attached editor hosted in `popover(item:)` on `CalendarViewContent`.
 struct CalendarEventEditorPopover: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let anchor: CalendarEditorAnchor
     var onDismiss: () -> Void
     var onLiveUpdate: (() -> Void)?
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @StateObject private var editorSession = CalendarEditorSession()
     @State private var isPresented = true
 

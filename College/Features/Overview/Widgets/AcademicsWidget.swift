@@ -13,7 +13,9 @@
 import SwiftUI
 
 struct AcademicsWidget: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     var activePage: Binding<AppPage>
 
     @State private var majorProgressSummaries: [String: CollegePersistence.CreditsProgressSummary] = [:]

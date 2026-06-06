@@ -7,8 +7,10 @@ import SwiftUI
 
 /// Centered macOS sheet content for add/edit calendar events (`ModalCoordinator` cases).
 struct CalendarEventEditorSheet: View {
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @StateObject private var editorSession = CalendarEditorSession()
     var zoomSourceID: String = "calendarEditorSheet"
     var zoomNamespace: Namespace.ID
@@ -54,7 +56,6 @@ struct CalendarEventEditorSheet: View {
                 EmptyView()
             }
         }
-        .environmentObject(collegePersistence)
         .calendarEditorPresentation(.sidebarSheet)
         .frame(minWidth: 480, idealWidth: 520, maxWidth: 640)
         .frame(minHeight: 560, idealHeight: 640, maxHeight: 720)

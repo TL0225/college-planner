@@ -6,14 +6,14 @@
 import SwiftUI
 
 private struct CalendarGridEditorHostModifier: ViewModifier {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var anchor: CalendarEditorAnchor?
     var addAnchorGhost: CalendarGhostEvent?
     var onLiveUpdate: () -> Void
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @Environment(ModalCoordinator.self) private var modalCoordinator
-
+    private var collegePersistence: CollegePersistence { container.persistence }
+        private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     private var addOnlyAnchor: Binding<CalendarEditorAnchor?> {
         Binding(
             get: {
@@ -34,8 +34,6 @@ private struct CalendarGridEditorHostModifier: ViewModifier {
                     onDismiss: { anchor = nil },
                     onLiveUpdate: onLiveUpdate
                 )
-                .environmentObject(collegePersistence)
-                .environmentObject(calendarManager)
                 .environment(modalCoordinator)
             }
             .onReceive(NotificationCenter.default.publisher(for: .calendarOpenGridEditor)) { note in

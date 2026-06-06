@@ -6,7 +6,9 @@
 import SwiftUI
 
 struct CourseSearchView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Binding var isPresented: Bool
     let semester: SemesterEntity
     
@@ -304,7 +306,9 @@ struct CourseResultCard: View {
 }
 
 struct CourseDetailModal: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var plannerRefreshToken = 0
     let course: CourseCatalogEntity
     @Binding var isPresented: Bool

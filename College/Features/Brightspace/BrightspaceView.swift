@@ -11,15 +11,17 @@ import AppKit
 // Full-window embedded browser tab for Brightspace LMS.
 
 struct BrightspaceView: View {
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
     /// True when this tab is the visible portal page (for DEBUG diagnostics and Handoff).
     var isTabVisible: Bool = true
 
-    @EnvironmentObject private var coordinator: BrightspaceWebCoordinator
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+        private var collegePersistence: CollegePersistence { container.persistence }
     @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-    @State private var showImportSheet: Bool = false
+        @State private var showImportSheet: Bool = false
     @State private var showSavePasswordSheet: Bool = false
     @State private var pendingCredentialHost: String = ""
     @State private var pendingCredentialUsername: String = ""
@@ -121,8 +123,6 @@ struct BrightspaceView: View {
                 items: $coordinator.pendingImportItems,
                 isPresented: $showImportSheet
             )
-            .environmentObject(collegePersistence)
-            .environmentObject(appNotifications)
             .dismissOnOutsideClickForSheet()
         }
         .sheet(isPresented: $showSavePasswordSheet) {

@@ -13,6 +13,8 @@ import UniformTypeIdentifiers
 /// This view intentionally matches the provided design: header (title + badge + subtitle + actions),
 /// three stat cards, then requirements sections with a table-style list.
 struct MajorMinorDetailsView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
 #if DEBUG
     private static let perfLog = OSLog(subsystem: Bundle.main.bundleIdentifier ?? "College", category: "Perf.Requirements")
 #endif
@@ -23,8 +25,8 @@ struct MajorMinorDetailsView: View {
         pattern: #"\((\d+(?:\.\d+)?)\s*(?:[-–]\s*(\d+(?:\.\d+)?))?\s*credits?\)"#,
         options: [.caseInsensitive]
     )
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    private var collegePersistence: CollegePersistence { container.persistence }
+    private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @State private var plannerRefreshToken = 0
 
     private var plans: [PlannerPlan] {
@@ -601,8 +603,7 @@ struct MajorMinorDetailsView: View {
                 popoverContent: {
                     AnyView(
                         GPACalculatorPopoverView(universityID: universityID)
-                            .environmentObject(collegePersistence)
-                    )
+                            )
                 }
             )
 

@@ -119,6 +119,13 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssertNotNil(container.auditSnapshotStore)
         XCTAssertNotNil(container.launchPreloadCoordinator)
         XCTAssertIdentical(container.appActivity, AppActivityCoordinator.shared)
+        XCTAssertIdentical(container.persistence, CollegePersistence.shared)
+        XCTAssertIdentical(container.appDataStore, AppDataStore.shared)
+        XCTAssertIdentical(container.appNotifications, AppNotificationCenter.shared)
+        XCTAssertIdentical(container.securityManager, SecurityManager.shared)
+        XCTAssertNotNil(container.locationPermissionService)
+        XCTAssertNotNil(container.calendarManager)
+        XCTAssertNotNil(container.brightspaceCoordinator)
     }
 
     func testAppContainerWindowScopedInstancesAreDistinct() {
@@ -136,6 +143,9 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssert(first.academicMetricsStore !== second.academicMetricsStore)
         XCTAssert(first.auditSnapshotStore !== second.auditSnapshotStore)
         XCTAssert(first.launchPreloadCoordinator !== second.launchPreloadCoordinator)
+        XCTAssert(first.locationPermissionService !== second.locationPermissionService)
+        XCTAssert(first.calendarManager !== second.calendarManager)
+        XCTAssert(first.brightspaceCoordinator !== second.brightspaceCoordinator)
     }
 
     func testAppContainerAcceptsInjectedDependencies() {

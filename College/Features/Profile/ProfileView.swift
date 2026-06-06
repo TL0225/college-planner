@@ -55,13 +55,12 @@ extension View {
 }
 
 struct ProfileView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
-    @Environment(AcademicMetricsStore.self) private var academicMetricsStore
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject var appNotificationCenter: AppNotificationCenter
-    @EnvironmentObject var securityManager: SecurityManager
-
-    @State private var isAdvisorMeetingPrepPresented = false
+    private var academicMetricsStore: AcademicMetricsStore { container.academicMetricsStore }
+    private var collegePersistence: CollegePersistence { container.persistence }
+            @State private var isAdvisorMeetingPrepPresented = false
     @State private var isEditingProfile = false
     @State private var isAddingPortfolioProject = false
     @State private var sheetProfile: Profile?
@@ -230,15 +229,11 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $isAdvisorMeetingPrepPresented) {
             AdvisorMeetingPrepView()
-                .environmentObject(collegePersistence)
-                .environment(academicMetricsStore)
                 .dismissOnOutsideClickForSheet()
         }
         .sheet(isPresented: $isEditingProfile) {
             if let sheetProfile {
                 ProfileEditSheet(profile: sheetProfile)
-                    .environmentObject(collegePersistence)
-                    .environmentObject(appNotificationCenter)
                     .dismissOnOutsideClickForSheet()
             }
         }
@@ -273,11 +268,12 @@ struct ProfileView: View {
 // MARK: - Identity Card
 
 struct IdentityCard: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     let profile: Profile?
     var onEditProfile: () -> Void = {}
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    private var collegePersistence: CollegePersistence { container.persistence }
     private static let avatarSize: CGFloat = 80
 
     /// Converts stored degree type + major into a compact display string.

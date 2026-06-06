@@ -6,9 +6,12 @@
 import SwiftUI
 
 struct WorkdayJobDetailPane: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var notifications: AppNotificationCenter
-    let posting: WorkdayJobPosting
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        let posting: WorkdayJobPosting
 
     let company: WorkdayCompanyConfigEntry
     var onClose: () -> Void

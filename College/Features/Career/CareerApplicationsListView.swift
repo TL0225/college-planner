@@ -7,8 +7,9 @@ import SwiftUI
 import AppKit
 
 struct CareerApplicationsListView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     let applications: [JobApplication]
     @Binding var selectedJobID: UUID?
     var reduceMotion: Bool = false
@@ -42,8 +43,7 @@ struct CareerApplicationsListView: View {
             }
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-        .environmentObject(collegePersistence)
-    }
+        }
 
     private var listCard: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -188,7 +188,9 @@ struct CareerApplicationsListView: View {
 // MARK: - Table cells
 
 private struct CompanyTableCell: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     let application: JobApplication
 
     var body: some View {

@@ -6,9 +6,10 @@
 import SwiftUI
 
 struct ErrorReportView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) var dismiss
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    
+    private var collegePersistence: CollegePersistence { container.persistence }
     let policyName: String
     let currentValue: String
     let schoolID: String
@@ -332,5 +333,4 @@ struct SuccessOverlay: View {
         schoolID: "rutgers_nb",
         schoolName: "Rutgers University - New Brunswick"
     )
-    .environmentObject(CollegePersistence.shared)
-}
+    }

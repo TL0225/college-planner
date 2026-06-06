@@ -6,7 +6,11 @@
 import SwiftUI
 
 struct WorkdayJobBoardView: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @ObservedObject private var coordinator = WorkdayJobBoardSyncCoordinator.shared
     @ObservedObject private var logoStore = WorkdayCompanyLogoStore.shared
 
@@ -89,7 +93,6 @@ struct WorkdayJobBoardView: View {
                 selectedPostingPath: $selectedPostingPath,
                 onNavigateToBoard: onNavigateToBoard
             )
-            .environmentObject(collegePersistence)
             .id(company.id)
         } else {
             selectCompanyPlaceholder
@@ -114,8 +117,7 @@ struct WorkdayJobBoardView: View {
                 onNavigateToBoard: onNavigateToBoard,
                 embeddedInNavigationSplit: true
             )
-            .environmentObject(collegePersistence)
-        } else {
+            } else {
             selectJobPlaceholder
         }
     }

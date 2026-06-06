@@ -6,9 +6,10 @@ import SwiftUI
 struct CareerToolbarContent: ToolbarContent {
     let activePage: AppPage
     @FocusedValue(\.activePage) private var focusedActivePage
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { appContainer.persistence }
     @Environment(AppContainer.self) private var appContainer
 
+    private var persistence: CollegePersistence { appContainer.persistence }
     private var careerScene: CareerSceneState { appContainer.careerScene }
     private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
 

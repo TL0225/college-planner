@@ -10,7 +10,9 @@ import UniformTypeIdentifiers
 
 /// Generates an advisor meeting prep document showing degree audit, GPA, and course plan.
 struct AdvisorMeetingPrepView: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) var dismiss
     @State private var htmlContent: String = ""
     @State private var isGenerating = false

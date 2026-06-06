@@ -19,9 +19,12 @@ nonisolated private func extractCourseCodes(from requirements: [DegreeRequiremen
 }
 
 struct AcademicIdentityView: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject var notifications: AppNotificationCenter
-    @Bindable var profile: Profile
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var notifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        @Bindable var profile: Profile
 
     private let githubService = GitHubDataService()
     private let scraperService = WebScraperService()

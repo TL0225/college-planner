@@ -10,11 +10,11 @@ import UniformTypeIdentifiers
 // MARK: - Profile Edit Sheet
 
 struct ProfileEditSheet: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-
-    let profile: Profile
+    private var collegePersistence: CollegePersistence { container.persistence }
+        let profile: Profile
 
     @State private var name = ""
     @State private var pronouns = ""

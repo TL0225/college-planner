@@ -7,8 +7,8 @@ import SwiftUI
 import MapKit
 
 struct LocationPickerSheet: View {
-    @EnvironmentObject private var locationPermissionService: LocationPermissionService
-
+    @Environment(AppContainer.self) private var container
+    private var locationPermissionService: LocationPermissionService { container.locationPermissionService }
     var onDismiss: (() -> Void)?
 
     @ObservedObject var searchService: MapLocationSearchService

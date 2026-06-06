@@ -85,7 +85,8 @@ private struct ConnectedServiceRow: View {
 // MARK: - Calendar connections (embedded in Calendar settings)
 
 struct CalendarConnectionsSettingsSection: View {
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
+    @Environment(AppContainer.self) private var container
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
     @State private var showICloudSheet  = false
     @State private var iCloudUsername   = ""
     @State private var iCloudPassword   = ""
@@ -223,8 +224,9 @@ struct CalendarConnectionsSettingsSection: View {
 // MARK: - SettingsPrivacyPanel
 
 struct SettingsPrivacyPanel: View {
-    @EnvironmentObject private var securityManager: SecurityManager
-
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var securityManager: SecurityManager { container.securityManager }
     @AppStorage("security.encryptionEnabled") private var encryptionEnabled: Bool = true
     @State private var isBackupBusy: Bool = false
     @State private var isPrivacyOverviewPresented: Bool = false

@@ -7,11 +7,13 @@ import SwiftUI
 import AppKit
 
 struct SidebarView: View {
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
     /// When the leading column is shown, ``SafeSidebarToggleView`` sits in this column’s branded header row (alongside portal chrome), not only in ``MainWindowToolbar`` — when collapsed to detail‑only it appears only in the window toolbar instead.
     @Binding var columnVisibility: NavigationSplitViewVisibility
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
+    private var collegePersistence: CollegePersistence { container.persistence }
     @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
 
     @State private var hoveredFooterActionID: String?

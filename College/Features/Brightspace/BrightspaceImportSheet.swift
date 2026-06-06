@@ -11,14 +11,17 @@ import SwiftData
 // grades, or announcements detected on the current Brightspace page.
 
 struct BrightspaceImportSheet: View {
+    @Environment(AppContainer.self) private var container
+    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
+    private var coordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
     @Binding var items: [BrightspaceImportItem]
     @Binding var isPresented: Bool
 
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-
-    @State private var allCourses: [PlannerCourse] = []
+    private var collegePersistence: CollegePersistence { container.persistence }
+            @State private var allCourses: [PlannerCourse] = []
     @State private var courseSelections: [String: PlannerCourse?] = [:]  // itemID → course
     @State private var isImporting: Bool = false
     @State private var importError: String? = nil

@@ -13,10 +13,12 @@ import UniformTypeIdentifiers
 
 /// Full-screen modal used by the Calendar page to add a new event.
 struct AddCalendarItemOverlay: View {
-    @EnvironmentObject private var collegePersistence: CollegePersistence
-    @EnvironmentObject private var locationPermissionService: LocationPermissionService
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @Environment(ModalCoordinator.self) private var modalCoordinator
+    @Environment(AppContainer.self) private var container
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
+    private var locationPermissionService: LocationPermissionService { container.locationPermissionService }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+            private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
     @AppStorage("calDefaultReminderMinutes") private var defaultReminderMinutes: Int = 15
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme

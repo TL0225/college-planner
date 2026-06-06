@@ -121,14 +121,14 @@ private struct AnimatedMetricValueText: View {
 // MARK: - OverviewView
 
 struct OverviewView: View {
+    @Environment(AppContainer.self) private var container
+    private var appNotifications: AppNotificationCenter { container.appNotifications }
+    private var persistence: CollegePersistence { container.persistence }
     private let perfLog = OSLog(subsystem: "Timothy.College", category: "OverviewViewPerf")
-    @Environment(AcademicMetricsStore.self) private var academicMetricsStore
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject var locationService: LocationPermissionService
-    @Environment(ModalCoordinator.self) var modalCoordinator
-    @EnvironmentObject private var securityManager: SecurityManager
-    @EnvironmentObject private var appNotifications: AppNotificationCenter
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var academicMetricsStore: AcademicMetricsStore { container.academicMetricsStore }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
+            @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @Binding var activePage: AppPage
     var searchText: String = ""
@@ -359,10 +359,6 @@ struct OverviewView: View {
         .background(.windowBackground)
         .sheet(isPresented: $isShowingProfileSheet) {
             StudentProfileSheet()
-                .environment(academicMetricsStore)
-                .environmentObject(collegePersistence)
-                .environmentObject(appNotifications)
-                .environmentObject(securityManager)
                 .dismissOnOutsideClickForSheet()
         }
         .background(MainContentReadySignal(ready: true))
@@ -775,7 +771,9 @@ private struct OfficeHoursPopoverContent: View {
 }
 
 private struct NextUpPill: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @State private var dataRefreshToken = 0
@@ -881,8 +879,10 @@ private struct CardSurface<Content: View>: View {
 }
 
 private struct AcademicStandingCard: View {
-    @Environment(AcademicMetricsStore.self) private var academicMetricsStore
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var academicMetricsStore: AcademicMetricsStore { container.academicMetricsStore }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @Binding var selectedDegreePage: Int
@@ -1408,9 +1408,11 @@ private struct ProgramStandingRow: View {
 }
 
 private struct UnifiedTimelineCard: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
-    @EnvironmentObject private var calendarManager: CalendarIntegrationManager
-    @Environment(AppActivityCoordinator.self) private var appActivity
+    @Environment(AppContainer.self) private var container
+    private var calendarManager: CalendarIntegrationManager { container.calendarManager }
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
+        private var appActivity: AppActivityCoordinator { container.appActivity }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
 
@@ -1723,7 +1725,9 @@ private struct UnifiedTimelineCard: View {
 }
 
 private struct ActiveCoursesCard: View {
-    @EnvironmentObject var collegePersistence: CollegePersistence
+    @Environment(AppContainer.self) private var container
+    private var persistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     let searchText: String
