@@ -107,22 +107,22 @@ enum CourseLeafRequirementsParser {
         programURL: URL,
         degreeType: String? = nil
     ) -> RequirementFragments {
-        let rules = CourseLeafRulePack.forSchoolID(schoolID)
+        let sectionConfig = CourseLeafRequirementSectionConfig.forSchoolID(schoolID)
         let sections = parseNamedSections(from: xml)
 
         var baselineParts: [String] = []
         for section in sections {
-            guard rules.isPrimaryRequirementSection(elementName: section.elementName) else { continue }
-            if rules.isBlacklistedSection(elementName: section.elementName, html: section.html) { continue }
-            if !rules.matchesDegreeTypeSection(elementName: section.elementName, degreeType: degreeType) { continue }
+            guard sectionConfig.isPrimaryRequirementSection(elementName: section.elementName) else { continue }
+            if sectionConfig.isBlacklistedSection(elementName: section.elementName, html: section.html) { continue }
+            if !sectionConfig.matchesDegreeTypeSection(elementName: section.elementName, degreeType: degreeType) { continue }
             baselineParts.append(section.html)
         }
 
         var trackVariants: [(String, String, String)] = []
         for section in sections {
-            guard rules.isTrackVariantSection(elementName: section.elementName, html: section.html) else { continue }
-            let trackID = rules.trackID(forElementName: section.elementName, html: section.html)
-            let displayName = rules.trackDisplayName(forElementName: section.elementName, html: section.html)
+            guard sectionConfig.isTrackVariantSection(elementName: section.elementName, html: section.html) else { continue }
+            let trackID = sectionConfig.trackID(forElementName: section.elementName, html: section.html)
+            let displayName = sectionConfig.trackDisplayName(forElementName: section.elementName, html: section.html)
             trackVariants.append((trackID, displayName, section.html))
         }
 

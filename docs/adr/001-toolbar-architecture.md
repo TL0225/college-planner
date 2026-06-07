@@ -25,9 +25,14 @@ SwiftUI `.toolbar { MainWindowToolbar }` in `ContentView` is the **sole** toolba
 
 Toolbar views read projections; mutations flow through `ToolbarDispatcher` → feature handler → scene state update.
 
-### Glass-only UI primitives
+### Panel visibility taxonomy
 
-All toolbar chrome uses `GlassToolbarControls` (and the Liquid Glass design system in ADR 007). Feature `*ToolbarContent` files describe **what** appears; they do not set materials, padding, or animations directly. No raw `Button`/`Image` chrome in toolbar views.
+- **App navigation sidebar:** `NavigationSplitViewVisibility` in `ContentView` (left column).
+- **Feature inspector panels:** e.g. `calendarScene.sidebarShown` (calendar right event list), `academicsScene.statsSidebarShown` (academics stats column). These are feature-local today; unifying cross-tab panel chrome in shell state is a follow-up if needed.
+
+### Native Liquid Glass chrome
+
+Window toolbar controls use macOS 26 native APIs (`.buttonStyle(.glass)`, `GlassEffectContainer`) inline in `App/Toolbar/**`. Feature `*ToolbarContent` files describe **what** appears; they dispatch actions rather than mutating feature state directly.
 
 ### Sole router
 

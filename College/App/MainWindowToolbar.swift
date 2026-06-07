@@ -11,11 +11,15 @@ struct MainWindowToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         DefaultToolbarItem(kind: .sidebarToggle, placement: .automatic)
+            .sharedBackgroundVisibility(.hidden)
         ToolbarProviderRegistry.pageToolbarContent(
             for: activePage,
             context: ToolbarProviderContext(
                 store: appContainer.toolbarStore,
                 dispatcher: appContainer.toolbarDispatcher,
+                calendarScene: appContainer.calendarScene,
+                academicsScene: appContainer.academicsScene,
+                collegePersistence: appContainer.persistence,
                 activePage: activePage,
                 academicsInspectorPresented: $academicsInspectorPresented
             )

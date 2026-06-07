@@ -6,11 +6,17 @@ Rules for contributing to the main window toolbar subsystem. See ADRs 001–007 
 
 ### 1. Sole router
 
-Only `MainWindowToolbar` routes toolbar content by `AppPage` (until ADR 003 triggers). Do not add `switch activePage` in coordinator, dispatcher, or feature toolbar views.
+Only `MainWindowToolbar` routes toolbar content by `AppPage`. Do not add `switch activePage` in coordinator, dispatcher, or feature toolbar views. `ToolbarProviderRegistry` must list **every** `AppPage` case explicitly (no `default`).
 
-### 2. Glass-only chrome
+### 2. Native Liquid Glass chrome
 
-Toolbar controls use `GlassToolbarControls` (and the Liquid Glass design system) only. Never add raw `Button`/`Image` chrome for toolbar items.
+Window toolbar controls use macOS 26 native APIs at the call site in `App/Toolbar/**`:
+
+- Icon actions: `Button { … } label: { … }.buttonStyle(.glass)`
+- Grouped glass: `GlassEffectContainer(spacing:) { … }`
+- Layout constants: `ToolbarMetrics` only (`iconControlSize`, `minHitTarget`, fonts)
+
+Do not add wrapper types or a custom `Glass/` design-system layer. Feature `*View.swift` files must not attach `.toolbar { }` on their main body.
 
 ### 3. Cross-tab store boundary
 
@@ -18,11 +24,11 @@ Page-specific state must never enter types conforming to `CrossTabToolbarState` 
 
 ### 4. Toolbar actions
 
-New toolbar action → add nested enum case (e.g. `CalendarToolbarAction`), document owner in a comment, and add a unit test for dispatch routing.
+New toolbar action → add nested enum case (e.g. `CalendarToolbarAction`), document owner in a comment, and add a unit test for dispatch routing. Toolbar views **dispatch only**; feature views **handle** and mutate scene state (single writer per field).
 
 ### 5. File placement
 
-Feature toolbar content (`*ToolbarContent.swift`) is colocated with the feature or under `App/Toolbar/` until Phase 2 module split (ADR 004).
+Feature toolbar content (`*ToolbarContent.swift`) and shared chrome (`AppToolbarViews.swift`) live under `App/Toolbar/` until Phase 2 module split (ADR 004).
 
 ### 6. Dispatcher lifecycle
 
@@ -36,15 +42,19 @@ SwiftUI toolbar view modules must not `import AppKit`. AppKit toolbar wiring is 
 
 Deprecated toolbar APIs are removed within two releases (ADR 006). Do not add permanent compatibility wrappers.
 
+### 9. Shell toolbar search (Degree / Documents)
+
+`.searchable(placement: .toolbar)` for Degree and Documents is owned by `ContentView` (`@State toolbarSearchText` + `PortalWindowSearchModifier`). It is **not** routed through `ToolbarDispatcher`. Bindings flow to `OverviewView` / `DocumentsView` from `ContentView.pageView`.
+
 ## Quick reference
 
 | Task | Where |
 | --- | --- |
-| Add page toolbar items | Feature `*ToolbarContent.swift`; wire in `MainWindowToolbar` |
+| Add page toolbar items | `*ToolbarContent.swift`; register case in `ToolbarProviderRegistry` + `AppPageToolbarMetadata` |
 | Cross-tab shell state | `AppToolbarStore` only |
 | Handle toolbar action | Register handler in feature view; dispatch via `ToolbarDispatcher` |
 | Window-scoped services | `AppContainer` in `CollegeApp` — store, dispatcher, and `*SceneState` |
-| Visual styling | `College/App/Toolbar/Glass/` — not feature content files |
+| Visual styling | Native `.buttonStyle(.glass)` / `GlassEffectContainer` in `App/Toolbar/` |
 
 ## Ship gate checklist (before merging toolbar work)
 

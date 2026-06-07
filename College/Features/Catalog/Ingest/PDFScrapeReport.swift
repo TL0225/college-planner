@@ -22,6 +22,8 @@ struct PDFScrapeReport: Codable, Sendable {
     let parserCapabilityVersion: String?
     let ocrPagesUsed: Int?
     let averageProgramConfidence: Double?
+    let layoutProfileID: String?
+    let documentIRNodeCount: Int?
     let warnings: [String]
 
     static let storageKeyPrefix = "catalog.pdf.scrapeReport.v1."

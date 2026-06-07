@@ -12,35 +12,149 @@ enum CourseLeafEngine {
         let courses: [CatalogCourse]
         let programs: [ScrapedProgram]
         let sourceSignature: String
+        let dominantLayoutProfileID: String?
+        let layoutConfidence: Double?
     }
 
     struct PageParseResult: Sendable {
         let courses: [CatalogCourse]
         let programs: [ScrapedProgram]
+        let layoutProfileID: String?
+        let layoutConfidence: Double
     }
 
     private static var session: URLSession { CourseLeafXMLClient.session }
 
-    /// Parses a single CourseLeaf `index.xml` page. Used by golden fixture tests.
+    /// Legacy crawl parse for offline parity diff (ignores `documentIREnabled`).
+    static func parseCatalogPageLegacy(xml: String, pageURL: URL, schoolID: String) -> PageParseResult {
+        let config = CatalogLayoutProfileRegistry.legacyCrawlConfig(forSchoolID: schoolID)
+        let courses = parseCourses(from: xml, pageURL: pageURL, config: config)
+        let programs = parsePrograms(
+            from: xml,
+            pageURL: pageURL,
+            config: config,
+            parseRequirements: false,
+            schoolID: schoolID
+        )
+        return PageParseResult(courses: courses, programs: programs, layoutProfileID: nil, layoutConfidence: 0)
+    }
+
+    /// Parses a single CourseLeaf `index.xml` page. Used by golden fixture tests (always IR pipeline).
     static func parseCatalogPage(xml: String, pageURL: URL, schoolID: String) -> PageParseResult {
-        let rules = CourseLeafRulePack.forSchoolID(schoolID)
-        return PageParseResult(
-            courses: parseCourses(from: xml, pageURL: pageURL, rules: rules),
-            programs: parsePrograms(from: xml, pageURL: pageURL, rules: rules)
+        CourseLeafIRPipeline.parsePage(
+            xml: xml,
+            pageURL: pageURL,
+            schoolID: schoolID,
+            catalogVersionID: schoolID,
+            parseRequirements: false
         )
     }
 
     static func crawlCatalog(
         baseURL rawURL: String,
         schoolID: String,
-        parseRequirements: Bool = false
+        parseRequirements: Bool = false,
+        preferredPageURLs: [URL]? = nil,
+        catalogVersionIDByPageURL: [String: String]? = nil
     ) async throws -> CrawlOutput {
-        guard let baseURL = normalizeBaseURL(rawURL) else {
+        if CatalogPlatformFlags.documentIREnabled {
+            return try await crawlCatalogViaIR(
+                rawBaseURL: rawURL,
+                schoolID: schoolID,
+                parseRequirements: parseRequirements,
+                preferredPageURLs: preferredPageURLs,
+                catalogVersionIDByPageURL: catalogVersionIDByPageURL
+            )
+        }
+        return try await crawlCatalogLegacy(
+            rawBaseURL: rawURL,
+            schoolID: schoolID,
+            parseRequirements: parseRequirements,
+            preferredPageURLs: preferredPageURLs
+        )
+    }
+
+    private static func crawlCatalogViaIR(
+        rawBaseURL: String,
+        schoolID: String,
+        parseRequirements: Bool,
+        preferredPageURLs: [URL]?,
+        catalogVersionIDByPageURL: [String: String]?
+    ) async throws -> CrawlOutput {
+        guard let normalizedBase = normalizeBaseURL(rawBaseURL) else {
             throw ScraperError.invalidURL
         }
-        let rulePack = CourseLeafRulePack.forSchoolID(schoolID)
 
-        let pageURLs = try await sitemapPageURLs(baseURL: baseURL)
+        let pageURLs: [URL]
+        if let preferred = preferredPageURLs, !preferred.isEmpty {
+            pageURLs = preferred
+        } else {
+            pageURLs = try await sitemapPageURLs(baseURL: normalizedBase)
+        }
+        var discoveredCourses: [CatalogCourse] = []
+        var discoveredPrograms: [ScrapedProgram] = []
+        var signatureMaterial: [String] = []
+        signatureMaterial.reserveCapacity(pageURLs.count)
+        var layoutVotes: [String: Int] = [:]
+        var layoutConfidenceSum: [String: Double] = [:]
+
+        for pageURL in pageURLs {
+            let indexURL = normalizedIndexURL(from: pageURL)
+            do {
+                let xml = try await fetchXML(from: indexURL)
+                signatureMaterial.append(indexURL.absoluteString)
+                signatureMaterial.append(String(xml.prefix(4096)))
+                let versionID = catalogVersionIDByPageURL?[pageURL.absoluteString] ?? schoolID
+                let parsed = await CourseLeafIRPipeline.parsePageAsync(
+                    xml: xml,
+                    pageURL: pageURL,
+                    schoolID: schoolID,
+                    catalogVersionID: versionID,
+                    parseRequirements: parseRequirements
+                )
+                discoveredCourses.append(contentsOf: parsed.courses)
+                discoveredPrograms.append(contentsOf: parsed.programs)
+                if let profileID = parsed.layoutProfileID {
+                    layoutVotes[profileID, default: 0] += 1
+                    layoutConfidenceSum[profileID, default: 0] += parsed.layoutConfidence
+                }
+            } catch {
+                continue
+            }
+        }
+
+        let dominantLayout = layoutVotes.max(by: { $0.value < $1.value })?.key
+        let layoutConfidence: Double? = {
+            guard let dominantLayout, let votes = layoutVotes[dominantLayout], votes > 0 else { return nil }
+            return (layoutConfidenceSum[dominantLayout] ?? 0) / Double(votes)
+        }()
+
+        return CrawlOutput(
+            courses: deduplicateCourses(discoveredCourses),
+            programs: deduplicatePrograms(discoveredPrograms),
+            sourceSignature: computeSignature(from: signatureMaterial, schoolID: schoolID),
+            dominantLayoutProfileID: dominantLayout,
+            layoutConfidence: layoutConfidence
+        )
+    }
+
+    private static func crawlCatalogLegacy(
+        rawBaseURL: String,
+        schoolID: String,
+        parseRequirements: Bool,
+        preferredPageURLs: [URL]? = nil
+    ) async throws -> CrawlOutput {
+        guard let normalizedBase = normalizeBaseURL(rawBaseURL) else {
+            throw ScraperError.invalidURL
+        }
+        let crawlConfig = CatalogLayoutProfileRegistry.legacyCrawlConfig(forSchoolID: schoolID)
+
+        let pageURLs: [URL]
+        if let preferred = preferredPageURLs, !preferred.isEmpty {
+            pageURLs = preferred
+        } else {
+            pageURLs = try await sitemapPageURLs(baseURL: normalizedBase)
+        }
 
         var discoveredCourses: [CatalogCourse] = []
         var discoveredPrograms: [ScrapedProgram] = []
@@ -53,12 +167,12 @@ enum CourseLeafEngine {
                 let xml = try await fetchXML(from: indexURL)
                 signatureMaterial.append(indexURL.absoluteString)
                 signatureMaterial.append(String(xml.prefix(4096)))
-                discoveredCourses.append(contentsOf: parseCourses(from: xml, pageURL: pageURL, rules: rulePack))
+                discoveredCourses.append(contentsOf: parseCourses(from: xml, pageURL: pageURL, config: crawlConfig))
                 discoveredPrograms.append(
                     contentsOf: parsePrograms(
                         from: xml,
                         pageURL: pageURL,
-                        rules: rulePack,
+                        config: crawlConfig,
                         parseRequirements: parseRequirements,
                         schoolID: schoolID
                     )
@@ -72,10 +186,13 @@ enum CourseLeafEngine {
         let dedupedPrograms = deduplicatePrograms(discoveredPrograms)
         let signature = computeSignature(from: signatureMaterial, schoolID: schoolID)
 
+        let preferred = CatalogLayoutProfileRegistry.preferredProfileID(forSchoolID: schoolID)
         return CrawlOutput(
             courses: dedupedCourses,
             programs: dedupedPrograms,
-            sourceSignature: signature
+            sourceSignature: signature,
+            dominantLayoutProfileID: preferred?.rawValue ?? CourseLeafLayoutProfileID.profileDefault.rawValue,
+            layoutConfidence: preferred == nil ? 0.65 : 0.8
         )
     }
 
@@ -93,52 +210,35 @@ enum CourseLeafEngine {
     }
 
     static func sitemapPageURLs(baseURL: URL) async throws -> [URL] {
-        let sitemapURL = baseURL.appendingPathComponent("sitemap.xml")
-        return try await discoverPageURLs(from: sitemapURL, fallbackBaseURL: baseURL)
-    }
-
-    private static func discoverPageURLs(from sitemapURL: URL, fallbackBaseURL: URL) async throws -> [URL] {
-        let xml = try await fetchXML(from: sitemapURL)
-        let locPattern = try NSRegularExpression(pattern: "<loc>(.*?)</loc>", options: [.caseInsensitive, .dotMatchesLineSeparators])
-        let nsRange = NSRange(xml.startIndex..<xml.endIndex, in: xml)
-        let matches = locPattern.matches(in: xml, options: [], range: nsRange)
-
-        var urls: [URL] = []
-        urls.reserveCapacity(matches.count)
-        for match in matches {
-            guard let range = Range(match.range(at: 1), in: xml) else { continue }
-            let raw = xml[range].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let url = URL(string: raw), let host = url.host, host == fallbackBaseURL.host else { continue }
-            urls.append(url)
-        }
-
-        if urls.isEmpty {
-            return [fallbackBaseURL]
-        }
-        return Array(Set(urls)).sorted { $0.absoluteString < $1.absoluteString }
+        try await CourseLeafSitemapCache.pageURLs(baseURL: baseURL)
     }
 
     private static func fetchXML(from url: URL) async throws -> String {
         try await CourseLeafXMLClient.fetchXML(from: url)
     }
 
-    private static func parseCourses(from xml: String, pageURL: URL, rules: CourseLeafRulePack) -> [CatalogCourse] {
-        guard shouldParseCourses(pageURL: pageURL, rules: rules) else { return [] }
+    private static func parseCourses(from xml: String, pageURL: URL, config: CourseLeafProfileConfig) -> [CatalogCourse] {
+        guard shouldParseCourses(pageURL: pageURL, config: config) else { return [] }
         guard xml.contains("<courseleaf") else { return [] }
 
         var courses: [CatalogCourse] = []
-        for html in extractCDATAHTMLFragments(from: xml) {
-            courses.append(contentsOf: parseCoursesFromHTML(html, pageURL: pageURL, rules: rules))
+        for html in extractCDATAHTMLFragments(from: xml, patterns: config.cdataHTMLPatterns) {
+            courses.append(contentsOf: CourseLeafEntityExtractor.extractCoursesFromHTML(html, pageURL: pageURL, config: config))
         }
 
         if courses.isEmpty {
-            courses.append(contentsOf: parseCoursesLegacyFallback(from: xml, pageURL: pageURL, rules: rules))
+            courses.append(contentsOf: CourseLeafEntityExtractor.extractCoursesLegacyFallback(
+                from: xml,
+                pageURL: pageURL,
+                config: config
+            ))
         }
         return courses
     }
 
-    private static func extractCDATAHTMLFragments(from xml: String) -> [String] {
-        let pattern = try? NSRegularExpression(pattern: "<!\\[CDATA\\[(.*?)\\]\\]>", options: [.dotMatchesLineSeparators])
+    private static func extractCDATAHTMLFragments(from xml: String, patterns: [String]) -> [String] {
+        let patternSource = patterns.first ?? "<!\\[CDATA\\[(.*?)\\]\\]>"
+        let pattern = try? NSRegularExpression(pattern: patternSource, options: [.dotMatchesLineSeparators])
         let nsRange = NSRange(xml.startIndex..<xml.endIndex, in: xml)
         guard let pattern else { return [] }
         return pattern.matches(in: xml, options: [], range: nsRange).compactMap { match in
@@ -149,227 +249,6 @@ enum CourseLeafEngine {
         }
     }
 
-    private static func parseCoursesFromHTML(_ html: String, pageURL: URL, rules: CourseLeafRulePack) -> [CatalogCourse] {
-        guard let doc = try? SwiftSoup.parseBodyFragment(html) else { return [] }
-        var courses: [CatalogCourse] = []
-
-        if let blocks = try? doc.select("div.courseblock"), !blocks.isEmpty() {
-            for block in blocks.array() {
-                if let course = parseNYUStyleCourseBlock(block, pageURL: pageURL, rules: rules) {
-                    courses.append(course)
-                    continue
-                }
-                if let course = parseFordhamStyleCourseBlock(block, pageURL: pageURL, rules: rules) {
-                    courses.append(course)
-                }
-            }
-        }
-
-        if let blocks = try? doc.select("dl.courseblock"), !blocks.isEmpty() {
-            for block in blocks.array() {
-                if let course = parseCMUStyleCourseBlock(block, pageURL: pageURL, rules: rules) {
-                    courses.append(course)
-                }
-            }
-        }
-
-        return courses
-    }
-
-    private static func makeCourse(
-        pageURL: URL,
-        courseCode: String,
-        title: String,
-        description: String?,
-        credits: Int,
-        department: String?
-    ) -> CatalogCourse {
-        CatalogCourse(
-            id: UUID(),
-            courseCode: courseCode,
-            title: title,
-            description: description,
-            credits: credits,
-            department: department,
-            prerequisites: nil,
-            prerequisiteText: nil,
-            corequisites: nil,
-            typicallyOffered: nil,
-            previewDetailURL: pageURL.absoluteString
-        )
-    }
-
-    private static func parseNYUStyleCourseBlock(_ block: Element, pageURL: URL, rules: CourseLeafRulePack) -> CatalogCourse? {
-        guard (try? block.select(".detail-code").first()) != nil else { return nil }
-        let code = normalizedWhitespace((try? block.select(".detail-code").first()?.text()) ?? "")
-        let title = normalizedWhitespace((try? block.select(".detail-title").first()?.text()) ?? "")
-        let hoursLine = normalizedWhitespace((try? block.select(".detail-hours_html").first()?.text()) ?? "")
-        guard !code.isEmpty else { return nil }
-
-        let courseCode: String = {
-            let trimmed = normalizedWhitespace(code)
-            if trimmed.contains("-") && trimmed.split(separator: " ").count >= 2 {
-                return trimmed
-            }
-            return normalizeCourseCode(trimmed, rules: rules)
-        }()
-        let credits = parseCredits(from: hoursLine, rules: rules)
-        let description = normalizedWhitespace((try? block.select(".courseblockextra").first()?.text()) ?? "")
-        let department = departmentFromCourseCode(courseCode, rules: rules)
-
-        return makeCourse(
-            pageURL: pageURL,
-            courseCode: courseCode,
-            title: title.isEmpty ? courseCode : title,
-            description: description.isEmpty ? nil : description,
-            credits: credits,
-            department: department
-        )
-    }
-
-    private static func parseFordhamStyleCourseBlock(_ block: Element, pageURL: URL, rules: CourseLeafRulePack) -> CatalogCourse? {
-        let titleLine = normalizedWhitespace(
-            (try? block.select("p.courseblocktitle, .courseblocktitle").first()?.text()) ?? ""
-        )
-        guard !titleLine.isEmpty else { return nil }
-        guard (try? block.select(".detail-code").first()) == nil else { return nil }
-
-        guard let parsed = parseFordhamTitleLine(titleLine) else { return nil }
-        let description = normalizedWhitespace(
-            (try? block.select("p.courseblockdesc, .courseblockdesc").first()?.text()) ?? ""
-        )
-        let courseCode = "\(parsed.dept) \(parsed.number)"
-
-        return makeCourse(
-            pageURL: pageURL,
-            courseCode: courseCode,
-            title: parsed.title,
-            description: description.isEmpty ? nil : description,
-            credits: parsed.credits,
-            department: parsed.dept
-        )
-    }
-
-    private static func parseCMUStyleCourseBlock(_ block: Element, pageURL: URL, rules: CourseLeafRulePack) -> CatalogCourse? {
-        let titleLine = normalizedWhitespace((try? block.select("dt").first()?.text()) ?? "")
-        let bodyLine = normalizedWhitespace((try? block.select("dd").first()?.text()) ?? "")
-        guard !titleLine.isEmpty else { return nil }
-
-        guard let parsed = parseCMUTitleLine(titleLine) else { return nil }
-        let courseCode = "\(parsed.dept)-\(parsed.number)"
-        let combinedText = "\(titleLine) \(bodyLine)"
-        let credits = parseCredits(from: combinedText, rules: rules)
-
-        return makeCourse(
-            pageURL: pageURL,
-            courseCode: courseCode,
-            title: parsed.title,
-            description: bodyLine.isEmpty ? nil : bodyLine,
-            credits: credits,
-            department: parsed.dept
-        )
-    }
-
-    private struct FordhamTitleParts {
-        let dept: String
-        let number: String
-        let title: String
-        let credits: Int
-    }
-
-    private static func parseFordhamTitleLine(_ line: String) -> FordhamTitleParts? {
-        let pattern = #"^([A-Z]{2,6})\s+([0-9]{4}[A-Z]?)\.\s+(.+?)\.\s+\((\d+(?:\.\d+)?)\s+Credits?\)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
-        let nsRange = NSRange(line.startIndex..<line.endIndex, in: line)
-        guard let match = regex.firstMatch(in: line, options: [], range: nsRange),
-              let deptRange = Range(match.range(at: 1), in: line),
-              let numberRange = Range(match.range(at: 2), in: line),
-              let titleRange = Range(match.range(at: 3), in: line),
-              let creditsRange = Range(match.range(at: 4), in: line) else {
-            return nil
-        }
-        let credits = Double(line[creditsRange]).map { Int($0.rounded()) } ?? 0
-        return FordhamTitleParts(
-            dept: String(line[deptRange]).uppercased(),
-            number: String(line[numberRange]).uppercased(),
-            title: String(line[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines),
-            credits: credits
-        )
-    }
-
-    private struct CMUTitleParts {
-        let dept: String
-        let number: String
-        let title: String
-    }
-
-    private static func parseCMUTitleLine(_ line: String) -> CMUTitleParts? {
-        let pattern = #"^([0-9]{2})\s*[-–]\s*([0-9]{3}[A-Z]?)\s+(.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
-        let nsRange = NSRange(line.startIndex..<line.endIndex, in: line)
-        guard let match = regex.firstMatch(in: line, options: [], range: nsRange),
-              let deptRange = Range(match.range(at: 1), in: line),
-              let numberRange = Range(match.range(at: 2), in: line),
-              let titleRange = Range(match.range(at: 3), in: line) else {
-            return nil
-        }
-        return CMUTitleParts(
-            dept: String(line[deptRange]),
-            number: String(line[numberRange]).uppercased(),
-            title: String(line[titleRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-    }
-
-    private static func parseCoursesLegacyFallback(from xml: String, pageURL: URL, rules: CourseLeafRulePack) -> [CatalogCourse] {
-        let cdataPattern = rules.cdataHTMLPatterns.compactMap {
-            try? NSRegularExpression(pattern: $0, options: [.dotMatchesLineSeparators])
-        }
-        let codePatterns = rules.courseCodePatterns.compactMap {
-            try? NSRegularExpression(pattern: $0)
-        }
-        let nsRange = NSRange(xml.startIndex..<xml.endIndex, in: xml)
-
-        var courses: [CatalogCourse] = []
-        for cdataRegex in cdataPattern {
-            for match in cdataRegex.matches(in: xml, options: [], range: nsRange) {
-                guard let range = Range(match.range(at: 1), in: xml) else { continue }
-                let html = String(xml[range])
-                guard let doc = try? SwiftSoup.parseBodyFragment(html) else { continue }
-                let text = normalizedWhitespace((try? doc.text()) ?? "")
-                let textRange = NSRange(text.startIndex..<text.endIndex, in: text)
-
-                var subjectRange: Range<String.Index>?
-                var numberRange: Range<String.Index>?
-                for codePattern in codePatterns {
-                    if let codeMatch = codePattern.firstMatch(in: text, options: [], range: textRange),
-                       let s = Range(codeMatch.range(at: 1), in: text),
-                       let n = Range(codeMatch.range(at: 2), in: text) {
-                        subjectRange = s
-                        numberRange = n
-                        break
-                    }
-                }
-                guard let subjectRange, let numberRange else { continue }
-
-                let dept = String(text[subjectRange])
-                let number = String(text[numberRange])
-                let usesHyphenCode = dept.allSatisfy(\.isNumber)
-                let courseCode = usesHyphenCode ? "\(dept)-\(number)" : "\(dept) \(number)"
-                let creditsValue = parseCredits(from: text, rules: rules)
-
-                courses.append(makeCourse(
-                    pageURL: pageURL,
-                    courseCode: courseCode,
-                    title: courseCode,
-                    description: text.isEmpty ? nil : text,
-                    credits: creditsValue,
-                    department: dept
-                ))
-            }
-        }
-        return courses
-    }
-
     /// Test entry: parse program metadata (+ optional requirements) from fixture `index.xml`.
     static func parseProgramsForTests(
         from xml: String,
@@ -377,10 +256,27 @@ enum CourseLeafEngine {
         schoolID: String,
         parseRequirements: Bool
     ) -> [ScrapedProgram] {
+        parseProgramsForTests(
+            from: xml,
+            pageURL: pageURL,
+            profileConfig: CatalogLayoutProfileRegistry.legacyCrawlConfig(forSchoolID: schoolID),
+            schoolID: schoolID,
+            parseRequirements: parseRequirements
+        )
+    }
+
+    /// IR pipeline entry: program metadata uses layout profile path hints.
+    static func parseProgramsForTests(
+        from xml: String,
+        pageURL: URL,
+        profileConfig: CourseLeafProfileConfig,
+        schoolID: String,
+        parseRequirements: Bool
+    ) -> [ScrapedProgram] {
         parsePrograms(
             from: xml,
             pageURL: pageURL,
-            rules: CourseLeafRulePack.forSchoolID(schoolID),
+            config: profileConfig,
             parseRequirements: parseRequirements,
             schoolID: schoolID
         )
@@ -389,11 +285,11 @@ enum CourseLeafEngine {
     private static func parsePrograms(
         from xml: String,
         pageURL: URL,
-        rules: CourseLeafRulePack,
+        config: CourseLeafProfileConfig,
         parseRequirements: Bool = false,
         schoolID: String = ""
     ) -> [ScrapedProgram] {
-        guard shouldParsePrograms(pageURL: pageURL, rules: rules) else {
+        guard shouldParsePrograms(pageURL: pageURL, config: config) else {
             return []
         }
         guard xml.contains("<courseleaf") else { return [] }
@@ -415,10 +311,10 @@ enum CourseLeafEngine {
         let path = pageURL.path.lowercased()
         let lower = title.lowercased()
         let type: String = {
-            if path.contains("/minor") || rules.minorKeywords.contains(where: { lower.contains($0) }) {
+            if path.contains("/minor") || config.minorKeywords.contains(where: { lower.contains($0) }) {
                 return "Minor"
             }
-            if path.contains("/major") || rules.majorKeywords.contains(where: { lower.contains($0) }) {
+            if path.contains("/major") || config.majorKeywords.contains(where: { lower.contains($0) }) {
                 return "Major"
             }
             if lower.contains("minor") { return "Minor" }
@@ -499,52 +395,6 @@ enum CourseLeafEngine {
         return programs
     }
 
-    private static func parseCredits(from text: String, rules: CourseLeafRulePack) -> Int {
-        let patterns = rules.creditPatterns.compactMap { try? NSRegularExpression(pattern: $0, options: [.caseInsensitive]) }
-        for pattern in patterns {
-            let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
-            if let match = pattern.firstMatch(in: text, options: [], range: nsRange),
-               let creditRange = Range(match.range(at: 1), in: text),
-               let parsed = Double(text[creditRange]) {
-                return Int(parsed.rounded())
-            }
-        }
-        return 0
-    }
-
-    private static func normalizeCourseCode(_ raw: String, rules: CourseLeafRulePack) -> String {
-        let normalized = normalizedWhitespace(raw)
-        let patterns = rules.courseCodePatterns.compactMap { try? NSRegularExpression(pattern: $0) }
-        let nsRange = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
-        for pattern in patterns {
-            if let match = pattern.firstMatch(in: normalized, options: [], range: nsRange),
-               let s = Range(match.range(at: 1), in: normalized),
-               let n = Range(match.range(at: 2), in: normalized) {
-                let dept = String(normalized[s])
-                let number = String(normalized[n])
-                if dept.allSatisfy(\.isNumber) {
-                    return "\(dept)-\(number)"
-                }
-                return "\(dept) \(number)".replacingOccurrences(of: "  ", with: " ")
-            }
-        }
-        return normalized
-    }
-
-    private static func departmentFromCourseCode(_ courseCode: String, rules: CourseLeafRulePack) -> String {
-        if let hyphen = courseCode.firstIndex(of: "-") {
-            return String(courseCode[..<hyphen])
-        }
-        return courseCode.split(separator: " ").first.map(String.init) ?? courseCode
-    }
-
-    private static func normalizedWhitespace(_ text: String) -> String {
-        text
-            .replacingOccurrences(of: "\u{00A0}", with: " ")
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private static func deduplicateCourses(_ courses: [CatalogCourse]) -> [CatalogCourse] {
         var bestByCode: [String: CatalogCourse] = [:]
         for course in courses {
@@ -588,14 +438,14 @@ enum CourseLeafEngine {
         return digest.map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func shouldParseCourses(pageURL: URL, rules: CourseLeafRulePack) -> Bool {
+    private static func shouldParseCourses(pageURL: URL, config: CourseLeafProfileConfig) -> Bool {
         let path = pageURL.path.lowercased()
-        return rules.coursePagePathHints.contains(where: { path.contains($0) })
+        return config.coursePagePathHints.contains(where: { path.contains($0) })
     }
 
-    private static func shouldParsePrograms(pageURL: URL, rules: CourseLeafRulePack) -> Bool {
+    private static func shouldParsePrograms(pageURL: URL, config: CourseLeafProfileConfig) -> Bool {
         let path = pageURL.path.lowercased()
-        return rules.programPagePathHints.contains(where: { path.contains($0) })
+        return config.programPagePathHints.contains(where: { path.contains($0) })
     }
 
     static func normalizedIndexURL(from pageURL: URL) -> URL {

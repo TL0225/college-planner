@@ -1,6 +1,8 @@
 # ADR 007: Liquid Glass Toolbar Design System
 
-**Status:** Implemented (Tahoe glass layers 1–7; density v2 theme scaling; hover/press on all public controls)  
+**Status:** Superseded (2026-06) — custom `Glass/` stack removed; macOS 26 native `.buttonStyle(.glass)` and `GlassEffectContainer` used at call sites in `App/Toolbar/`. ADR retained for history.
+
+**Prior status:** Implemented (Tahoe glass layers 1–7; density v2 theme scaling; hover/press on all public controls)  
 **Date:** 2026-06-05
 
 ## Context

@@ -77,10 +77,14 @@ enum JobBoardPlatformDetector {
 
         switch platform {
         case .workday:
-            if let ctx = WorkdayScraper.deriveAPIContext(careersURLString: trimmed) {
+            let normalized = WorkdayScraper.normalizeCareersURLString(trimmed)
+            if let ctx = WorkdayScraper.deriveAPIContext(careersURLString: normalized) {
                 return ("Workday API: \(ctx.apiBase.absoluteString)", true)
             }
-            return ("Not a recognized Workday board URL", false)
+            if URL(string: normalized)?.host?.lowercased().contains("myworkdayjobs.com") == true {
+                return ("Workday URL — board name will be resolved when scraping", true)
+            }
+            return ("Not a recognized Workday board URL — use the main careers page URL", false)
         case .greenhouse:
             if GreenhouseScraper.boardToken(from: trimmed) != nil {
                 return ("Greenhouse board detected", true)

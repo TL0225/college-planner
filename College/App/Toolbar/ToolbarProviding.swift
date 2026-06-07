@@ -2,12 +2,17 @@
 // Feature: App / Toolbar
 // Purpose: ADR 003 — per-feature toolbar provider protocol and routing context.
 
+import CollegeAcademics
+import CollegeCalendar
 import SwiftUI
 
 /// Window-scoped inputs passed from `MainWindowToolbar` into feature providers.
 struct ToolbarProviderContext {
     let store: AppToolbarStore
     let dispatcher: ToolbarDispatcher
+    let calendarScene: CalendarSceneState
+    let academicsScene: AcademicsSceneState
+    let collegePersistence: CollegePersistence
     let activePage: AppPage
     var academicsInspectorPresented: Binding<Bool>
 }
@@ -23,14 +28,22 @@ protocol ToolbarProviding {
 enum CalendarToolbarProvider: ToolbarProviding {
     @ToolbarContentBuilder
     static func toolbarContent(context: ToolbarProviderContext) -> some ToolbarContent {
-        CalendarToolbarContent()
+        CalendarToolbarContent(
+            dispatcher: context.dispatcher,
+            calendarScene: context.calendarScene
+        )
     }
 }
 
 enum AcademicsToolbarProvider: ToolbarProviding {
     @ToolbarContentBuilder
     static func toolbarContent(context: ToolbarProviderContext) -> some ToolbarContent {
-        AcademicsToolbarContent(academicsInspectorPresented: context.academicsInspectorPresented)
+        AcademicsToolbarContent(
+            dispatcher: context.dispatcher,
+            academicsScene: context.academicsScene,
+            collegePersistence: context.collegePersistence,
+            academicsInspectorPresented: context.academicsInspectorPresented
+        )
     }
 }
 

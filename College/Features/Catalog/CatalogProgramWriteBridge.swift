@@ -39,7 +39,9 @@ enum CatalogProgramWriteBridge {
         requirements: [DegreeRequirement]?,
         sourceCatalogCatoid: String?,
         trackVariant: String?,
-        parentProgramKey: String?
+        parentProgramKey: String?,
+        catalogStableID: UUID?,
+        provenanceJSON: String?
     )
 
     static func saveDepartments(
@@ -86,7 +88,9 @@ enum CatalogProgramWriteBridge {
                 requirements: $0.requirements,
                 sourceCatalogCatoid: nil,
                 trackVariant: $0.trackVariant,
-                parentProgramKey: $0.parentProgramKey
+                parentProgramKey: $0.parentProgramKey,
+                catalogStableID: nil,
+                provenanceJSON: nil
             )
         }
         try savePrograms(withCatalog, for: universityName, pruneStalePrograms: pruneStalePrograms, appDataStore: appDataStore)
@@ -111,7 +115,7 @@ enum CatalogProgramWriteBridge {
                 ? nil
                 : departmentLookup[departmentName.lowercased()]?.id
             return CatalogRepository.MajorUpsertInput(
-                id: UUID(),
+                id: major.catalogStableID ?? UUID(),
                 name: major.name,
                 degreeLevel: major.degreeLevel,
                 degreeType: major.degreeType,
@@ -121,7 +125,11 @@ enum CatalogProgramWriteBridge {
                 sourceCatoids: major.sourceCatalogCatoid,
                 resolvedDepartment: major.resolvedDepartment,
                 resolvedCollege: major.resolvedCollege,
-                departmentIDs: departmentID.map { [$0] } ?? []
+                departmentIDs: departmentID.map { [$0] } ?? [],
+                catalogStableID: major.catalogStableID,
+                provenanceJSON: major.provenanceJSON,
+                mappingConfidence: major.mappingConfidence,
+                mappingSource: major.mappingSource
             )
         }
         try repo.upsertMajors(universityID: universityID, inputs: inputs)

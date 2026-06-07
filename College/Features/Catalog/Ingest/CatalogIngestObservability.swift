@@ -14,6 +14,54 @@ struct CatalogIngestMetricSample: Codable, Sendable {
     let ocrPagesUsed: Int
     let averageProgramConfidence: Double?
     let timestamp: Date
+    let programsFound: Int?
+    let coursesFound: Int?
+    let requirementsFound: Int?
+    let layoutProfileID: String?
+
+    init(
+        schoolID: String,
+        source: String,
+        succeeded: Bool,
+        durationMs: Int,
+        pageCount: Int,
+        ocrPagesUsed: Int,
+        averageProgramConfidence: Double?,
+        timestamp: Date,
+        programsFound: Int? = nil,
+        coursesFound: Int? = nil,
+        requirementsFound: Int? = nil,
+        layoutProfileID: String? = nil
+    ) {
+        self.schoolID = schoolID
+        self.source = source
+        self.succeeded = succeeded
+        self.durationMs = durationMs
+        self.pageCount = pageCount
+        self.ocrPagesUsed = ocrPagesUsed
+        self.averageProgramConfidence = averageProgramConfidence
+        self.timestamp = timestamp
+        self.programsFound = programsFound
+        self.coursesFound = coursesFound
+        self.requirementsFound = requirementsFound
+        self.layoutProfileID = layoutProfileID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schoolID = try container.decode(String.self, forKey: .schoolID)
+        source = try container.decode(String.self, forKey: .source)
+        succeeded = try container.decode(Bool.self, forKey: .succeeded)
+        durationMs = try container.decode(Int.self, forKey: .durationMs)
+        pageCount = try container.decode(Int.self, forKey: .pageCount)
+        ocrPagesUsed = try container.decode(Int.self, forKey: .ocrPagesUsed)
+        averageProgramConfidence = try container.decodeIfPresent(Double.self, forKey: .averageProgramConfidence)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        programsFound = try container.decodeIfPresent(Int.self, forKey: .programsFound)
+        coursesFound = try container.decodeIfPresent(Int.self, forKey: .coursesFound)
+        requirementsFound = try container.decodeIfPresent(Int.self, forKey: .requirementsFound)
+        layoutProfileID = try container.decodeIfPresent(String.self, forKey: .layoutProfileID)
+    }
 }
 
 enum CatalogIngestObservability {

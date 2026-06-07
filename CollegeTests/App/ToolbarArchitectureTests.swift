@@ -4,6 +4,7 @@
 
 import XCTest
 import CollegeAcademics
+import CollegeCalendar
 @testable import College
 
 @MainActor
@@ -31,6 +32,11 @@ final class ToolbarArchitectureTests: XCTestCase {
             "AppToolbarCoordinator",
             "ToolbarGlassButtonState",
             "struct ToolbarGlassButton",
+            "GlassToolbarCircleButton",
+            "StaticToolbarGlassButton",
+            "glassToolbarEnvironment",
+            "ToolbarDensity",
+            "TahoeGlassStyle",
         ]
         var violations: [String] = []
 
@@ -126,11 +132,60 @@ final class ToolbarArchitectureTests: XCTestCase {
     }
 
     func testToolbarProviderMetadataMatchesRegistry() {
-        for page in [AppPage.calendar, .academics, .career, .webShortcut(id: UUID())] {
+        for page in AppPageToolbarMetadata.allPages {
             let entry = AppPageToolbarMetadata.entry(for: page)
-            XCTAssertFalse(entry.toolbarProviderTypeName.isEmpty)
-            XCTAssertNotEqual(entry.toolbarProviderTypeName, "None")
+            if entry.hasDedicatedToolbarChrome {
+                XCTAssertNotEqual(entry.toolbarProviderTypeName, "None", "Expected provider for \(page)")
+                XCTAssertNotEqual(entry.toolbarContentTypeName, "None", "Expected content for \(page)")
+            } else {
+                XCTAssertEqual(entry.toolbarProviderTypeName, "None", "Expected no provider for \(page)")
+                XCTAssertEqual(entry.toolbarContentTypeName, "None", "Expected no dedicated content for \(page)")
+            }
         }
+    }
+
+    func testToolbarProviderRegistryIsExhaustive() throws {
+        let registry = repoRoot.appendingPathComponent("College/App/Toolbar/ToolbarProviderRegistry.swift")
+        let source = try String(contentsOf: registry, encoding: .utf8)
+        XCTAssertFalse(source.contains("default:"), "Registry must not use default — list every AppPage case explicitly")
+        XCTAssertTrue(source.contains("case .degree, .documents"))
+        XCTAssertTrue(source.contains(".brightspace:"))
+    }
+
+    func testShellToolbarSearchWiring() throws {
+        let contentView = repoRoot.appendingPathComponent("College/App/ContentView.swift")
+        let source = try String(contentsOf: contentView, encoding: .utf8)
+        XCTAssertTrue(source.contains("PortalWindowSearchModifier"))
+        XCTAssertTrue(source.contains("toolbarSearchText"))
+        XCTAssertTrue(source.contains("OverviewView("))
+        XCTAssertTrue(source.contains("searchText: toolbarSearchText"))
+        XCTAssertTrue(source.contains("DocumentsView("))
+        XCTAssertTrue(source.contains("searchText: $toolbarSearchText"))
+    }
+
+    func testFeatureMainViewsDoNotAttachWindowToolbar() throws {
+        let featuresDir = repoRoot.appendingPathComponent("College/Features")
+        let allowedSheetToolbarFiles: Set<String> = [
+            "CareerWorkspaceView.swift", // CareerApplicationFormSheet only
+        ]
+        let subpaths = try FileManager.default.subpathsOfDirectory(atPath: featuresDir.path)
+        let viewFiles = subpaths.filter { $0.hasSuffix("View.swift") || $0.hasSuffix("FullView.swift") }
+
+        var violations: [String] = []
+        for relative in viewFiles {
+            let fileName = (relative as NSString).lastPathComponent
+            if allowedSheetToolbarFiles.contains(fileName) { continue }
+            let url = featuresDir.appendingPathComponent(relative)
+            let source = try String(contentsOf: url, encoding: .utf8)
+            if source.contains(".toolbar {") || source.contains(".toolbar{") {
+                violations.append(relative)
+            }
+        }
+        XCTAssertTrue(
+            violations.isEmpty,
+            "Main feature views must not attach .toolbar — use ContentView → MainWindowToolbar:\n"
+                + violations.joined(separator: "\n")
+        )
     }
 
     func testAppContainerCompositionRoot() {
@@ -153,6 +208,13 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssertNotNil(container.locationPermissionService)
         XCTAssertNotNil(container.calendarManager)
         XCTAssertNotNil(container.brightspaceCoordinator)
+    }
+
+    func testCalendarShellPortsSurviveAfterWireShell() {
+        let container = AppContainer(telemetry: NoOpToolbarTelemetry())
+        CalendarPersistencePortBootstrap.wireShell(container: container)
+        XCTAssertNotNil(CalendarToolbarAccess.dispatcher)
+        XCTAssertTrue(CalendarToolbarAccess.dispatcher === container.calendarShellPorts.toolbarDispatcher)
     }
 
     func testAppContainerWindowScopedInstancesAreDistinct() {
@@ -319,59 +381,6 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssertEqual(
             AppPageToolbarMetadata.entry(for: .webShortcut(id: UUID())).toolbarContentTypeName,
             "WebToolbarContent"
-        )
-    }
-
-    // MARK: - Glass interaction coverage
-
-    func testGlassInteractionCoverage() throws {
-        let glassControls = repoRoot
-            .appendingPathComponent("College/App/Toolbar/Glass/GlassToolbarControls.swift")
-        let source = try String(contentsOf: glassControls, encoding: .utf8)
-
-        let publicControls = [
-            "StaticToolbarGlassButton",
-            "GlassToolbarCircleButton",
-            "GlassSearchFieldView",
-            "GlassToolbarAddMenuButton",
-            "GlassToolbarProfileAvatarButton",
-        ]
-
-        for control in publicControls {
-            guard let range = source.range(of: "struct \(control)") else {
-                XCTFail("Missing public control \(control)")
-                continue
-            }
-            let tail = source[range.lowerBound...]
-            guard let bodyRange = tail.range(of: "var body: some View") else {
-                XCTFail("Missing body for \(control)")
-                continue
-            }
-            let body = tail[bodyRange.lowerBound...]
-            let end = body.prefix(2_500)
-            XCTAssertTrue(
-                end.contains("glassInteractiveSurface") || end.contains("GlassInteractiveSurface"),
-                "\(control) must route interaction through GlassInteractiveSurface"
-            )
-            if control == "GlassToolbarAddMenuButton" || control == "GlassToolbarProfileAvatarButton" {
-                XCTAssertTrue(
-                    end.contains("onHover") || end.contains("glassToolbarHoverPressInteraction"),
-                    "\(control) must drive hover interaction state"
-                )
-            }
-        }
-
-        let densityFile = repoRoot
-            .appendingPathComponent("College/App/Toolbar/Glass/ToolbarDensity.swift")
-        let densitySource = try String(contentsOf: densityFile, encoding: .utf8)
-        XCTAssertTrue(
-            densitySource.contains("func scaled(for density: ToolbarDensity)"),
-            "Density v2 theme scaling must exist on ToolbarGlassTheme"
-        )
-
-        XCTAssertFalse(
-            source.contains(".opacity(isEnabled"),
-            "Use GlassInteractionState instead of ad-hoc enabled opacity"
         )
     }
 }

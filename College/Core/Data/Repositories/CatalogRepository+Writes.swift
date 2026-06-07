@@ -28,6 +28,10 @@ extension CatalogRepository {
         let resolvedDepartment: String?
         let resolvedCollege: String?
         let departmentIDs: [UUID]
+        let catalogStableID: UUID?
+        let provenanceJSON: String?
+        let mappingConfidence: Double?
+        let mappingSource: String?
     }
 
     func upsertDepartments(universityID: UUID, inputs: [DepartmentUpsertInput]) throws {
@@ -106,6 +110,18 @@ extension CatalogRepository {
             major.resolvedDepartment = input.resolvedDepartment
             major.resolvedCollege = input.resolvedCollege
             major.lastUpdated = .now
+            if let stableID = input.catalogStableID {
+                major.catalogStableID = stableID
+            }
+            if let provenanceJSON = input.provenanceJSON {
+                major.provenanceJSON = provenanceJSON
+            }
+            if let mappingConfidence = input.mappingConfidence {
+                major.mappingConfidence = mappingConfidence
+            }
+            if let mappingSource = input.mappingSource {
+                major.mappingSource = mappingSource
+            }
 
             let linkedDepartments = input.departmentIDs.compactMap { try? fetchDepartment(id: $0) }
             major.departments = linkedDepartments.isEmpty ? nil : linkedDepartments

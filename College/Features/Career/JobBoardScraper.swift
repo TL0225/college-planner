@@ -41,6 +41,7 @@ extension WorkdayScraperError {
         case .requiresAuth: return .requiresAuth
         case .decodingFailed(let d): return .decodingFailed(d)
         case .rateLimited: return .rateLimited
+        case .network(let d): return .decodingFailed(d)
         }
     }
 }
@@ -51,7 +52,13 @@ extension JobBoardScraperError {
         case .badURL: return .badURL
         case .httpError(let c): return .httpError(c)
         case .requiresAuth: return .requiresAuth
-        case .decodingFailed(let d): return .decodingFailed(d)
+        case .decodingFailed(let d):
+            if d.localizedCaseInsensitiveContains("offline")
+                || d.localizedCaseInsensitiveContains("network")
+                || d.localizedCaseInsensitiveContains("connection") {
+                return .network(d)
+            }
+            return .decodingFailed(d)
         case .rateLimited: return .rateLimited
         case .unsupportedPlatform: return .decodingFailed("Unsupported platform")
         }
@@ -152,6 +159,40 @@ enum JobBoardHTTP {
     /// and are properly torn down on app exit rather than mid-flight on every call.
     private static let sharedSession: URLSession = makeSession()
 
+    /// Workday CXS API — cookie-capable default session; load careers page before JSON API calls.
+    private final class WorkdaySessionBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var session: URLSession
+
+        init() {
+            session = JobBoardHTTP.makeWorkdaySession()
+        }
+
+        func current() -> URLSession {
+            lock.lock()
+            defer { lock.unlock() }
+            return session
+        }
+
+        func reset() {
+            lock.lock()
+            defer { lock.unlock() }
+            session.invalidateAndCancel()
+            session = JobBoardHTTP.makeWorkdaySession()
+        }
+    }
+
+    private static let workdaySessionBox = WorkdaySessionBox()
+
+    static var workdaySession: URLSession {
+        workdaySessionBox.current()
+    }
+
+    /// Drops stale keep-alive connections after transient network failures.
+    static func resetWorkdaySession() {
+        workdaySessionBox.reset()
+    }
+
     static func requireHTTPS(_ url: URL) throws {
         guard url.scheme?.lowercased() == "https" else {
             throw JobBoardScraperError.decodingFailed("HTTPS is required for career URLs")
@@ -170,6 +211,117 @@ enum JobBoardHTTP {
         config.httpCookieAcceptPolicy = .never
         config.httpMaximumConnectionsPerHost = 2
         return URLSession(configuration: config)
+    }
+
+    static func makeWorkdaySession() -> URLSession {
+        // Ephemeral keeps cookies within this session only (bootstrap + API) without
+        // sharing HTTPCookieStorage.default, which can leave stale keep-alive state.
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        config.waitsForConnectivity = false
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.urlCache = nil
+        config.httpShouldSetCookies = true
+        config.httpCookieAcceptPolicy = .always
+        config.httpMaximumConnectionsPerHost = 1
+        return URLSession(configuration: config)
+    }
+
+    /// Load the public careers HTML page to obtain Cloudflare / session cookies before CXS API calls.
+    static func workdayPageRequest(
+        url: URL,
+        referer: String,
+        requestHost: String,
+        session: URLSession = sharedSession
+    ) async throws -> (Data, HTTPURLResponse) {
+        try requireHTTPS(url)
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue("https://\(requestHost)", forHTTPHeaderField: "Origin")
+        request.setValue(referer, forHTTPHeaderField: "Referer")
+        request.setValue("close", forHTTPHeaderField: "Connection")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw error
+        } catch {
+            throw JobBoardScraperError.decodingFailed(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw JobBoardScraperError.decodingFailed("Invalid response")
+        }
+        if http.statusCode == 401 { throw JobBoardScraperError.requiresAuth }
+        if http.statusCode == 404 { throw JobBoardScraperError.httpError(404) }
+        if http.statusCode == 429 { throw JobBoardScraperError.rateLimited }
+        guard (200...299).contains(http.statusCode) else {
+            throw JobBoardScraperError.httpError(http.statusCode)
+        }
+        return (data, http)
+    }
+
+    /// Workday CXS JSON/HTML request with browser-like headers.
+    static func workdayRequest(
+        url: URL,
+        method: String,
+        body: Data? = nil,
+        referer: String,
+        requestHost: String,
+        session: URLSession = sharedSession
+    ) async throws -> (Data, HTTPURLResponse) {
+        try requireHTTPS(url)
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.setValue("https://\(requestHost)", forHTTPHeaderField: "Origin")
+        request.setValue(referer, forHTTPHeaderField: "Referer")
+        if method == "POST" {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = body
+        }
+        request.setValue("close", forHTTPHeaderField: "Connection")
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw error
+        } catch {
+            throw JobBoardScraperError.decodingFailed(error.localizedDescription)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw JobBoardScraperError.decodingFailed("Invalid response")
+        }
+
+        if http.statusCode == 401 {
+            throw JobBoardScraperError.requiresAuth
+        }
+        if http.statusCode == 406 {
+            throw JobBoardScraperError.httpError(406)
+        }
+        if let responseHost = http.url?.host?.lowercased(),
+           responseHost != requestHost.lowercased(),
+           responseHost.contains("myworkday.com"),
+           !responseHost.contains("myworkdayjobs.com") {
+            throw JobBoardScraperError.requiresAuth
+        }
+        if http.statusCode == 404 { throw JobBoardScraperError.httpError(404) }
+        if http.statusCode == 429 { throw JobBoardScraperError.rateLimited }
+        guard (200...299).contains(http.statusCode) else {
+            throw JobBoardScraperError.httpError(http.statusCode)
+        }
+        return (data, http)
     }
 
     /// Pass an explicit `session` only when a caller manages its own session lifetime.

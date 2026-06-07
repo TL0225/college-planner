@@ -772,6 +772,8 @@ final class CourseCatalog {
     var department: String?
     var lastUpdated: Date
     var isArchived: Bool
+    var catalogStableID: UUID?
+    var provenanceJSON: String?
 
     var university: University?
 
@@ -866,6 +868,10 @@ final class Major {
     var resolvedDepartment: String?
     var resolvedCollege: String?
     var lastUpdated: Date
+    var catalogStableID: UUID?
+    var provenanceJSON: String?
+    var mappingConfidence: Double?
+    var mappingSource: String?
 
     var university: University?
 
@@ -910,6 +916,8 @@ final class CatalogDegreeRequirement {
     var requirementsHash: String?
     var lastScrapedAt: Date?
     var lastUpdated: Date
+    var catalogStableID: UUID?
+    var provenanceJSON: String?
 
     var university: University?
 

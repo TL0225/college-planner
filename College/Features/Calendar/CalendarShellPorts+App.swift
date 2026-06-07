@@ -180,12 +180,29 @@ private final class ToolbarHandlerTokenBox: CalendarToolbarHandlerToken {
     func invalidate() { token.invalidate() }
 }
 
+@MainActor
+final class CalendarShellPortAdapters {
+    let notifications: AppNotificationCenterCalendarAdapter
+    let modalCoordinator: ModalCoordinatorCalendarAdapter
+    let toolbarDispatcher: ToolbarDispatcherCalendarAdapter
+
+    init(
+        appNotifications: AppNotificationCenter,
+        modalCoordinator: ModalCoordinator,
+        toolbarDispatcher: ToolbarDispatcher
+    ) {
+        notifications = AppNotificationCenterCalendarAdapter(center: appNotifications)
+        self.modalCoordinator = ModalCoordinatorCalendarAdapter(coordinator: modalCoordinator)
+        self.toolbarDispatcher = ToolbarDispatcherCalendarAdapter(dispatcher: toolbarDispatcher)
+    }
+}
+
 extension CalendarPersistencePortBootstrap {
     @MainActor
     static func wireShell(container: AppContainer) {
-        CalendarNotificationAccess.notifications = AppNotificationCenterCalendarAdapter(center: container.appNotifications)
-        CalendarModalAccess.coordinator = ModalCoordinatorCalendarAdapter(coordinator: container.modalCoordinator)
-        CalendarToolbarAccess.dispatcher = ToolbarDispatcherCalendarAdapter(dispatcher: container.toolbarDispatcher)
+        CalendarNotificationAccess.notifications = container.calendarShellPorts.notifications
+        CalendarModalAccess.coordinator = container.calendarShellPorts.modalCoordinator
+        CalendarToolbarAccess.dispatcher = container.calendarShellPorts.toolbarDispatcher
         CalendarIntegrationBridge.manager = container.calendarManager
     }
 }

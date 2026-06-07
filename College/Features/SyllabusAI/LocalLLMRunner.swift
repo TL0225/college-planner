@@ -177,6 +177,7 @@ actor LocalLLMRunner {
             }
             cachedModelDirectory = modelPath
             cachedContainer = container
+            await MainActor.run { LLMMemoryLifecycle.shared.touch() }
         } catch {
             // Pre-warm is best-effort; ignore errors silently
         }

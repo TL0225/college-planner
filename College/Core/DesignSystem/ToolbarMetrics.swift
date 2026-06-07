@@ -24,4 +24,34 @@ enum ToolbarMetrics {
 
     static let itemHorizontalPadding: CGFloat = 8
     static let itemSpacing: CGFloat = 12
+
+    static let iconControlSize: CGFloat = 28
+    static let minHitTarget: CGFloat = 44
+    static let iconHitPadding: CGFloat = (minHitTarget - iconControlSize) / 2
+
+    /// Label for a compact toolbar icon (44pt hit target without stretching the toolbar row).
+    @ViewBuilder
+    static func glassIconLabel(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 13, weight: .medium))
+            .frame(width: iconControlSize, height: iconControlSize)
+            .padding(iconHitPadding)
+            .contentShape(Rectangle())
+    }
+}
+
+extension View {
+    /// Borderless toolbar icon chrome: no glass tile, full 44pt hit target on macOS window toolbar.
+    func toolbarIconButtonStyle() -> some View {
+        buttonStyle(.borderless)
+            .controlSize(.small)
+            .frame(minWidth: ToolbarMetrics.minHitTarget, minHeight: ToolbarMetrics.minHitTarget)
+            .contentShape(Rectangle())
+    }
+
+    /// Text/segment controls hosted in the window toolbar.
+    func toolbarSegmentButtonStyle() -> some View {
+        buttonStyle(.plain)
+            .contentShape(Rectangle())
+    }
 }

@@ -15,6 +15,9 @@ extension CatalogRepository {
         let department: String?
         let departmentID: UUID?
         let isArchived: Bool
+        let catalogStableID: UUID?
+        let provenanceJSON: String?
+        let prerequisiteRulesJSON: String?
     }
 
     struct DegreeRequirementImportInput: Sendable {
@@ -36,6 +39,8 @@ extension CatalogRepository {
         let displayTitle: String?
         let trackVariant: String?
         let requirementsHash: String?
+        let catalogStableID: UUID?
+        let provenanceJSON: String?
     }
 
     @discardableResult
@@ -114,6 +119,15 @@ extension CatalogRepository {
             course.department = input.department
             course.isArchived = input.isArchived
             course.lastUpdated = .now
+            if let stableID = input.catalogStableID {
+                course.catalogStableID = stableID
+            }
+            if let provenanceJSON = input.provenanceJSON {
+                course.provenanceJSON = provenanceJSON
+            }
+            if let prerequisiteRulesJSON = input.prerequisiteRulesJSON {
+                course.prerequisiteRulesJSON = prerequisiteRulesJSON
+            }
             if let departmentID = input.departmentID,
                let department = try? fetchDepartment(id: departmentID) {
                 course.departmentEntity = department
@@ -184,6 +198,12 @@ extension CatalogRepository {
             entity.requirementsHash = input.requirementsHash
             entity.lastScrapedAt = .now
             entity.lastUpdated = .now
+            if let stableID = input.catalogStableID {
+                entity.catalogStableID = stableID
+            }
+            if let provenanceJSON = input.provenanceJSON {
+                entity.provenanceJSON = provenanceJSON
+            }
         }
 
         ModelMergeCoalescer.scheduleSave(context)

@@ -18,6 +18,9 @@ public final class CalendarSceneState {
     public var toolbarSearchResults: [CalendarToolbarSearchMatch] = []
     public var toolbarSearchExpanded: Bool = false
 
+    /// Live handler installed by `CalendarView` while mounted (avoids stale struct captures in `ToolbarDispatcher`).
+    public var toolbarHandler: (@MainActor (CalendarToolbarAction) -> Void)?
+
     public init() {}
 
     public var toolbarProjection: ToolbarProjection {

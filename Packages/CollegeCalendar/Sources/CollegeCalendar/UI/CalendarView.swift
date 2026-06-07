@@ -646,13 +646,20 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
         scheduleCacheRebuild(delay: 0)
         prewarmEventEntitiesIfNeeded()
         syncToolbarState()
-        toolbarHandlerToken?.invalidate()
-        toolbarHandlerToken = CalendarToolbarAccess.dispatcher?.registerCalendarHandler { [self] action in
-            handleCalendarToolbarAction(action)
-        }
+        registerCalendarToolbarHandler()
         guard !hasAnimatedIn else { return }
         withAnimation(motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88)) {
             hasAnimatedIn = true
+        }
+    }
+
+    private func registerCalendarToolbarHandler() {
+        toolbarHandlerToken?.invalidate()
+        calendarSceneState?.toolbarHandler = { [self] action in
+            handleCalendarToolbarAction(action)
+        }
+        toolbarHandlerToken = CalendarToolbarAccess.dispatcher?.registerCalendarHandler { action in
+            calendarSceneState?.toolbarHandler?(action)
         }
     }
 
@@ -710,6 +717,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 cancelCalendarBackgroundTasks()
                 toolbarHandlerToken?.invalidate()
                 toolbarHandlerToken = nil
+                calendarSceneState?.toolbarHandler = nil
             }
     }
 

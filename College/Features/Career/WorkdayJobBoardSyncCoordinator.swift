@@ -148,12 +148,28 @@ final class WorkdayJobBoardSyncCoordinator: ObservableObject {
             )
         } catch let error as JobBoardScraperError {
             WorkdayRefreshScheduler.recordLastAttempted(slug: slug)
-            updateCompanyState(slug: slug, status: .error(error.asWorkdayError, at: Date()))
+            let mapped = error.asWorkdayError
+            DebugLogger.shared.log(
+                "Workday scrape failed for \(company.displayName): \(mapped.displayMessage)",
+                category: .scraper,
+                level: .error
+            )
+            updateCompanyState(slug: slug, status: .error(mapped, at: Date()))
         } catch let error as WorkdayScraperError {
             WorkdayRefreshScheduler.recordLastAttempted(slug: slug)
+            DebugLogger.shared.log(
+                "Workday scrape failed for \(company.displayName): \(error.displayMessage)",
+                category: .scraper,
+                level: .error
+            )
             updateCompanyState(slug: slug, status: .error(error, at: Date()))
         } catch {
             WorkdayRefreshScheduler.recordLastAttempted(slug: slug)
+            DebugLogger.shared.log(
+                "Workday scrape failed for \(company.displayName): \(error.localizedDescription)",
+                category: .scraper,
+                level: .error
+            )
             updateCompanyState(slug: slug, status: .error(.decodingFailed(error.localizedDescription), at: Date()))
         }
     }

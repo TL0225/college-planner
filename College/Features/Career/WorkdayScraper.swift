@@ -12,26 +12,34 @@ actor WorkdayScraper {
 
     private let pageSize = 20
     private let maxRetries = 4
-    private let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15"
 
-    private let session: URLSession
+    private var bootstrappedHosts: Set<String> = []
 
-    private init() {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
-        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        config.urlCache = nil
-        config.httpShouldSetCookies = false
-        config.httpCookieAcceptPolicy = .never
-        session = URLSession(configuration: config)
-    }
+    private init() {}
 
     // MARK: - Public API
 
+    /// Strips query/fragment, `/job/...` detail tails, and trailing `/jobs` (API path, not the board home URL).
+    nonisolated static func normalizeCareersURLString(_ urlString: String) -> String {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed) else { return trimmed }
+        components.fragment = nil
+        components.query = nil
+
+        var segments = components.path.split(separator: "/").map(String.init)
+        if let jobIndex = segments.firstIndex(of: "job"), jobIndex > 0 {
+            segments = Array(segments.prefix(jobIndex))
+        }
+        if segments.last?.caseInsensitiveCompare("jobs") == .orderedSame {
+            segments.removeLast()
+        }
+        components.path = segments.isEmpty ? "" : "/" + segments.joined(separator: "/")
+        return components.url?.absoluteString ?? trimmed
+    }
+
     nonisolated static func deriveAPIContext(careersURLString: String) -> WorkdayAPIContext? {
-        let trimmed = careersURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let careersURL = URL(string: trimmed),
+        let normalized = normalizeCareersURLString(careersURLString)
+        guard let careersURL = URL(string: normalized),
               let host = careersURL.host?.lowercased(),
               host.contains("myworkdayjobs.com")
         else { return nil }
@@ -52,9 +60,25 @@ actor WorkdayScraper {
         guard boardIndex < pathComponents.count else { return nil }
         let board = pathComponents[boardIndex]
 
+        return makeAPIContext(tenant: tenant, board: board, host: host, careersURL: careersURL)
+    }
+
+    nonisolated static func parseEmbeddedSiteConfig(from html: String) -> (tenant: String, siteId: String)? {
+        guard let tenant = firstRegexCapture(in: html, pattern: #"tenant:\s*"([^"]+)""#),
+              let siteId = firstRegexCapture(in: html, pattern: #"siteId:\s*"([^"]+)""#),
+              !tenant.isEmpty, !siteId.isEmpty
+        else { return nil }
+        return (tenant, siteId)
+    }
+
+    nonisolated private static func makeAPIContext(
+        tenant: String,
+        board: String,
+        host: String,
+        careersURL: URL
+    ) -> WorkdayAPIContext? {
         let apiBaseString = "https://\(host)/wday/cxs/\(tenant)/\(board)/"
         guard let apiBase = URL(string: apiBaseString) else { return nil }
-
         return WorkdayAPIContext(
             tenant: tenant,
             board: board,
@@ -64,26 +88,107 @@ actor WorkdayScraper {
         )
     }
 
+    nonisolated private static func firstRegexCapture(in text: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: text)
+        else { return nil }
+        return String(text[range])
+    }
+
+    nonisolated static func discoverWorkdayBoardURL(from html: String) -> String? {
+        let pattern = #"https://[a-z0-9.-]+\.myworkdayjobs\.com(?:/[a-z]{2}(?:-[A-Za-z]{2,4})?(?:-x-[a-z]+)?)?/[^"'\\s<>]+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let urlRange = Range(match.range, in: html)
+        else { return nil }
+        let raw = String(html[urlRange])
+        let normalized = normalizeCareersURLString(raw)
+        if let context = deriveAPIContext(careersURLString: normalized),
+           let canonical = canonicalCareersURL(
+               host: context.host,
+               board: context.board,
+               localePrefix: localePrefix(in: context.careersURL)
+           ) {
+            return canonical.absoluteString
+        }
+        return normalized
+    }
+
+    nonisolated static func canonicalCareersURL(host: String, board: String, localePrefix: String?) -> URL? {
+        var path = ""
+        if let localePrefix, !localePrefix.isEmpty {
+            path += "/\(localePrefix)"
+        }
+        path += "/\(board)"
+        return URL(string: "https://\(host)\(path)")
+    }
+
+    nonisolated static func localePrefix(in careersURL: URL) -> String? {
+        let pathComponents = careersURL.path.split(separator: "/").map(String.init)
+        guard let first = pathComponents.first else { return nil }
+        let localePattern = #"^[a-z]{2,3}(-[A-Za-z]{2,4})?(-x-[a-z]+)?$"#
+        guard let localeRegex = try? NSRegularExpression(pattern: localePattern),
+              localeRegex.firstMatch(in: first, range: NSRange(first.startIndex..., in: first)) != nil
+        else { return nil }
+        return first
+    }
+
+    func resolveAPIContext(careersURLString: String) async throws -> WorkdayAPIContext {
+        let normalized = Self.normalizeCareersURLString(careersURLString)
+        if let context = Self.deriveAPIContext(careersURLString: normalized) {
+            return try await refineContextFromCareersPage(context)
+        }
+        return try await deriveAPIContextFromCareersPage(urlString: normalized)
+    }
+
     func scrapeCompanyListings(
         entry: WorkdayCompanyConfigEntry,
         reportProgress: (@Sendable (Int, Int?) -> Void)? = nil
     ) async throws -> [WorkdayScrapedJob] {
-        guard let context = Self.deriveAPIContext(careersURLString: entry.careersURL) else {
-            throw WorkdayScraperError.badURL
+        let normalizedURL = Self.normalizeCareersURLString(entry.careersURL)
+        var context = try await resolveAPIContext(careersURLString: normalizedURL)
+
+        let scrape: () async throws -> [WorkdayScrapedJob] = {
+            try await self.bootstrapCareersSession(context: context)
+            let (jobs, facets) = try await self.fetchAllListings(
+                context: context,
+                appliedFacets: [:],
+                reportProgress: reportProgress
+            )
+            return await self.applyFacetTags(to: jobs, facets: facets, context: context)
         }
-        let (jobs, facets) = try await fetchAllListings(
-            context: context,
-            appliedFacets: [:],
-            reportProgress: reportProgress
-        )
-        return try await applyFacetTags(to: jobs, facets: facets, context: context)
+
+        do {
+            return try await scrape()
+        } catch let error as WorkdayScraperError {
+            if case .decodingFailed = error,
+               let fallback = try? await deriveAPIContextFromCareersPage(urlString: normalizedURL),
+               fallback != context {
+                context = fallback
+                return try await scrape()
+            }
+            if case .httpError(404) = error,
+               let fallback = try? await deriveAPIContextFromCareersPage(urlString: normalizedURL) {
+                context = fallback
+                return try await scrape()
+            }
+            throw error
+        }
     }
 
     func scrapeJobDetail(context: WorkdayAPIContext, externalPath: String) async throws -> WorkdayScrapedDetail {
         guard let url = context.detailURL(externalPath: externalPath) else {
             throw WorkdayScraperError.badURL
         }
-        let (data, _) = try await performRequest(url: url, method: "GET", body: nil, context: context)
+        let (data, _) = try await performRequest(
+            url: url,
+            method: "GET",
+            body: nil,
+            referer: context.careersURL.absoluteString,
+            requestHost: context.host
+        )
         do {
             let envelope = try JSONDecoder().decode(WorkdayJobDetailEnvelope.self, from: data)
             return mapDetail(envelope, externalPath: externalPath)
@@ -93,6 +198,23 @@ actor WorkdayScraper {
     }
 
     // MARK: - List pagination
+
+    private func bootstrapCareersSession(context: WorkdayAPIContext, force: Bool = false) async throws {
+        guard force || !bootstrappedHosts.contains(context.host) else { return }
+        let pageURL = careersPageURL(for: context.careersURL)
+        _ = try await performPageRequest(
+            url: pageURL,
+            referer: pageURL.absoluteString,
+            requestHost: context.host
+        )
+        bootstrappedHosts.insert(context.host)
+    }
+
+    private func recoverWorkdaySession(context: WorkdayAPIContext) async throws {
+        JobBoardHTTP.resetWorkdaySession()
+        bootstrappedHosts.remove(context.host)
+        try await bootstrapCareersSession(context: context, force: true)
+    }
 
     private func fetchAllListings(
         context: WorkdayAPIContext,
@@ -108,10 +230,10 @@ actor WorkdayScraper {
 
         while true {
             let page = try await fetchListPage(context: context, offset: offset, appliedFacets: appliedFacets)
-            if expectedTotal == nil {
+            if expectedTotal == nil || expectedTotal == 0 {
                 if let cap = expectedTotalCap, cap > 0 {
                     expectedTotal = cap
-                } else {
+                } else if page.total > 0 {
                     expectedTotal = page.total
                 }
             }
@@ -132,11 +254,12 @@ actor WorkdayScraper {
     }
 
     /// Tags each posting using Workday list facets (`workerSubType` = Job Type, `timeType` = Time Type).
+    /// Facet enrichment is best-effort — failures must not discard the primary listing scrape.
     private func applyFacetTags(
         to jobs: [WorkdayScrapedJob],
         facets: [WorkdayFacet],
         context: WorkdayAPIContext
-    ) async throws -> [WorkdayScrapedJob] {
+    ) async -> [WorkdayScrapedJob] {
         var jobsByPath = Dictionary(uniqueKeysWithValues: jobs.map { ($0.externalPath, $0) })
         let taggableParameters = ["workerSubType", "timeType"]
 
@@ -147,24 +270,36 @@ actor WorkdayScraper {
             else { continue }
 
             for value in values {
-                let (taggedJobs, _) = try await fetchAllListings(
-                    context: context,
-                    appliedFacets: [facetParameter: [value.id]],
-                    expectedTotalCap: value.count
-                )
-                for job in taggedJobs {
-                    guard var existing = jobsByPath[job.externalPath] else { continue }
-                    switch facetParameter {
-                    case "workerSubType":
-                        existing.jobTypeText = value.descriptor
-                    case "timeType":
-                        existing.timeType = value.descriptor
-                    default:
-                        break
-                    }
-                    jobsByPath[job.externalPath] = existing
+                if Self.shouldApplyFacetTagInMemory(value: value, jobCount: jobs.count) {
+                    Self.applyFacetTagInMemory(
+                        value: value,
+                        facetParameter: facetParameter,
+                        jobsByPath: &jobsByPath
+                    )
+                    continue
                 }
-                try await randomDelay()
+                do {
+                    let (taggedJobs, _) = try await fetchAllListings(
+                        context: context,
+                        appliedFacets: [facetParameter: [value.id]],
+                        expectedTotalCap: value.count
+                    )
+                    for job in taggedJobs {
+                        guard var existing = jobsByPath[job.externalPath] else { continue }
+                        switch facetParameter {
+                        case "workerSubType":
+                            existing.jobTypeText = value.descriptor
+                        case "timeType":
+                            existing.timeType = value.descriptor
+                        default:
+                            break
+                        }
+                        jobsByPath[job.externalPath] = existing
+                    }
+                    try await randomDelay()
+                } catch {
+                    continue
+                }
             }
         }
 
@@ -178,6 +313,23 @@ actor WorkdayScraper {
         offset: Int,
         appliedFacets: [String: [String]] = [:]
     ) async throws -> WorkdayJobListResponse {
+        do {
+            return try await postListPage(context: context, offset: offset, appliedFacets: appliedFacets)
+        } catch let error as WorkdayScraperError {
+            guard case .network = error else { throw error }
+            try await recoverWorkdaySession(context: context)
+            return try await postListPage(context: context, offset: offset, appliedFacets: appliedFacets)
+        } catch let error as URLError {
+            try await recoverWorkdaySession(context: context)
+            return try await postListPage(context: context, offset: offset, appliedFacets: appliedFacets)
+        }
+    }
+
+    private func postListPage(
+        context: WorkdayAPIContext,
+        offset: Int,
+        appliedFacets: [String: [String]]
+    ) async throws -> WorkdayJobListResponse {
         let body: [String: Any] = [
             "appliedFacets": appliedFacets,
             "limit": pageSize,
@@ -189,13 +341,93 @@ actor WorkdayScraper {
             url: context.listJobsURL,
             method: "POST",
             body: bodyData,
-            context: context
+            referer: context.careersURL.absoluteString,
+            requestHost: context.host
         )
         do {
-            return try JSONDecoder().decode(WorkdayJobListResponse.self, from: data)
+            return try WorkdayJobListResponseDecoder.decode(from: data)
+        } catch let error as WorkdayScraperError {
+            throw error
         } catch {
             throw WorkdayScraperError.decodingFailed(error.localizedDescription)
         }
+    }
+
+    private func refineContextFromCareersPage(_ context: WorkdayAPIContext) async throws -> WorkdayAPIContext {
+        let pageURL = careersPageURL(for: context.careersURL)
+        let (data, _) = try await performPageRequest(
+            url: pageURL,
+            referer: pageURL.absoluteString,
+            requestHost: context.host
+        )
+        bootstrappedHosts.insert(context.host)
+        guard let html = String(data: data, encoding: .utf8),
+              let config = Self.parseEmbeddedSiteConfig(from: html),
+              let refined = Self.makeAPIContext(
+                tenant: config.tenant,
+                board: config.siteId,
+                host: context.host,
+                careersURL: Self.canonicalCareersURL(
+                    host: context.host,
+                    board: config.siteId,
+                    localePrefix: Self.localePrefix(in: context.careersURL)
+                ) ?? context.careersURL
+              )
+        else {
+            return context
+        }
+        return refined
+    }
+
+    private func deriveAPIContextFromCareersPage(urlString: String) async throws -> WorkdayAPIContext {
+        let normalized = Self.normalizeCareersURLString(urlString)
+        guard let url = URL(string: normalized),
+              let host = url.host?.lowercased()
+        else { throw WorkdayScraperError.badURL }
+
+        if host.contains("myworkdayjobs.com") {
+            let fetchURL = careersPageURL(for: url)
+            let (data, _) = try await performPageRequest(
+                url: fetchURL,
+                referer: fetchURL.absoluteString,
+                requestHost: host
+            )
+            bootstrappedHosts.insert(host)
+            guard let html = String(data: data, encoding: .utf8),
+                  let config = Self.parseEmbeddedSiteConfig(from: html),
+                  let context = Self.makeAPIContext(
+                    tenant: config.tenant,
+                    board: config.siteId,
+                    host: host,
+                    careersURL: Self.canonicalCareersURL(
+                        host: host,
+                        board: config.siteId,
+                        localePrefix: Self.localePrefix(in: fetchURL)
+                    ) ?? fetchURL
+                  )
+            else {
+                throw WorkdayScraperError.badURL
+            }
+            return context
+        }
+
+        let (data, _) = try await JobBoardHTTP.get(url: url)
+        guard let html = String(data: data, encoding: .utf8),
+              let discovered = Self.discoverWorkdayBoardURL(from: html)
+        else {
+            throw WorkdayScraperError.badURL
+        }
+        return try await resolveAPIContext(careersURLString: discovered)
+    }
+
+    private func careersPageURL(for url: URL) -> URL {
+        if let context = Self.deriveAPIContext(careersURLString: url.absoluteString) {
+            return context.careersURL
+        }
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.query = nil
+        components?.fragment = nil
+        return components?.url ?? url
     }
 
     private func mapDetail(_ envelope: WorkdayJobDetailEnvelope, externalPath: String) -> WorkdayScrapedDetail {
@@ -234,102 +466,162 @@ actor WorkdayScraper {
 
     // MARK: - HTTP
 
-    private func performRequest(
+    private func performPageRequest(
         url: URL,
-        method: String,
-        body: Data?,
-        context: WorkdayAPIContext
+        referer: String,
+        requestHost: String
     ) async throws -> (Data, HTTPURLResponse) {
         var attempt = 0
         var lastError: Error?
 
         while attempt < maxRetries {
             do {
-                return try await singleRequest(url: url, method: method, body: body, requestHost: context.host)
-            } catch let error as WorkdayScraperError {
-                switch error {
+                return try await JobBoardHTTP.workdayPageRequest(
+                    url: url,
+                    referer: referer,
+                    requestHost: requestHost
+                )
+            } catch let error as JobBoardScraperError {
+                let mapped = error.asWorkdayError
+                switch mapped {
                 case .httpError(let code) where code == 429:
                     attempt += 1
                     try await backoff(attempt: attempt)
-                    lastError = error
+                    lastError = mapped
                 case .httpError(let code) where (500...599).contains(code):
                     attempt += 1
                     try await backoff(attempt: attempt)
-                    lastError = error
-                case .httpError(406):
-                    // 406 = CDN rejection; no point retrying with the same request.
-                    throw WorkdayScraperError.httpError(406)
+                    lastError = mapped
                 default:
-                    throw error
+                    throw mapped
+                }
+            } catch let error as URLError {
+                JobBoardHTTP.resetWorkdaySession()
+                bootstrappedHosts.remove(requestHost)
+                attempt += 1
+                lastError = WorkdayScraperError.network(error.localizedDescription)
+                if attempt < maxRetries {
+                    try await backoff(attempt: attempt)
                 }
             } catch {
-                throw error
+                if let urlError = error as? URLError {
+                    JobBoardHTTP.resetWorkdaySession()
+                    bootstrappedHosts.remove(requestHost)
+                    throw WorkdayScraperError.network(urlError.localizedDescription)
+                }
+                throw WorkdayScraperError.decodingFailed(error.localizedDescription)
+            }
+        }
+
+        if let last = lastError as? WorkdayScraperError, case .network = last {
+            throw last
+        }
+        throw lastError.map { WorkdayScraperError.network($0.localizedDescription) }
+            ?? WorkdayScraperError.rateLimited
+    }
+
+    private func performRequest(
+        url: URL,
+        method: String,
+        body: Data?,
+        referer: String,
+        requestHost: String
+    ) async throws -> (Data, HTTPURLResponse) {
+        var attempt = 0
+        var lastError: Error?
+
+        while attempt < maxRetries {
+            do {
+                return try await JobBoardHTTP.workdayRequest(
+                    url: url,
+                    method: method,
+                    body: body,
+                    referer: referer,
+                    requestHost: requestHost
+                )
+            } catch let error as JobBoardScraperError {
+                let mapped = error.asWorkdayError
+                switch mapped {
+                case .httpError(let code) where code == 429:
+                    attempt += 1
+                    try await backoff(attempt: attempt)
+                    lastError = mapped
+                case .httpError(let code) where (500...599).contains(code):
+                    attempt += 1
+                    try await backoff(attempt: attempt)
+                    lastError = mapped
+                case .httpError(406):
+                    throw WorkdayScraperError.httpError(406)
+                default:
+                    throw mapped
+                }
+            } catch let error as URLError {
+                JobBoardHTTP.resetWorkdaySession()
+                bootstrappedHosts.remove(requestHost)
+                attempt += 1
+                lastError = WorkdayScraperError.network(error.localizedDescription)
+                if attempt < maxRetries {
+                    try await backoff(attempt: attempt)
+                }
+            } catch {
+                if let urlError = error as? URLError {
+                    JobBoardHTTP.resetWorkdaySession()
+                    bootstrappedHosts.remove(requestHost)
+                    throw WorkdayScraperError.network(urlError.localizedDescription)
+                }
+                throw WorkdayScraperError.decodingFailed(error.localizedDescription)
             }
         }
 
         if let last = lastError as? WorkdayScraperError, case .httpError(429) = last {
             throw WorkdayScraperError.rateLimited
         }
-        throw lastError ?? WorkdayScraperError.rateLimited
-    }
-
-    private func singleRequest(
-        url: URL,
-        method: String,
-        body: Data?,
-        requestHost: String
-    ) async throws -> (Data, HTTPURLResponse) {
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        // Cloudflare-protected Workday boards return 406 if Origin/Referer are absent —
-        // they expect requests originating from a browser on the same host.
-        let origin = "https://\(requestHost)"
-        request.setValue(origin, forHTTPHeaderField: "Origin")
-        request.setValue(origin + "/", forHTTPHeaderField: "Referer")
-        if method == "POST" {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = body
+        if let last = lastError as? WorkdayScraperError, case .network = last {
+            throw last
         }
-
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw WorkdayScraperError.decodingFailed("Non-HTTP response")
-        }
-
-        if http.statusCode == 401 {
-            throw WorkdayScraperError.requiresAuth
-        }
-
-        // 406 from Workday/Cloudflare typically means the request was rejected at the
-        // CDN layer (missing headers, wrong path, or bot-detection).  Treat as a
-        // temporary server error so the coordinator marks the attempt and backs off
-        // rather than surfacing an unhelpful "HTTP error 406".
-        if http.statusCode == 406 {
-            throw WorkdayScraperError.httpError(406)
-        }
-
-        if let responseHost = http.url?.host?.lowercased(),
-           responseHost != requestHost.lowercased() {
-            throw WorkdayScraperError.requiresAuth
-        }
-
-        guard (200...299).contains(http.statusCode) else {
-            throw WorkdayScraperError.httpError(http.statusCode)
-        }
-
-        return (data, http)
+        throw lastError.map { WorkdayScraperError.network($0.localizedDescription) }
+            ?? WorkdayScraperError.rateLimited
     }
 
     private func randomDelay() async throws {
+        guard !CollegeTestRuntime.isUnitTestProcess else { return }
         let ms = UInt64.random(in: 1_000...2_000)
-        try await Task.sleep(nanoseconds: ms * 1_000_000)
+        try await Task.sleep(nanoseconds: ms * 1_000_000_000)
     }
 
     private func backoff(attempt: Int) async throws {
         let seconds = min(pow(2.0, Double(attempt)), 30.0)
         try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+    }
+}
+
+// MARK: - Facet tagging helpers
+
+extension WorkdayScraper {
+    /// When a facet bucket covers the whole board, tag in memory instead of re-paginating the API.
+    static func shouldApplyFacetTagInMemory(value: WorkdayFacetValue, jobCount: Int) -> Bool {
+        guard jobCount > 0 else { return false }
+        guard let count = value.count, count == jobCount else { return false }
+        return true
+    }
+
+    static func applyFacetTagInMemory(
+        value: WorkdayFacetValue,
+        facetParameter: String,
+        jobsByPath: inout [String: WorkdayScrapedJob]
+    ) {
+        for path in jobsByPath.keys {
+            guard var existing = jobsByPath[path] else { continue }
+            switch facetParameter {
+            case "workerSubType":
+                existing.jobTypeText = value.descriptor
+            case "timeType":
+                existing.timeType = value.descriptor
+            default:
+                break
+            }
+            jobsByPath[path] = existing
+        }
     }
 }
 
@@ -370,9 +662,9 @@ extension WorkdayScraper: JobBoardScraper {
         request: JobDetailScrapeRequest,
         company: WorkdayCompanyConfigEntry
     ) async throws -> ScrapedJobDetail {
-        guard let context = Self.deriveAPIContext(careersURLString: company.careersURL),
-              let path = request.externalPath, !path.isEmpty
-        else { throw JobBoardScraperError.badURL }
+        let normalized = Self.normalizeCareersURLString(company.careersURL)
+        let context = try await resolveAPIContext(careersURLString: normalized)
+        guard let path = request.externalPath, !path.isEmpty else { throw JobBoardScraperError.badURL }
         let detail = try await scrapeJobDetail(context: context, externalPath: path)
         return ScrapedJobDetail(
             title: detail.title,

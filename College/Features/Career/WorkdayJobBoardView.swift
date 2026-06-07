@@ -30,6 +30,14 @@ struct WorkdayJobBoardView: View {
         return companiesStore.enabledCompanies.first { $0.id == selectedCompanyID }
     }
 
+    private var isJobDetailPresented: Bool {
+        guard let company = selectedCompany,
+              let path = selectedPostingPath,
+              WorkdayReadBridge.posting(companySlug: company.normalizedSlug, externalPath: path) != nil
+        else { return false }
+        return true
+    }
+
     var body: some View {
         Group {
             if companiesStore.enabledCount == 0 {
@@ -67,19 +75,37 @@ struct WorkdayJobBoardView: View {
                     maxWidth: WorkdayOpeningsLayout.companySidebarMaxWidth
                 )
 
-            openingsContentColumn
-                .frame(
-                    minWidth: WorkdayOpeningsLayout.jobListMinWidth,
-                    idealWidth: WorkdayOpeningsLayout.jobListIdealWidth,
-                    maxWidth: .infinity
-                )
-
-            openingsDetailColumn
-                .frame(
-                    minWidth: WorkdayOpeningsLayout.detailMinWidth,
-                    idealWidth: WorkdayOpeningsLayout.detailIdealWidth,
-                    maxWidth: .infinity
-                )
+            CareerTrailingInspectorLayout(
+                isInspectorPresented: isJobDetailPresented,
+                inspectorWidth: WorkdayOpeningsLayout.detailIdealWidth,
+                reduceMotion: motionReduced
+            ) {
+                openingsContentColumn
+                    .frame(
+                        minWidth: WorkdayOpeningsLayout.jobListMinWidth,
+                        idealWidth: WorkdayOpeningsLayout.jobListIdealWidth,
+                        maxWidth: .infinity
+                    )
+            } inspector: {
+                if let company = selectedCompany,
+                   let path = selectedPostingPath,
+                   let posting = WorkdayReadBridge.posting(
+                        companySlug: company.normalizedSlug,
+                        externalPath: path
+                    ) {
+                    WorkdayJobDetailPane(
+                        posting: posting,
+                        company: company,
+                        onClose: { selectedPostingPath = nil },
+                        onInterested: { app in
+                            NotificationCenter.default.post(name: .careerOpenBoardJob, object: app.objectID)
+                        },
+                        onNavigateToBoard: onNavigateToBoard,
+                        embeddedInNavigationSplit: true
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -96,46 +122,6 @@ struct WorkdayJobBoardView: View {
         } else {
             selectCompanyPlaceholder
         }
-    }
-
-    @ViewBuilder
-    private var openingsDetailColumn: some View {
-        if let company = selectedCompany,
-           let path = selectedPostingPath,
-           let posting = WorkdayReadBridge.posting(
-                companySlug: company.normalizedSlug,
-                externalPath: path
-            ) {
-            WorkdayJobDetailPane(
-                posting: posting,
-                company: company,
-                onClose: { selectedPostingPath = nil },
-                onInterested: { app in
-                    NotificationCenter.default.post(name: .careerOpenBoardJob, object: app.objectID)
-                },
-                onNavigateToBoard: onNavigateToBoard,
-                embeddedInNavigationSplit: true
-            )
-            } else {
-            selectJobPlaceholder
-        }
-    }
-
-    private var selectJobPlaceholder: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "doc.text")
-                .font(DesignSystem.Fonts.main(size: 32))
-                .foregroundStyle(DesignSystem.Colors.textLight)
-            Text("Select a job")
-                .font(.title3)
-            Text("Pick an opening from the list to read the full description.")
-                .font(.body)
-                .foregroundStyle(DesignSystem.Colors.textLight)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 320)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DesignSystem.Colors.surface)
     }
 
     private var companySidebarColumn: some View {

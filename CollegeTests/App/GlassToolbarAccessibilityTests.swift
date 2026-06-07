@@ -1,6 +1,6 @@
 // GlassToolbarAccessibilityTests.swift
-// Feature: App / Toolbar / Glass
-// Purpose: Accessibility contract for public glass controls.
+// Feature: App / Toolbar
+// Purpose: Accessibility contract for window toolbar controls.
 
 import XCTest
 @testable import College
@@ -13,47 +13,7 @@ final class GlassToolbarAccessibilityTests: XCTestCase {
         .deletingLastPathComponent() // repo root
 
     func testMinHitTargetMeetsAccessibilityFloor() {
-        let theme = TahoeGlassStyle().theme
-        XCTAssertGreaterThanOrEqual(theme.minHitTarget, 44)
-    }
-
-    func testPublicGlassControlsDeclareAccessibilityLabels() throws {
-        let controlsFile = repoRoot
-            .appendingPathComponent("College/App/Toolbar/Glass/GlassToolbarControls.swift")
-        let source = try String(contentsOf: controlsFile, encoding: .utf8)
-
-        let publicControls = [
-            "StaticToolbarGlassButton",
-            "GlassToolbarCircleButton",
-            "GlassSearchFieldView",
-            "GlassToolbarAddMenuButton",
-            "GlassToolbarProfileAvatarButton",
-        ]
-
-        for control in publicControls {
-            guard let range = source.range(of: "struct \(control)") else {
-                XCTFail("Missing public control \(control)")
-                continue
-            }
-            let tail = source[range.lowerBound...]
-            guard let bodyRange = tail.range(of: "var body: some View") else {
-                XCTFail("Missing body for \(control)")
-                continue
-            }
-            let body = tail[bodyRange.lowerBound...].prefix(3_000)
-            XCTAssertTrue(
-                body.contains(".accessibilityLabel"),
-                "\(control) must declare accessibilityLabel"
-            )
-            XCTAssertTrue(
-                body.contains(".accessibilityIdentifier") || body.contains("accessibilityIdentifier:"),
-                "\(control) must declare accessibilityIdentifier"
-            )
-            XCTAssertTrue(
-                body.contains("minHitTarget"),
-                "\(control) must honor theme.minHitTarget"
-            )
-        }
+        XCTAssertGreaterThanOrEqual(ToolbarMetrics.minHitTarget, 44)
     }
 
     func testCalendarToolbarChromeUsesStableIdentifiers() throws {
@@ -62,5 +22,20 @@ final class GlassToolbarAccessibilityTests: XCTestCase {
         XCTAssertTrue(source.contains("toolbar.calendar.previous"))
         XCTAssertTrue(source.contains("toolbar.calendar.next"))
         XCTAssertTrue(source.contains("toolbar.calendar.sidebarToggle"))
+    }
+
+    func testAcademicsSidebarToggleDispatchesOnly() throws {
+        let viewsFile = repoRoot.appendingPathComponent("College/App/Toolbar/AppToolbarViews.swift")
+        let source = try String(contentsOf: viewsFile, encoding: .utf8)
+        guard let range = source.range(of: "struct AcademicsToolbarSidebarToggleView") else {
+            return XCTFail("Missing AcademicsToolbarSidebarToggleView")
+        }
+        let tail = source[range.lowerBound...]
+        guard let endRange = tail.range(of: "struct AcademicsToolbarAddProfileButton") else {
+            return XCTFail("Missing AcademicsToolbarAddProfileButton boundary")
+        }
+        let body = tail[..<endRange.lowerBound]
+        XCTAssertTrue(body.contains("dispatcher.dispatch(.academics(.statsSidebarToggle))"))
+        XCTAssertFalse(body.contains("statsSidebarShown.toggle()"))
     }
 }

@@ -359,6 +359,20 @@ enum IPEDSInstitutionIndex {
     }
 }
 
+// MARK: - External catalog references (transfer / articulation; Tier 3 population)
+
+nonisolated struct ExternalReference: Codable, Hashable, Sendable {
+    let system: String
+    let externalID: String
+    let url: String?
+
+    init(system: String, externalID: String, url: String? = nil) {
+        self.system = system
+        self.externalID = externalID
+        self.url = url
+    }
+}
+
 // MARK: - Catalog Course
 
 nonisolated struct CatalogCourse: Codable, Identifiable, Hashable, Sendable {
@@ -374,6 +388,7 @@ nonisolated struct CatalogCourse: Codable, Identifiable, Hashable, Sendable {
     let typicallyOffered: [String]?
     let catalogCoid: String?
     let previewDetailURL: String?
+    let externalReferences: [ExternalReference]
 
     enum CodingKeys: String, CodingKey {
         case id, courseCode = "course_code"
@@ -382,6 +397,7 @@ nonisolated struct CatalogCourse: Codable, Identifiable, Hashable, Sendable {
         case typicallyOffered = "typically_offered"
         case catalogCoid
         case previewDetailURL
+        case externalReferences = "external_references"
     }
 
     // Manual initializer for programmatic creation
@@ -397,7 +413,8 @@ nonisolated struct CatalogCourse: Codable, Identifiable, Hashable, Sendable {
         corequisites: [String]? = nil,
         typicallyOffered: [String]? = nil,
         catalogCoid: String? = nil,
-        previewDetailURL: String? = nil
+        previewDetailURL: String? = nil,
+        externalReferences: [ExternalReference] = []
     ) {
         self.id = id
         self.courseCode = courseCode
@@ -411,6 +428,7 @@ nonisolated struct CatalogCourse: Codable, Identifiable, Hashable, Sendable {
         self.typicallyOffered = typicallyOffered
         self.catalogCoid = catalogCoid
         self.previewDetailURL = previewDetailURL
+        self.externalReferences = externalReferences
     }
 
     init(from decoder: Decoder) throws {
@@ -427,6 +445,7 @@ nonisolated struct CatalogCourse: Codable, Identifiable, Hashable, Sendable {
         typicallyOffered = try? container.decode([String].self, forKey: .typicallyOffered)
         catalogCoid = try? container.decode(String.self, forKey: .catalogCoid)
         previewDetailURL = try? container.decode(String.self, forKey: .previewDetailURL)
+        externalReferences = (try? container.decode([ExternalReference].self, forKey: .externalReferences)) ?? []
     }
 }
 

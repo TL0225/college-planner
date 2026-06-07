@@ -36,6 +36,34 @@ enum CatalogReviewQueue {
         let reason: String
         let confidence: Double?
         let createdAt: Date
+        let severity: CatalogReviewSeverity
+        let snapshotID: UUID?
+
+        init(
+            schoolID: String,
+            reason: String,
+            confidence: Double? = nil,
+            createdAt: Date = Date(),
+            severity: CatalogReviewSeverity = .warning,
+            snapshotID: UUID? = nil
+        ) {
+            self.schoolID = schoolID
+            self.reason = reason
+            self.confidence = confidence
+            self.createdAt = createdAt
+            self.severity = severity
+            self.snapshotID = snapshotID
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            schoolID = try container.decode(String.self, forKey: .schoolID)
+            reason = try container.decode(String.self, forKey: .reason)
+            confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
+            createdAt = try container.decode(Date.self, forKey: .createdAt)
+            severity = try container.decodeIfPresent(CatalogReviewSeverity.self, forKey: .severity) ?? .warning
+            snapshotID = try container.decodeIfPresent(UUID.self, forKey: .snapshotID)
+        }
     }
 
     private static let key = "catalog.review.queue.v1"

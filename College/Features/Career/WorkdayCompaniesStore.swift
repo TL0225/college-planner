@@ -54,7 +54,7 @@ final class WorkdayCompaniesStore {
         platform: JobBoardPlatform = .workday
     ) {
         let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let url = careersURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = normalizedCareersURL(careersURL)
         let resolvedSlug = (slug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
             ? slug!.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             : Self.slugify(name)
@@ -76,7 +76,9 @@ final class WorkdayCompaniesStore {
 
     func updateCompany(_ entry: WorkdayCompanyConfigEntry) {
         guard let index = companies.firstIndex(where: { $0.id == entry.id }) else { return }
-        companies[index] = entry
+        var normalized = entry
+        normalized.careersURL = normalizedCareersURL(entry.careersURL)
+        companies[index] = normalized
         persistToUserDefaults()
     }
 
@@ -95,5 +97,13 @@ final class WorkdayCompaniesStore {
         var slug = String(allowed)
         while slug.contains("--") { slug = slug.replacingOccurrences(of: "--", with: "-") }
         return slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+    }
+
+    private func normalizedCareersURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if JobBoardPlatformDetector.detect(from: trimmed) == .workday {
+            return WorkdayScraper.normalizeCareersURLString(trimmed)
+        }
+        return trimmed
     }
 }

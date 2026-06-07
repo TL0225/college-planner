@@ -10,8 +10,6 @@ struct SidebarView: View {
     @Environment(AppContainer.self) private var container
     private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
-    /// When the leading column is shown, ``SafeSidebarToggleView`` sits in this column’s branded header row (alongside portal chrome), not only in ``MainWindowToolbar`` — when collapsed to detail‑only it appears only in the window toolbar instead.
-    @Binding var columnVisibility: NavigationSplitViewVisibility
 
     private var collegePersistence: CollegePersistence { container.persistence }
     @State private var profileShell: ProfileShellSnapshot = ProfileReadBridge.shellSnapshot()
@@ -71,7 +69,7 @@ struct SidebarView: View {
             let topChromeInset = max(32, proxy.safeAreaInsets.top + 6)
             sidebarPane(cornerRadius: 18) {
                 VStack(alignment: .leading, spacing: 0) {
-                    navigationContent(compactHeight: compactHeight, topChromeInset: topChromeInset, showLeadingMainSidebarToggle: showsLeadingSidebarToggle)
+                    navigationContent(compactHeight: compactHeight, topChromeInset: topChromeInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
                     Rectangle()
@@ -97,22 +95,9 @@ struct SidebarView: View {
         profileShell = ProfileReadBridge.shellSnapshot(collegePersistence: collegePersistence)
     }
 
-    private var showsLeadingSidebarToggle: Bool {
-        switch columnVisibility {
-        case .all, .doubleColumn, .automatic:
-            return true
-        default:
-            return false
-        }
-    }
-
-    private func navigationContent(compactHeight: Bool, topChromeInset: CGFloat, showLeadingMainSidebarToggle: Bool) -> some View {
+    private func navigationContent(compactHeight: Bool, topChromeInset: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 12) {
-                if showLeadingMainSidebarToggle {
-                    SafeSidebarToggleView(columnVisibility: $columnVisibility)
-                }
-
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(.thinMaterial)

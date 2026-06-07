@@ -6,7 +6,7 @@
 import Foundation
 
 enum CatalogParserCapability {
-    static let version = "2026.05.v1"
+    static let version = "2026.06.v1"
 
     enum OCRPolicy: String, Codable, Sendable {
         case automatic

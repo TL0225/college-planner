@@ -8,9 +8,11 @@ struct WebToolbarContent: ToolbarContent {
         ToolbarItem(id: "portal.home", placement: .navigation) {
             PortalHomeToolbarButton()
         }
+        .sharedBackgroundVisibility(.hidden)
         ToolbarItemGroup(placement: .primaryAction) {
             WebNavigationToolbar()
         }
+        .sharedBackgroundVisibility(.hidden)
     }
 }
 
@@ -26,27 +28,37 @@ struct WebNavigationToolbar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            StaticToolbarGlassButton(
-                symbol: "chevron.left",
-                tip: "Back",
-                accessibilityIdentifier: "toolbar.web.back",
-                action: { toolbarDispatcher.dispatch(.web(.back)) },
-                isEnabled: projection.canGoBack
-            )
-            StaticToolbarGlassButton(
-                symbol: "chevron.right",
-                tip: "Forward",
-                accessibilityIdentifier: "toolbar.web.forward",
-                action: { toolbarDispatcher.dispatch(.web(.forward)) },
-                isEnabled: projection.canGoForward
-            )
-            StaticToolbarGlassButton(
-                symbol: "arrow.clockwise",
-                tip: "Reload",
-                accessibilityIdentifier: "toolbar.web.reload"
-            ) {
-                toolbarDispatcher.dispatch(.web(.reload))
+            Button {
+                toolbarDispatcher.dispatch(.web(.back))
+            } label: {
+                ToolbarMetrics.glassIconLabel(systemName: "chevron.left")
             }
+            .toolbarIconButtonStyle()
+            .help("Back")
+            .accessibilityLabel("Back")
+            .accessibilityIdentifier("toolbar.web.back")
+            .disabled(!projection.canGoBack)
+
+            Button {
+                toolbarDispatcher.dispatch(.web(.forward))
+            } label: {
+                ToolbarMetrics.glassIconLabel(systemName: "chevron.right")
+            }
+            .toolbarIconButtonStyle()
+            .help("Forward")
+            .accessibilityLabel("Forward")
+            .accessibilityIdentifier("toolbar.web.forward")
+            .disabled(!projection.canGoForward)
+
+            Button {
+                toolbarDispatcher.dispatch(.web(.reload))
+            } label: {
+                ToolbarMetrics.glassIconLabel(systemName: "arrow.clockwise")
+            }
+            .toolbarIconButtonStyle()
+            .help("Reload")
+            .accessibilityLabel("Reload")
+            .accessibilityIdentifier("toolbar.web.reload")
         }
     }
 }
@@ -57,13 +69,14 @@ struct PortalHomeToolbarButton: View {
     private var toolbarDispatcher: ToolbarDispatcher { appContainer.toolbarDispatcher }
 
     var body: some View {
-        StaticToolbarGlassButton(
-            symbol: "house",
-            tip: String(localized: "brightspace.toolbar.portal_home_help"),
-            accessibilityIdentifier: "toolbar.web.portalHome"
-        ) {
+        Button {
             toolbarDispatcher.dispatch(.web(.portalHome))
+        } label: {
+            ToolbarMetrics.glassIconLabel(systemName: "house")
         }
+        .toolbarIconButtonStyle()
+        .help(String(localized: "brightspace.toolbar.portal_home_help"))
         .accessibilityLabel(String(localized: "brightspace.toolbar.portal_home_a11y"))
+        .accessibilityIdentifier("toolbar.web.portalHome")
     }
 }

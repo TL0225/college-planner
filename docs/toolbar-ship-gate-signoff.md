@@ -18,7 +18,7 @@
 | Provider registry | `ToolbarArchitectureTests.testToolbarProviderRegistryExists` | Pass |
 | Scene state (no *ToolbarState) | `ToolbarArchitectureTests.testNoSiblingToolbarObservableStores` | Pass |
 | Visual regression | `ToolbarVisualTests` + `CollegeTests/__Snapshots__/ToolbarVisual/` | Pass |
-| Glass accessibility | `GlassToolbarAccessibilityTests` | Pass |
+| Toolbar accessibility | `GlassToolbarAccessibilityTests` (native `ToolbarMetrics` + dispatch-only sidebar) | Pass |
 | Health check | `bash scripts/toolbar-health-check.sh` | Pass (within thresholds) |
 | Cross-feature imports | `bash scripts/check-feature-imports.sh warn` | Warn-only (2 existing Calendar → CollegePlatform) |
 

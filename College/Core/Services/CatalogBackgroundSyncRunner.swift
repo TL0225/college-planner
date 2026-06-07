@@ -388,7 +388,7 @@ enum CatalogBackgroundSyncRunner {
     }
 
     static func saveChunkedMajorsWithCatoid(
-        _ rows: [(name: String, degreeLevel: String, degreeType: String?, isMinor: Bool, department: String?, url: String?, resolvedDepartment: String?, resolvedCollege: String?, mappingConfidence: Double?, mappingSource: String?, requirements: [DegreeRequirement]?, sourceCatalogCatoid: String?, trackVariant: String?, parentProgramKey: String?)],
+        _ rows: [(name: String, degreeLevel: String, degreeType: String?, isMinor: Bool, department: String?, url: String?, resolvedDepartment: String?, resolvedCollege: String?, mappingConfidence: Double?, mappingSource: String?, requirements: [DegreeRequirement]?, sourceCatalogCatoid: String?, trackVariant: String?, parentProgramKey: String?, catalogStableID: UUID?, provenanceJSON: String?)],
         for universityName: String,
         schoolID: String,
         collegePersistence: CollegePersistence
@@ -582,11 +582,13 @@ enum CatalogBackgroundSyncRunner {
         defer { os_signpost(.end, log: poiLog, name: "CatalogSync.Run", signpostID: syncSignpost) }
         CatalogIngestCheckpoint.clearCancel(schoolID: manifest.id)
         try CatalogIngestCheckpoint.throwIfCancelled(schoolID: manifest.id)
+        let startedAt = Date()
 
         let catalogURL = (manifest.catalogURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !catalogURL.isEmpty else {
             throw ScraperError.invalidURL
         }
+        CatalogPlatformProbe.enqueueMismatchWarningIfNeeded(manifest: manifest, catalogURL: catalogURL)
 
         notifications.update(id: toastID, message: "Discovering catalogs…", progress: 0.2)
         hooks?.onVisualPhase?(.discovering)
@@ -614,6 +616,22 @@ enum CatalogBackgroundSyncRunner {
 
         hooks?.onCatalogsDiscovered?(catalogsToScrape)
 
+        let useModernCampusIR = CatalogPlatformFlags.modernCampusIREnabled
+            && CatalogPlatformFlags.documentIREnabled
+        var catalogGraph: CatalogGraph?
+        if useModernCampusIR {
+            catalogGraph = try await ModernCampusCatalogDiscoverer.buildGraph(
+                manifest: manifest,
+                baseURL: baseURL,
+                catalogs: catalogsToScrape
+            )
+            DebugLogger.shared.log(
+                "[ModernCampusGraph] school=\(manifest.id) nodes=\(catalogGraph?.nodeCount ?? 0) extractable=\(catalogGraph?.extractablePageURLs.count ?? 0) ir=\(useModernCampusIR)",
+                category: .scraper,
+                level: .info
+            )
+        }
+
         let catalogSignatureSource = catalogsToScrape
             .map { "\($0.catoid)|\($0.title)" }
             .sorted()
@@ -633,6 +651,9 @@ enum CatalogBackgroundSyncRunner {
         }
 
         var programsByCatalogAndURL: [String: ScrapedProgram] = [:]
+        var irMetadataByProgramURL: [String: ModernCampusCatalogIngestAdapter.ProgramRowMetadata] = [:]
+        var dominantLayoutProfileID: String?
+        var irCoursesCollected: [CatalogCourse] = []
         let programIndexOnly = (depth == .light)
 
         for (index, catalog) in catalogsToScrape.enumerated() {
@@ -688,11 +709,58 @@ enum CatalogBackgroundSyncRunner {
 
             let programScraper = UniversalCatalogScraper()
             let catalogIDInt = Int(catalog.catoid) ?? 0
+            let catalogVersion = CatalogVersion.resolve(
+                school: manifest,
+                segment: .modernCampus(catalog)
+            )
             do {
-                let scrapedPrograms = try await programScraper.scrapeAllPrograms(
-                    baseURL: baseURL,
-                    catalogID: catalogIDInt,
-                    programsIndexOnly: programIndexOnly
+                let scrapedPrograms: [ScrapedProgram]
+                var irScrapeResult: ModernCampusCatalogIngestAdapter.ScrapeResult?
+                if useModernCampusIR, let catalogGraph {
+                    let irResult = try await ModernCampusCatalogIngestAdapter.scrapeProgramsViaIR(
+                        graph: catalogGraph,
+                        manifest: manifest,
+                        catalog: catalog,
+                        programsIndexOnly: programIndexOnly
+                    )
+                    irScrapeResult = irResult
+                    irCoursesCollected.append(contentsOf: irResult.courses)
+                    for (key, meta) in irResult.metadataByProgramURL {
+                        irMetadataByProgramURL[key] = meta
+                    }
+                    if let profile = irResult.dominantLayoutProfileID {
+                        dominantLayoutProfileID = profile
+                    }
+                    if ModernCampusCatalogIngestAdapter.shouldFallbackToUniversalScraper(
+                        irProgramCount: irResult.programs.count,
+                        host: baseURL.host
+                    ) {
+                        scrapedPrograms = try await programScraper.scrapeAllPrograms(
+                            baseURL: baseURL,
+                            catalogID: catalogIDInt,
+                            programsIndexOnly: programIndexOnly,
+                            schoolID: manifest.id,
+                            catalogVersionID: catalogVersion.id
+                        )
+                    } else {
+                        scrapedPrograms = irResult.programs
+                    }
+                } else {
+                    scrapedPrograms = try await programScraper.scrapeAllPrograms(
+                        baseURL: baseURL,
+                        catalogID: catalogIDInt,
+                        programsIndexOnly: programIndexOnly,
+                        schoolID: manifest.id,
+                        catalogVersionID: catalogVersion.id
+                    )
+                }
+                await ModernCampusCatalogIngestAdapter.persistDocumentIRIfNeeded(
+                    manifest: manifest,
+                    catalog: catalog,
+                    graph: catalogGraph,
+                    scraper: programScraper,
+                    irScrapeResult: irScrapeResult,
+                    layoutProfileID: dominantLayoutProfileID
                 )
                 await Task.yield()
                 for program in scrapedPrograms {
@@ -712,6 +780,45 @@ enum CatalogBackgroundSyncRunner {
         }
 
         let programs = Array(programsByCatalogAndURL.values)
+
+        var extractedRequirements: [DegreeRequirement] = []
+        for program in programs {
+            extractedRequirements.append(contentsOf: program.requirements ?? [])
+        }
+
+        var ingestGateOutcome: CatalogIngestGate.Outcome?
+        if CatalogPlatformFlags.ingestGateEnabled {
+            let gate = CatalogIngestGate.evaluateModernCampus(
+                manifest: manifest,
+                depth: depth,
+                programs: programs,
+                courses: irCoursesCollected,
+                requirements: extractedRequirements,
+                layoutProfileID: dominantLayoutProfileID,
+                expectCourses: false
+            )
+            ingestGateOutcome = gate
+            if gate.shouldAbortIngest {
+                throw ScraperError.parsingFailed
+            }
+            if !gate.allowsRequirements {
+                extractedRequirements = []
+                for (key, program) in programsByCatalogAndURL {
+                    programsByCatalogAndURL[key] = ScrapedProgram(
+                        name: program.name,
+                        type: program.type,
+                        url: program.url,
+                        group: program.group,
+                        department: program.department,
+                        college: program.college,
+                        degreeType: program.degreeType,
+                        requirements: nil,
+                        trackVariant: program.trackVariant,
+                        parentProgramURL: program.parentProgramURL
+                    )
+                }
+            }
+        }
 
         hooks?.onVisualPhase?(.importing)
         notifications.update(id: toastID, message: "Saving program list…", progress: 0.58)
@@ -789,7 +896,8 @@ enum CatalogBackgroundSyncRunner {
         func saveRow(
             program: ScrapedProgram,
             catalogDegreeLevel: String,
-            sourceCatalogCatoid: String
+            sourceCatalogCatoid: String,
+            dedupStem: String
         ) -> (
             name: String,
             degreeLevel: String,
@@ -801,6 +909,7 @@ enum CatalogBackgroundSyncRunner {
             resolvedCollege: String?,
             mappingConfidence: Double?,
             mappingSource: String?,
+            provenanceJSON: String?,
             requirements: [DegreeRequirement]?,
             sourceCatalogCatoid: String?,
             trackVariant: String?,
@@ -821,6 +930,21 @@ enum CatalogBackgroundSyncRunner {
                 urlTransform: { _ in transformedURL }
             ).first!
 
+            let meta = irMetadataByProgramURL[dedupStem]
+                ?? irMetadataByProgramURL[rawProgramURL]
+            let mappingSource: String
+            let mappingConfidence: Double?
+            let provenanceJSON: String?
+            if let meta {
+                mappingSource = "onboarding.moderncampus.ir|\(meta.layoutProfileID)"
+                mappingConfidence = meta.layoutConfidence
+                provenanceJSON = meta.provenance.jsonString()
+            } else {
+                mappingSource = baseRow.mappingSource ?? "onboarding.moderncampus"
+                mappingConfidence = baseRow.mappingConfidence
+                provenanceJSON = nil
+            }
+
             return (
                 name: baseRow.name,
                 degreeLevel: baseRow.degreeLevel,
@@ -830,8 +954,9 @@ enum CatalogBackgroundSyncRunner {
                 url: baseRow.url,
                 resolvedDepartment: baseRow.resolvedDepartment,
                 resolvedCollege: baseRow.resolvedCollege,
-                mappingConfidence: baseRow.mappingConfidence,
-                mappingSource: baseRow.mappingSource,
+                mappingConfidence: mappingConfidence,
+                mappingSource: mappingSource,
+                provenanceJSON: provenanceJSON,
                 requirements: baseRow.requirements,
                 sourceCatalogCatoid: sourceCatalogCatoid,
                 trackVariant: nil as String?,
@@ -850,6 +975,7 @@ enum CatalogBackgroundSyncRunner {
             resolvedCollege: String?,
             mappingConfidence: Double?,
             mappingSource: String?,
+            provenanceJSON: String?,
             requirements: [DegreeRequirement]?,
             sourceCatalogCatoid: String?,
             trackVariant: String?,
@@ -861,7 +987,16 @@ enum CatalogBackgroundSyncRunner {
             let catalogMeta = catalogsToScrape.first { $0.catoid == catoidFromKey }
             let bucket = catalogMeta.map { ModernCampusCatalogLabels.postedDisplayTitle(from: $0.title) }
                 ?? "Catalog \(catoidFromKey)"
-            rows.append(saveRow(program: program, catalogDegreeLevel: bucket, sourceCatalogCatoid: catoidFromKey))
+            let dedupStem = dedupKey.split(separator: "|", maxSplits: 1).dropFirst().first.map(String.init)
+                ?? program.url.trimmingCharacters(in: .whitespacesAndNewlines)
+            rows.append(
+                saveRow(
+                    program: program,
+                    catalogDegreeLevel: bucket,
+                    sourceCatalogCatoid: catoidFromKey,
+                    dedupStem: dedupStem
+                )
+            )
         }
 
         if rows.isEmpty {
@@ -887,6 +1022,7 @@ enum CatalogBackgroundSyncRunner {
                         resolvedCollege: nil as String?,
                         mappingConfidence: nil as Double?,
                         mappingSource: "onboarding.profile-fallback",
+                        provenanceJSON: nil as String?,
                         requirements: nil as [DegreeRequirement]?,
                         sourceCatalogCatoid: nil as String?,
                         trackVariant: nil as String?,
@@ -897,7 +1033,39 @@ enum CatalogBackgroundSyncRunner {
         }
 
         if !rows.isEmpty {
-            try saveChunkedMajorsWithCatoid(rows, for: manifest.name, schoolID: manifest.id, collegePersistence: collegePersistence)
+            let provenanceRows = rows.filter { $0.provenanceJSON != nil }.count
+            if provenanceRows > 0 {
+                DebugLogger.shared.log(
+                    "[ModernCampusIR] school=\(manifest.id) programsWithProvenance=\(provenanceRows)/\(rows.count) layout=\(dominantLayoutProfileID ?? "unknown")",
+                    category: .scraper,
+                    level: .info
+                )
+            }
+            try saveChunkedMajorsWithCatoid(
+                rows.map { row in
+                    (
+                        name: row.name,
+                        degreeLevel: row.degreeLevel,
+                        degreeType: row.degreeType,
+                        isMinor: row.isMinor,
+                        department: row.department,
+                        url: row.url,
+                        resolvedDepartment: row.resolvedDepartment,
+                        resolvedCollege: row.resolvedCollege,
+                        mappingConfidence: row.mappingConfidence,
+                        mappingSource: row.mappingSource,
+                        requirements: row.requirements,
+                        sourceCatalogCatoid: row.sourceCatalogCatoid,
+                        trackVariant: row.trackVariant,
+                        parentProgramKey: row.parentProgramKey,
+                        catalogStableID: nil,
+                        provenanceJSON: row.provenanceJSON
+                    )
+                },
+                for: manifest.name,
+                schoolID: manifest.id,
+                collegePersistence: collegePersistence
+            )
         }
         CatalogIngestCheckpoint.save(stage: .passA, schoolID: manifest.id, signature: ingestSignature)
 
@@ -963,6 +1131,16 @@ enum CatalogBackgroundSyncRunner {
                 signatureFormat: "moderncampus",
                 signatureDepth: depth
             )
+            if let gate = ingestGateOutcome {
+                CatalogIngestGate.recordSuccessfulBaseline(gate)
+                CatalogIngestObservability.record(
+                    gate.metrics.toObservabilitySample(
+                        succeeded: true,
+                        durationMs: max(1, Int(Date().timeIntervalSince(startedAt) * 1000)),
+                        pageCount: max(catalogsToScrape.count, 1)
+                    )
+                )
+            }
             return .completed(scheduledPassB: false)
         }
 
@@ -972,6 +1150,9 @@ enum CatalogBackgroundSyncRunner {
         let manifestCopy = manifest
         let normalizedURLCopy = normalizedCatalogURL
         let recordDeepScrapeDone = true
+        let irCoursesCopy = irCoursesCollected
+        let useModernCampusIRCopy = useModernCampusIR
+        let dominantLayoutCopy = dominantLayoutProfileID
 
         Task { @MainActor in
             UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
@@ -1012,7 +1193,21 @@ enum CatalogBackgroundSyncRunner {
                     }
                 )
                 var perCatalogCourseRows = scrapeResult.perCatalogCourseRows
-                let courses = Array(scrapeResult.coursesByCode.values)
+                var courses = Array(scrapeResult.coursesByCode.values)
+                if useModernCampusIRCopy, !irCoursesCopy.isEmpty {
+                    let beforeCount = courses.count
+                    courses = ModernCampusCatalogIngestAdapter.mergeCourses(
+                        primary: courses,
+                        irFallback: irCoursesCopy
+                    )
+                    if courses.count > beforeCount {
+                        DebugLogger.shared.log(
+                            "[ModernCampusIR] school=\(manifestCopy.id) merged IR course fallback +\(courses.count - beforeCount) stubs",
+                            category: .scraper,
+                            level: .info
+                        )
+                    }
+                }
 
                 if courses.isEmpty {
                     notify.post(
@@ -1071,6 +1266,44 @@ enum CatalogBackgroundSyncRunner {
                     try await dataManager.importSchoolCatalog(profile)
                     _ = dataManager.setActiveUniversity(named: manifestCopy.name)
                     CatalogStoreSnapshotBridge.materializePerSchoolCatalogSnapshot(universityName: manifestCopy.name)
+
+                    if useModernCampusIRCopy, CatalogPlatformFlags.documentIREnabled {
+                        let catalogVersion = CatalogVersion.resolve(school: manifestCopy, segment: .manifestOnly)
+                        try await CourseLeafCatalogIngestAdapter.persistCourseMetadata(
+                            courses: courses,
+                            manifest: manifestCopy,
+                            schoolID: manifestCopy.id,
+                            catalogVersionID: catalogVersion.id,
+                            layoutProfileID: dominantLayoutCopy ?? "moderncampus-ir",
+                            ingestRunID: UUID(),
+                            existingIdentities: CatalogEntityIdentityStore.load(
+                                schoolID: manifestCopy.id,
+                                catalogVersionID: catalogVersion.id
+                            )
+                        )
+                    }
+
+                    if CatalogPlatformFlags.ingestGateEnabled {
+                        let courseGate = CatalogIngestGate.evaluateModernCampus(
+                            manifest: manifestCopy,
+                            depth: .full,
+                            programs: [],
+                            courses: courses,
+                            requirements: [],
+                            layoutProfileID: dominantLayoutCopy,
+                            expectCourses: true
+                        )
+                        if !courseGate.shouldAbortIngest {
+                            CatalogIngestGate.recordSuccessfulBaseline(courseGate)
+                            CatalogIngestObservability.record(
+                                courseGate.metrics.toObservabilitySample(
+                                    succeeded: true,
+                                    durationMs: max(1, Int(Date().timeIntervalSince(startedAt) * 1000)),
+                                    pageCount: max(catalogsCopy.count, 1)
+                                )
+                            )
+                        }
+                    }
                     _ = CatalogIngestReconciler.reconcile(
                         after: CatalogIngestSnapshot(
                             schoolID: manifestCopy.id,
@@ -1382,19 +1615,43 @@ enum CourseLeafCatalogIngestAdapter {
     ) async throws -> CatalogBackgroundSyncRunner.CatalogIngestSyncOutcome {
         let schoolID = manifest.id
         let startedAt = Date()
+        let ingestRunID = UUID()
+        let catalogVersion = CatalogVersion.resolve(school: manifest, segment: .manifestOnly)
         let catalogURLString = (manifest.catalogURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !catalogURLString.isEmpty else { throw ScraperError.invalidURL }
+        CatalogPlatformProbe.enqueueMismatchWarningIfNeeded(manifest: manifest, catalogURL: catalogURLString)
 
         hooks?.onVisualPhase?(.discovering)
         hooks?.onProgress?(0.1, "Discovering CourseLeaf catalogs…")
         notifications.update(id: toastID, message: "Discovering CourseLeaf catalogs…", progress: 0.1)
 
-        let onboardingCatalogs = try await CourseLeafCatalogSegmentDiscoverer.onboardingCatalogs(
-            baseURL: catalogURLString,
+        guard let normalizedBase = CourseLeafEngine.normalizeBaseURL(catalogURLString) else {
+            throw ScraperError.invalidURL
+        }
+        await CourseLeafSitemapCache.clear()
+        let sitemapPageURLs = try await CourseLeafSitemapCache.pageURLs(baseURL: normalizedBase)
+
+        let onboardingCatalogs = CourseLeafCatalogSegmentDiscoverer.onboardingCatalogs(
+            pageURLs: sitemapPageURLs,
             schoolID: schoolID
         )
         let catalogsToScrape = CourseLeafCatalogSegmentDiscoverer.catalogDescriptors(from: onboardingCatalogs)
         hooks?.onCatalogsDiscovered?(catalogsToScrape)
+
+        let graph = CourseLeafCatalogDiscoverer.buildGraph(
+            manifest: manifest,
+            baseURL: normalizedBase,
+            pageURLs: sitemapPageURLs
+        )
+        if CatalogPlatformFlags.documentIREnabled {
+            let extractable = graph.extractablePageURLs
+            DebugLogger.shared.log(
+                "[CourseLeafGraph] school=\(schoolID) nodes=\(graph.nodeCount) extractable=\(extractable.count)",
+                category: .scraper,
+                level: .info
+            )
+            _ = extractable
+        }
 
         CatalogBackgroundSyncRunner.applyCourseLeafProgramIndexV2MigrationIfNeeded()
 
@@ -1421,10 +1678,20 @@ enum CourseLeafCatalogIngestAdapter {
         notifications.update(id: toastID, message: "Indexing CourseLeaf bulletin…", progress: 0.15)
 
         let parseRequirementsDuringCrawl = (depth == .full)
+        let crawlPageURLs: [URL] = CatalogPlatformFlags.documentIREnabled
+            ? graph.extractablePageURLs.compactMap { URL(string: $0) }
+            : sitemapPageURLs
+        let versionByURL: [String: String]? = CatalogPlatformFlags.documentIREnabled
+            ? Dictionary(
+                uniqueKeysWithValues: graph.nodes.map { ($0.url, $0.catalogVersionID) }
+            )
+            : nil
         let output = try await CourseLeafEngine.crawlCatalog(
             baseURL: catalogURLString,
             schoolID: schoolID,
-            parseRequirements: parseRequirementsDuringCrawl
+            parseRequirements: parseRequirementsDuringCrawl,
+            preferredPageURLs: crawlPageURLs,
+            catalogVersionIDByPageURL: versionByURL
         )
 
         var programsBySegmentAndURL: [String: ScrapedProgram] = [:]
@@ -1543,6 +1810,47 @@ enum CourseLeafCatalogIngestAdapter {
             anomalies: []
         )
 
+        let layoutProfileID = output.dominantLayoutProfileID
+            ?? CatalogLayoutProfileRegistry.preferredProfileID(forSchoolID: schoolID)?.rawValue
+            ?? "legacy-courseleaf"
+        let layoutConfidence = output.layoutConfidence ?? 0.75
+
+        var ingestGateOutcome: CatalogIngestGate.Outcome?
+        if CatalogPlatformFlags.ingestGateEnabled {
+            let gate = CatalogIngestGate.evaluateCourseLeaf(
+                manifest: manifest,
+                depth: depth,
+                programs: programs,
+                courses: output.courses,
+                requirements: extractedRequirements,
+                layoutProfileID: layoutProfileID,
+                averageEntityConfidence: layoutConfidence,
+                averageOwnershipConfidence: layoutConfidence
+            )
+            ingestGateOutcome = gate
+            if gate.shouldAbortIngest {
+                throw ScraperError.parsingFailed
+            }
+            if !gate.allowsRequirements {
+                extractedRequirements = []
+                for (key, program) in programsBySegmentAndURL {
+                    programsBySegmentAndURL[key] = ScrapedProgram(
+                        name: program.name,
+                        type: program.type,
+                        url: program.url,
+                        group: program.group,
+                        department: program.department,
+                        college: program.college,
+                        degreeType: program.degreeType,
+                        requirements: nil,
+                        trackVariant: program.trackVariant,
+                        parentProgramURL: program.parentProgramURL
+                    )
+                }
+                programs = Array(programsBySegmentAndURL.values)
+            }
+        }
+
         hooks?.onVisualPhase?(.importing)
         notifications.update(id: toastID, message: "Saving program list…", progress: 0.62)
         hooks?.onProgress?(0.62, "Saving \(programs.count) programs...")
@@ -1595,6 +1903,20 @@ enum CourseLeafCatalogIngestAdapter {
             )
         }
 
+        var entityIdentities: [CatalogEntityIdentity] = []
+        if let repo = AppDataStore.shared.catalogRepository,
+           let university = try? repo.fetchUniversity(named: manifest.name) {
+            entityIdentities = (try? CatalogIngestPersistenceHelpers.loadMergedIdentities(
+                repo: repo,
+                universityID: university.id,
+                schoolID: schoolID,
+                catalogVersionID: catalogVersion.id
+            )) ?? CatalogEntityIdentityStore.load(schoolID: schoolID, catalogVersionID: catalogVersion.id)
+        } else {
+            entityIdentities = CatalogEntityIdentityStore.load(schoolID: schoolID, catalogVersionID: catalogVersion.id)
+        }
+        let identitiesBeforeIngest = entityIdentities
+
         var rows: [(
             name: String,
             degreeLevel: String,
@@ -1609,7 +1931,9 @@ enum CourseLeafCatalogIngestAdapter {
             requirements: [DegreeRequirement]?,
             sourceCatalogCatoid: String?,
             trackVariant: String?,
-            parentProgramKey: String?
+            parentProgramKey: String?,
+            catalogStableID: UUID?,
+            provenanceJSON: String?
         )] = []
 
         for (dedupKey, program) in programsBySegmentAndURL.sorted(by: { $0.key < $1.key }) {
@@ -1623,6 +1947,20 @@ enum CourseLeafCatalogIngestAdapter {
                 degreeLevelForProgram: { _ in catalogLabel }
             ).first!
 
+            let (stableID, identity) = CatalogIngestPersistenceHelpers.resolveProgramStableID(
+                program: program,
+                catalogVersionID: catalogVersion.id,
+                existing: entityIdentities
+            )
+            entityIdentities.append(identity)
+            let provenance = CatalogProvenance(
+                sourceURL: program.url,
+                layoutProfileID: layoutProfileID,
+                documentNodeID: stableID,
+                catalogVersionID: catalogVersion.id,
+                ingestRunID: ingestRunID
+            )
+
             rows.append((
                 name: baseRow.name,
                 degreeLevel: baseRow.degreeLevel,
@@ -1632,13 +1970,30 @@ enum CourseLeafCatalogIngestAdapter {
                 url: baseRow.url,
                 resolvedDepartment: baseRow.resolvedDepartment,
                 resolvedCollege: baseRow.resolvedCollege,
-                mappingConfidence: 0.75,
+                mappingConfidence: layoutConfidence,
                 mappingSource: baseRow.mappingSource,
                 requirements: baseRow.requirements,
                 sourceCatalogCatoid: catalogID,
                 trackVariant: baseRow.trackVariant,
-                parentProgramKey: baseRow.parentProgramKey
+                parentProgramKey: baseRow.parentProgramKey,
+                catalogStableID: stableID,
+                provenanceJSON: CatalogIngestPersistenceHelpers.encodeProvenanceJSON(provenance)
             ))
+        }
+
+        CatalogIngestPersistenceHelpers.persistIdentities(
+            entityIdentities,
+            schoolID: schoolID,
+            catalogVersionID: catalogVersion.id
+        )
+        let structuralDiff = CatalogStructuralDiffEngine.diff(
+            schoolID: schoolID,
+            catalogVersionID: catalogVersion.id,
+            previous: identitiesBeforeIngest,
+            current: entityIdentities
+        )
+        if structuralDiff.hasChanges {
+            CatalogStructuralDiffStore.save(structuralDiff)
         }
 
         if rows.isEmpty, let fallback = try? await githubService.downloadSchoolProfile(schoolID: schoolID) {
@@ -1683,6 +2038,15 @@ enum CourseLeafCatalogIngestAdapter {
                 profile,
                 policy: .preserveExistingCourses
             )
+            try await CourseLeafCatalogIngestAdapter.persistCourseMetadata(
+                courses: output.courses,
+                manifest: manifest,
+                schoolID: schoolID,
+                catalogVersionID: catalogVersion.id,
+                layoutProfileID: layoutProfileID,
+                ingestRunID: ingestRunID,
+                existingIdentities: entityIdentities
+            )
         }
 
         let requirementCount = rows.reduce(0) { partial, row in
@@ -1709,23 +2073,129 @@ enum CourseLeafCatalogIngestAdapter {
             signatureDepth: depth
         )
 
-        CatalogIngestObservability.record(
-            CatalogIngestMetricSample(
-                schoolID: telemetry.schoolID,
-                source: telemetry.source,
-                succeeded: true,
-                durationMs: max(1, Int(telemetry.endedAt.timeIntervalSince(telemetry.startedAt) * 1000)),
-                pageCount: max(catalogsToIndex.count, 1),
-                ocrPagesUsed: 0,
-                averageProgramConfidence: nil,
-                timestamp: telemetry.endedAt
+        if let gate = ingestGateOutcome {
+            CatalogIngestGate.recordSuccessfulBaseline(gate)
+            CatalogIngestObservability.record(
+                gate.metrics.toObservabilitySample(
+                    succeeded: true,
+                    durationMs: max(1, Int(telemetry.endedAt.timeIntervalSince(telemetry.startedAt) * 1000)),
+                    pageCount: max(catalogsToIndex.count, 1)
+                )
             )
-        )
+        } else {
+            CatalogIngestObservability.record(
+                CatalogIngestMetricSample(
+                    schoolID: telemetry.schoolID,
+                    source: telemetry.source,
+                    succeeded: true,
+                    durationMs: max(1, Int(telemetry.endedAt.timeIntervalSince(telemetry.startedAt) * 1000)),
+                    pageCount: max(catalogsToIndex.count, 1),
+                    ocrPagesUsed: 0,
+                    averageProgramConfidence: nil,
+                    timestamp: telemetry.endedAt,
+                    programsFound: programs.count,
+                    coursesFound: output.courses.count,
+                    requirementsFound: extractedRequirements.count
+                )
+            )
+        }
 
         let doneMessage = programIndexOnly ? "Program index saved." : "CourseLeaf sync complete."
         notifications.update(id: toastID, message: doneMessage, progress: 1.0)
         hooks?.onProgress?(1.0, doneMessage)
         return .completed(scheduledPassB: false)
+    }
+
+    static func persistCourseMetadata(
+        courses: [CatalogCourse],
+        manifest: SchoolManifest,
+        schoolID: String,
+        catalogVersionID: String,
+        layoutProfileID: String,
+        ingestRunID: UUID,
+        existingIdentities: [CatalogEntityIdentity]
+    ) async throws {
+        guard let repo = AppDataStore.shared.catalogRepository,
+              let university = try repo.fetchUniversity(named: manifest.name) else {
+            return
+        }
+
+        var identities = existingIdentities
+        var codeToStableID: [String: UUID] = [:]
+        var inputs: [CatalogRepository.CourseUpsertInput] = []
+
+        let enrichedCourses = courses.map {
+            CatalogExternalReferenceBuilder.enriching(
+                $0,
+                engine: manifest.catalogFormat,
+                schoolID: schoolID
+            )
+        }
+
+        for course in enrichedCourses {
+            let code = CatalogImportTransforms.normalizeCourseCode(course.courseCode)
+            guard !code.isEmpty else { continue }
+            let (stableID, identity) = CatalogIngestPersistenceHelpers.resolveCourseStableID(
+                courseCode: code,
+                catalogVersionID: catalogVersionID,
+                existing: identities
+            )
+            identities.append(identity)
+            codeToStableID[code] = stableID
+
+            let provenance = CatalogProvenance(
+                sourceURL: course.previewDetailURL ?? "",
+                layoutProfileID: layoutProfileID,
+                documentNodeID: course.id,
+                catalogVersionID: catalogVersionID,
+                ingestRunID: ingestRunID
+            )
+            var prerequisiteJSON: String?
+            if let rule = course.prerequisites,
+               let data = try? JSONEncoder().encode(rule) {
+                prerequisiteJSON = String(data: data, encoding: .utf8)
+            }
+
+            inputs.append(
+                CatalogRepository.CourseUpsertInput(
+                    courseCode: code,
+                    title: course.title,
+                    credits: Int16(max(0, course.credits)),
+                    descriptionText: course.description,
+                    department: course.department,
+                    isArchived: false,
+                    catalogStableID: stableID,
+                    provenanceJSON: CatalogIngestPersistenceHelpers.encodeProvenanceJSON(provenance),
+                    prerequisiteRulesJSON: prerequisiteJSON
+                )
+            )
+        }
+
+        if !inputs.isEmpty {
+            try repo.upsertCourses(universityID: university.id, inputs: inputs)
+            ModelMergeCoalescer.flushNow()
+        }
+
+        CatalogIngestPersistenceHelpers.persistIdentities(
+            identities,
+            schoolID: schoolID,
+            catalogVersionID: catalogVersionID
+        )
+
+        let relationships = CatalogPrerequisiteRelationshipBuilder.relationships(
+            courses: enrichedCourses,
+            catalogVersionID: catalogVersionID,
+            codeToStableID: codeToStableID,
+            ingestRunID: ingestRunID,
+            layoutProfileID: layoutProfileID
+        )
+        if !relationships.isEmpty {
+            CatalogRelationshipStore.save(
+                relationships,
+                schoolID: schoolID,
+                catalogVersionID: catalogVersionID
+            )
+        }
     }
 }
 
@@ -1869,11 +2339,14 @@ enum PDFCatalogIngestAdapter {
         }
 
         let schoolName = manifest.name
+        let catalogVersion = CatalogPDFIngestPersistence.catalogVersion(for: manifest)
+        let ingestRunID = UUID()
         let extractionResult: CatalogPDFIngestOutput = try await Task.detached(priority: .utility) { () async throws -> CatalogPDFIngestOutput in
             try await CatalogPDFPipeline.run(
                 pdfURL: localPDFURL,
                 options: CatalogPDFPipeline.Options(
                     schoolID: manifest.id,
+                    catalogVersionID: catalogVersion.id,
                     includeCourses: depth == .full,
                     includePolicies: depth == .light,
                     ocrFallback: depth == .full
@@ -1907,6 +2380,29 @@ enum PDFCatalogIngestAdapter {
             UserDefaults.standard.set(json, forKey: "catalog.pdf.health.\(manifest.id)")
         }
 
+        let extractedRequirements = extractionResult.requirements
+        let pdfLayoutProfileID = CatalogPDFIngestPersistence.layoutProfileID(
+            for: manifest,
+            documentIR: extractionResult.documentIR
+        )
+        var pdfIngestGateOutcome: CatalogIngestGate.Outcome?
+        if CatalogPlatformFlags.ingestGateEnabled {
+            let gate = CatalogIngestGate.evaluatePDF(
+                manifest: manifest,
+                depth: depth,
+                programs: extractionResult.programs,
+                courses: extractionResult.courses,
+                requirements: extractedRequirements,
+                policies: extractionResult.policyRows.count,
+                layoutProfileID: pdfLayoutProfileID,
+                averageProgramConfidence: extractionResult.classificationDiagnostics.averageAcceptedProgramConfidence
+            )
+            pdfIngestGateOutcome = gate
+            if gate.shouldAbortIngest {
+                throw ScraperError.parsingFailed
+            }
+        }
+
         let policies = SchoolPolicies(
             transferCreditLimit: nil,
             minorTransferLimit: nil,
@@ -1938,7 +2434,6 @@ enum PDFCatalogIngestAdapter {
                 progress: 0.65
             )
 
-            let extractedRequirements = extractionResult.requirements
             let profile = makeProfile(courses: [], degreeRequirements: extractedRequirements, versionSuffix: "programs")
             try await collegePersistence.importSchoolCatalog(
                 profile,
@@ -1947,44 +2442,30 @@ enum PDFCatalogIngestAdapter {
             _ = collegePersistence.setActiveUniversity(named: manifest.name)
             CatalogStoreSnapshotBridge.materializePerSchoolCatalogSnapshot(universityName: manifest.name)
 
-            let majorsToSave: [(name: String, degreeLevel: String, degreeType: String?, isMinor: Bool, department: String?, url: String?, resolvedDepartment: String?, resolvedCollege: String?, mappingConfidence: Double?, mappingSource: String?, requirements: [DegreeRequirement]?)] = extractionResult.programs.map { program in
-                let isMinor = program.type.lowercased().contains("minor")
-                let degreeTypeTrimmed = program.degreeType?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let degreeType = (degreeTypeTrimmed?.isEmpty ?? true) ? nil : degreeTypeTrimmed
-                let degreeLevel = DegreeConfiguration.level(for: degreeType ?? "") ?? DegreeConfiguration.undergraduate
-
-                let deptTrimmed = program.department?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dept = (deptTrimmed?.isEmpty ?? true) ? nil : deptTrimmed
-
-                let url = program.url.trimmingCharacters(in: .whitespacesAndNewlines)
-                let requirementsForProgram = extractedRequirements.filter {
-                    $0.major.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(program.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            if !extractionResult.programs.isEmpty {
+                if CatalogPlatformFlags.documentIREnabled {
+                    try await CatalogPDFIngestPersistence.persistDocumentIRTrack(
+                        extractionResult: extractionResult,
+                        manifest: manifest,
+                        programs: extractionResult.programs,
+                        requirements: extractedRequirements,
+                        ingestRunID: ingestRunID,
+                        collegePersistence: collegePersistence
+                    )
+                } else {
+                    let majorsToSave = legacyPDFMajorRows(
+                        programs: extractionResult.programs,
+                        requirements: extractedRequirements
+                    )
+                    try CatalogBackgroundSyncRunner.saveChunkedMajors(
+                        majorsToSave,
+                        for: manifest.name,
+                        schoolID: manifest.id,
+                        collegePersistence: collegePersistence
+                    )
                 }
-
-                return (
-                    name: program.name,
-                    degreeLevel: degreeLevel,
-                    degreeType: degreeType,
-                    isMinor: isMinor,
-                    department: dept,
-                    url: url,
-                    resolvedDepartment: nil,
-                    resolvedCollege: nil,
-                    mappingConfidence: nil,
-                    mappingSource: "pdf-block-classifier",
-                    requirements: requirementsForProgram.isEmpty ? nil : requirementsForProgram
-                )
             }
-
-            if !majorsToSave.isEmpty {
-                try CatalogBackgroundSyncRunner.saveChunkedMajors(
-                    majorsToSave,
-                    for: manifest.name,
-                    schoolID: manifest.id,
-                    collegePersistence: collegePersistence
-                )
-            }
-            guard !majorsToSave.isEmpty else {
+            guard !extractionResult.programs.isEmpty else {
                 // Fallback for bulletins where PDF program extraction is sparse:
                 // use the GitHub profile payload so onboarding can still proceed.
                 if let fallbackProfile = try? await githubService.downloadSchoolProfile(schoolID: manifest.id) {
@@ -2056,6 +2537,7 @@ enum PDFCatalogIngestAdapter {
                 healthReport: extractionResult.healthReport,
                 blockClassification: extractionResult.classificationDiagnostics,
                 ocrPagesUsed: extractionResult.ocrPagesUsed,
+                documentIR: extractionResult.documentIR,
                 collegePersistence: collegePersistence
             )
 
@@ -2108,6 +2590,9 @@ enum PDFCatalogIngestAdapter {
                 )
             }
 
+            if let gate = pdfIngestGateOutcome {
+                CatalogIngestGate.recordSuccessfulBaseline(gate)
+            }
             CatalogBackgroundSyncRunner.setStoredIngestSignature(pdfSignature, schoolID: manifest.id, format: "pdf", depth: depth)
             return .completed(scheduledPassB: false)
 
@@ -2123,50 +2608,41 @@ enum PDFCatalogIngestAdapter {
                 progress: 0.75
             )
 
-            let extractedRequirements = extractionResult.requirements
             let profile = makeProfile(courses: extractionResult.courses, degreeRequirements: extractedRequirements, versionSuffix: "courses-programs")
             try await collegePersistence.importSchoolCatalog(profile)
             _ = collegePersistence.setActiveUniversity(named: manifest.name)
             CatalogStoreSnapshotBridge.materializePerSchoolCatalogSnapshot(universityName: manifest.name)
 
-            // Save majors after course import so local store has the full academic profile entity graph.
-            let majorsToSave: [(name: String, degreeLevel: String, degreeType: String?, isMinor: Bool, department: String?, url: String?, resolvedDepartment: String?, resolvedCollege: String?, mappingConfidence: Double?, mappingSource: String?, requirements: [DegreeRequirement]?)] = extractionResult.programs.map { program in
-                let isMinor = program.type.lowercased().contains("minor")
-                let degreeTypeTrimmed = program.degreeType?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let degreeType = (degreeTypeTrimmed?.isEmpty ?? true) ? nil : degreeTypeTrimmed
-                let degreeLevel = DegreeConfiguration.level(for: degreeType ?? "") ?? DegreeConfiguration.undergraduate
-
-                let deptTrimmed = program.department?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dept = (deptTrimmed?.isEmpty ?? true) ? nil : deptTrimmed
-
-                let url = program.url.trimmingCharacters(in: .whitespacesAndNewlines)
-                let requirementsForProgram = extractedRequirements.filter {
-                    $0.major.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(program.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            if !extractionResult.programs.isEmpty {
+                if CatalogPlatformFlags.documentIREnabled {
+                    try await CatalogPDFIngestPersistence.persistDocumentIRTrack(
+                        extractionResult: extractionResult,
+                        manifest: manifest,
+                        programs: extractionResult.programs,
+                        requirements: extractedRequirements,
+                        ingestRunID: ingestRunID,
+                        collegePersistence: collegePersistence
+                    )
+                } else {
+                    let majorsToSave = legacyPDFMajorRows(
+                        programs: extractionResult.programs,
+                        requirements: extractedRequirements
+                    )
+                    try CatalogBackgroundSyncRunner.saveChunkedMajors(
+                        majorsToSave,
+                        for: manifest.name,
+                        schoolID: manifest.id,
+                        collegePersistence: collegePersistence
+                    )
                 }
-
-                return (
-                    name: program.name,
-                    degreeLevel: degreeLevel,
-                    degreeType: degreeType,
-                    isMinor: isMinor,
-                    department: dept,
-                    url: url,
-                    resolvedDepartment: nil,
-                    resolvedCollege: nil,
-                    mappingConfidence: nil,
-                    mappingSource: "pdf-block-classifier",
-                    requirements: requirementsForProgram.isEmpty ? nil : requirementsForProgram
-                )
             }
 
-            if !majorsToSave.isEmpty {
-                try CatalogBackgroundSyncRunner.saveChunkedMajors(
-                    majorsToSave,
-                    for: manifest.name,
-                    schoolID: manifest.id,
-                    collegePersistence: collegePersistence
-                )
-            }
+            try await CatalogPDFIngestPersistence.persistCourseMetadataIfNeeded(
+                courses: extractionResult.courses,
+                manifest: manifest,
+                documentIR: extractionResult.documentIR,
+                ingestRunID: ingestRunID
+            )
             CatalogCanonicalIRStore.save(
                 CatalogCanonicalIR(
                     schoolID: manifest.id,
@@ -2217,6 +2693,7 @@ enum PDFCatalogIngestAdapter {
                 healthReport: extractionResult.healthReport,
                 blockClassification: extractionResult.classificationDiagnostics,
                 ocrPagesUsed: extractionResult.ocrPagesUsed,
+                documentIR: extractionResult.documentIR,
                 collegePersistence: collegePersistence
             )
             _ = CatalogIngestReconciler.reconcile(
@@ -2259,8 +2736,46 @@ enum PDFCatalogIngestAdapter {
             }
             _ = try? collegePersistence.exportCatalogBundle(for: manifest.name)
             _ = try? CatalogStorePortableBridge.exportSignedCatalogStore(for: manifest.name)
+            if let gate = pdfIngestGateOutcome {
+                CatalogIngestGate.recordSuccessfulBaseline(gate)
+            }
             CatalogBackgroundSyncRunner.setStoredIngestSignature(pdfSignature, schoolID: manifest.id, format: "pdf", depth: depth)
             return .completed(scheduledPassB: false)
+        }
+    }
+
+    private static func legacyPDFMajorRows(
+        programs: [ScrapedProgram],
+        requirements: [DegreeRequirement]
+    ) -> [(name: String, degreeLevel: String, degreeType: String?, isMinor: Bool, department: String?, url: String?, resolvedDepartment: String?, resolvedCollege: String?, mappingConfidence: Double?, mappingSource: String?, requirements: [DegreeRequirement]?)] {
+        programs.map { program in
+            let isMinor = program.type.lowercased().contains("minor")
+            let degreeTypeTrimmed = program.degreeType?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let degreeType = (degreeTypeTrimmed?.isEmpty ?? true) ? nil : degreeTypeTrimmed
+            let degreeLevel = DegreeConfiguration.level(for: degreeType ?? "") ?? DegreeConfiguration.undergraduate
+
+            let deptTrimmed = program.department?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let dept = (deptTrimmed?.isEmpty ?? true) ? nil : deptTrimmed
+
+            let url = program.url.trimmingCharacters(in: .whitespacesAndNewlines)
+            let requirementsForProgram = requirements.filter {
+                $0.major.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(program.name.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+            }
+
+            return (
+                name: program.name,
+                degreeLevel: degreeLevel,
+                degreeType: degreeType,
+                isMinor: isMinor,
+                department: dept,
+                url: url,
+                resolvedDepartment: nil,
+                resolvedCollege: nil,
+                mappingConfidence: nil,
+                mappingSource: "pdf-block-classifier",
+                requirements: requirementsForProgram.isEmpty ? nil : requirementsForProgram
+            )
         }
     }
 
@@ -2275,6 +2790,7 @@ enum PDFCatalogIngestAdapter {
         healthReport: PDFHealthReport,
         blockClassification: CatalogPDFBlockClassificationDiagnostics?,
         ocrPagesUsed: Int,
+        documentIR: CatalogDocumentIR?,
         collegePersistence: CollegePersistence
     ) async {
         var warnings: [String] = []
@@ -2296,6 +2812,7 @@ enum PDFCatalogIngestAdapter {
             }
         }
 
+        let layoutProfileID = CatalogPDFIngestPersistence.layoutProfileID(for: manifest, documentIR: documentIR)
         PDFScrapeReport.save(
             PDFScrapeReport(
                 schoolID: manifest.id,
@@ -2313,6 +2830,8 @@ enum PDFCatalogIngestAdapter {
                 parserCapabilityVersion: CatalogParserCapability.version,
                 ocrPagesUsed: ocrPagesUsed,
                 averageProgramConfidence: blockClassification?.averageAcceptedProgramConfidence,
+                layoutProfileID: layoutProfileID,
+                documentIRNodeCount: documentIR?.nodes.count,
                 warnings: warnings
             )
         )
@@ -2326,7 +2845,11 @@ enum PDFCatalogIngestAdapter {
                 pageCount: pageCount,
                 ocrPagesUsed: ocrPagesUsed,
                 averageProgramConfidence: blockClassification?.averageAcceptedProgramConfidence,
-                timestamp: Date()
+                timestamp: Date(),
+                programsFound: programs,
+                coursesFound: courses,
+                requirementsFound: requirements,
+                layoutProfileID: layoutProfileID
             )
         )
 

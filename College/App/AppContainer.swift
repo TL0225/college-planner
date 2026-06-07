@@ -37,6 +37,9 @@ final class AppContainer {
     let auditSnapshotStore: AuditSnapshotStore
     let launchPreloadCoordinator: LaunchPreloadCoordinator
 
+    /// Retains calendar shell port adapters (`CalendarToolbarAccess` et al. hold weak refs).
+    let calendarShellPorts: CalendarShellPortAdapters
+
     init(
         persistence: CollegePersistence = .shared,
         appDataStore: AppDataStore = .shared,
@@ -76,6 +79,12 @@ final class AppContainer {
         self.academicsScene = academicsScene ?? AcademicsSceneState()
         self.careerScene = careerScene ?? CareerSceneState()
         self.webPortalScene = webPortalScene ?? WebPortalSceneState()
+        self.calendarShellPorts = CalendarShellPortAdapters(
+            appNotifications: appNotifications,
+            modalCoordinator: self.modalCoordinator,
+            toolbarDispatcher: self.toolbarDispatcher
+        )
+        CalendarPersistencePortBootstrap.wireShell(container: self)
     }
 
     /// Main window factory; shared singletons are passed by reference, not owned per window.

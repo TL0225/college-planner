@@ -9,6 +9,7 @@ import Foundation
 enum CatalogPDFPipeline {
     struct Options: Sendable {
         let schoolID: String
+        var catalogVersionID: String?
         let includeCourses: Bool
         let includePolicies: Bool
         let ocrFallback: Bool
@@ -112,6 +113,19 @@ enum CatalogPDFPipeline {
         }
 
         let ocrPagesUsed = await extractor.ocrPagesUsed()
+        let versionID = options.catalogVersionID?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? options.catalogVersionID!
+            : options.schoolID
+        let documentIR: CatalogDocumentIR? = CatalogPlatformFlags.documentIREnabled
+            ? CatalogPDFToDocumentIRAdapter.buildIR(
+                schoolID: options.schoolID,
+                catalogVersionID: versionID,
+                sourceURL: pdfURL.absoluteString,
+                classifiedBlocks: classifiedBlocks,
+                layoutProfileID: "pdf-\(options.schoolID)",
+                layoutConfidence: 0.8
+            )
+            : nil
         return CatalogPDFIngestOutput(
             programs: programs,
             courses: courses,
@@ -120,7 +134,8 @@ enum CatalogPDFPipeline {
             healthReport: healthReport,
             foundation: foundation,
             classificationDiagnostics: classificationDiagnostics,
-            ocrPagesUsed: ocrPagesUsed
+            ocrPagesUsed: ocrPagesUsed,
+            documentIR: documentIR
         )
     }
 

@@ -315,7 +315,10 @@ struct CollegeApp: App {
                     }
             }
             }
-            .frame(minWidth: 1080, minHeight: 700)
+            .frame(
+                minWidth: isHostedUnitTest ? 1 : 1080,
+                minHeight: isHostedUnitTest ? 1 : 700
+            )
             .task(id: launchSplashShownAt) {
                 guard !forceUITestMainUI else { return }
                 guard let shownAt = launchSplashShownAt else { return }

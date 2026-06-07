@@ -40,8 +40,8 @@ enum AppPageToolbarMetadata {
             )
         case .brightspace:
             return Entry(
-                toolbarContentTypeName: "WebToolbarContent",
-                toolbarProviderTypeName: "WebToolbarProvider",
+                toolbarContentTypeName: "None",
+                toolbarProviderTypeName: "None",
                 hasDedicatedToolbarChrome: false
             )
         case .degree, .assistant, .profile, .settings, .documents:

@@ -15,7 +15,7 @@ struct AcademicDegreeTabBar: View {
     var showOverviewPill: Bool = false
     /// When true, pills are centered in the row (Edit Profile). When false, uses horizontal scroll (Academics toolbar).
     var centersContent: Bool = false
-    /// When true, styles controls for `MainWindowToolbar` (plain icons, no extra capsule backgrounds).
+    /// When true, styles controls for `MainWindowToolbar` (native `.buttonStyle(.glass)`).
     var toolbarHosted: Bool = false
     var allowsAdd: Bool = true
     var allowsDelete: Bool = true
@@ -151,6 +151,7 @@ struct AcademicDegreeTabBar: View {
         .help(String(localized: "academic.profile.add"))
     }
 
+    @ViewBuilder
     private func pillButton(
         title: String,
         isSelected: Bool,
@@ -159,32 +160,37 @@ struct AcademicDegreeTabBar: View {
         showsStatusDot: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(ToolbarMetrics.font(isSelected ? .semibold : .medium))
-                    .lineLimit(1)
+        let label = HStack(spacing: 6) {
+            Text(title)
+                .font(ToolbarMetrics.font(isSelected ? .semibold : .medium))
+                .lineLimit(1)
 
-                if showsStatusDot {
-                    statusDot(status: status, completed: status == .completed)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
-            .background {
-                Capsule()
-                    .fill(isSelected ? accent : Color.clear)
-            }
-            .overlay {
-                Capsule()
-                    .strokeBorder(
-                        isSelected ? accent.opacity(0.0) : Color.secondary.opacity(0.25),
-                        lineWidth: 1
-                    )
+            if showsStatusDot {
+                statusDot(status: status, completed: status == .completed)
             }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .foregroundStyle(isSelected ? Color.white : Color.primary)
+        .background {
+            Capsule()
+                .fill(isSelected ? accent : Color.clear)
+        }
+        .overlay {
+            Capsule()
+                .strokeBorder(
+                    isSelected ? accent.opacity(0.0) : Color.secondary.opacity(0.25),
+                    lineWidth: 1
+                )
+        }
+
+        if toolbarHosted {
+            Button(action: action) { label }
+                .buttonStyle(.glass)
+        } else {
+            Button(action: action) { label }
+                .buttonStyle(.plain)
+        }
     }
 
     @ViewBuilder
@@ -258,7 +264,7 @@ extension View {
     }
 }
 
-// MARK: - Window toolbar host
+// MARK: - Window toolbar profile actions
 
 enum AcademicsToolbarProfileActions {
     @MainActor
@@ -273,70 +279,6 @@ enum AcademicsToolbarProfileActions {
         if let created = collegePersistence.addAcademicProfile(degreeLevel: level) {
             academicsScene.selectedAcademicProfileID = created.id
         }
-    }
-}
-
-struct AcademicsToolbarAddProfileButton: View {
-    private var collegePersistence: CollegePersistence { appContainer.persistence }
-    @Environment(AppContainer.self) private var appContainer
-
-    private var persistence: CollegePersistence { appContainer.persistence }
-    private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
-
-    var body: some View {
-        Button {
-            AcademicsToolbarProfileActions.addProfile(
-                collegePersistence: collegePersistence,
-                academicsScene: academicsScene
-            )
-        } label: {
-            Image(systemName: "plus")
-                .font(ToolbarMetrics.iconFont)
-                .foregroundStyle(.secondary)
-                .frame(width: 28, height: 28)
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .help(String(localized: "academic.profile.add"))
-    }
-}
-
-struct AcademicsDegreeScopeToolbar: View {
-    private var collegePersistence: CollegePersistence { appContainer.persistence }
-    @Environment(AppContainer.self) private var appContainer
-
-    private var persistence: CollegePersistence { appContainer.persistence }
-    private var academicsScene: AcademicsSceneState { appContainer.academicsScene }
-
-    private var selectedBinding: Binding<UUID?> {
-        Binding(
-            get: { academicsScene.selectedAcademicProfileID },
-            set: { academicsScene.selectedAcademicProfileID = $0 }
-        )
-    }
-
-    var body: some View {
-        let profiles = AcademicProfileReadBridge.profiles()
-        AcademicDegreeTabBar(
-            profiles: profiles,
-            selectedID: selectedBinding,
-            showOverviewPill: false,
-            centersContent: profiles.count < 3,
-            toolbarHosted: true,
-            allowsAdd: false,
-            allowsDelete: false,
-            onAdd: {
-                AcademicsToolbarProfileActions.addProfile(
-                    collegePersistence: collegePersistence,
-                    academicsScene: academicsScene
-                )
-            },
-            onDelete: { _ in },
-            onReorder: { ordered in
-                collegePersistence.reorderAcademicProfiles(ordered)
-            }
-        )
-        .frame(maxWidth: 720)
     }
 }
 

@@ -14,12 +14,16 @@ enum WorkdayScraperError: Error, Equatable, Sendable {
     case requiresAuth
     case decodingFailed(String)
     case rateLimited
+    case network(String)
 
     var displayMessage: String {
         switch self {
         case .badURL:
             return "Careers URL format not recognized. Check Settings."
         case .httpError(let code):
+            if code == 404 {
+                return "Careers board not found. Use the main board URL from the careers site (not a single job link)."
+            }
             if code == 406 {
                 return "Request rejected by server (406). Check the careers URL or try again later."
             }
@@ -30,6 +34,8 @@ enum WorkdayScraperError: Error, Equatable, Sendable {
             return "Unexpected response format: \(detail)"
         case .rateLimited:
             return "Rate limited — try again later."
+        case .network(let detail):
+            return "Network error: \(detail)"
         }
     }
 }
@@ -43,7 +49,11 @@ struct WorkdayAPIContext: Equatable, Sendable {
     let apiBase: URL
     let careersURL: URL
 
-    var listJobsURL: URL { apiBase.appendingPathComponent("jobs") }
+    var listJobsURL: URL {
+        var base = apiBase.absoluteString
+        while base.hasSuffix("/") { base.removeLast() }
+        return URL(string: base + "/jobs")!
+    }
 
     func publicJobURL(externalPath: String) -> String? {
         var base = careersURL.absoluteString
@@ -53,23 +63,115 @@ struct WorkdayAPIContext: Equatable, Sendable {
     }
 
     func detailURL(externalPath: String) -> URL? {
-        let trimmed = externalPath.hasPrefix("/") ? String(externalPath.dropFirst()) : externalPath
-        return apiBase.appendingPathComponent(trimmed)
+        let pathSuffix = externalPath.hasPrefix("/") ? externalPath : "/" + externalPath
+        var base = apiBase.absoluteString
+        while base.hasSuffix("/") { base.removeLast() }
+        return URL(string: base + pathSuffix)
     }
 }
 
 // MARK: - List response (stable)
 
+private struct WorkdayAPIErrorBody: Decodable, Sendable {
+    let errorCode: String?
+    let message: String?
+    let httpStatus: Int?
+}
+
 struct WorkdayJobListResponse: Codable, Sendable {
     let total: Int
     let jobPostings: [WorkdayScrapedJob]
     let facets: [WorkdayFacet]?
+
+    init(total: Int, jobPostings: [WorkdayScrapedJob], facets: [WorkdayFacet]?) {
+        self.total = total
+        self.jobPostings = jobPostings
+        self.facets = facets
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        total = try container.decodeIfPresent(Int.self, forKey: .total) ?? 0
+        jobPostings = try container.decodeIfPresent([WorkdayScrapedJob].self, forKey: .jobPostings) ?? []
+        facets = try container.decodeIfPresent([WorkdayFacet].self, forKey: .facets)
+    }
+}
+
+enum WorkdayJobListResponseDecoder {
+    static func decode(from data: Data) throws -> WorkdayJobListResponse {
+        if data.isEmpty {
+            throw WorkdayScraperError.decodingFailed("Empty response from Workday jobs API")
+        }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], object.isEmpty {
+            throw WorkdayScraperError.decodingFailed(
+                "Workday returned an empty JSON object — verify the board URL (e.g. https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL) and network/VPN settings"
+            )
+        }
+        if let apiError = try? JSONDecoder().decode(WorkdayAPIErrorBody.self, from: data),
+           let code = apiError.errorCode?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !code.isEmpty,
+           !data.contains("jobPostings".utf8) {
+            let message = apiError.message?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detail = (message?.isEmpty == false) ? message! : code
+            throw WorkdayScraperError.decodingFailed("Workday API error: \(detail)")
+        }
+        do {
+            return try JSONDecoder().decode(WorkdayJobListResponse.self, from: data)
+        } catch {
+            let preview = String(data: data.prefix(160), encoding: .utf8)?
+                .replacingOccurrences(of: "\n", with: " ")
+                ?? "(\(data.count) bytes, non-UTF8)"
+            throw WorkdayScraperError.decodingFailed("\(error.localizedDescription) — \(preview)")
+        }
+    }
 }
 
 struct WorkdayFacet: Codable, Sendable {
     let facetParameter: String
     let descriptor: String?
     let values: [WorkdayFacetValue]?
+
+    init(facetParameter: String, descriptor: String?, values: [WorkdayFacetValue]?) {
+        self.facetParameter = facetParameter
+        self.descriptor = descriptor
+        self.values = values
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        facetParameter = try container.decode(String.self, forKey: .facetParameter)
+        descriptor = try container.decodeIfPresent(String.self, forKey: .descriptor)
+        values = Self.decodeValues(from: container)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case facetParameter, descriptor, values
+    }
+
+    /// Workday tenants sometimes nest location facets (`locationMainGroup` → `locationCountry`, etc.).
+    /// Tagging only needs flat leaf values (`workerSubType`, `timeType`); ignore nested groups on failure.
+    private static func decodeValues(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> [WorkdayFacetValue]? {
+        guard container.contains(.values) else { return nil }
+        if let leafValues = try? container.decode([WorkdayFacetValue].self, forKey: .values) {
+            return leafValues
+        }
+        guard let groups = try? container.decode([WorkdayNestedFacetGroup].self, forKey: .values) else {
+            return nil
+        }
+        let flattened = groups.flatMap(\.leafValues)
+        return flattened.isEmpty ? nil : flattened
+    }
+}
+
+/// Nested facet bucket inside `locationMainGroup`-style responses.
+private struct WorkdayNestedFacetGroup: Decodable, Sendable {
+    let values: [WorkdayFacetValue]?
+
+    var leafValues: [WorkdayFacetValue] {
+        values ?? []
+    }
 }
 
 struct WorkdayFacetValue: Codable, Sendable {

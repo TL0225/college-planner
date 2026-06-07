@@ -270,10 +270,7 @@ struct ContentView: View {
     @ViewBuilder
     private var mainNavigationSplitView: some View {
         NavigationSplitView(columnVisibility: $navigationSplitViewVisibility) {
-            SidebarView(
-                activePage: $activePage,
-                columnVisibility: $navigationSplitViewVisibility
-            )
+            SidebarView(activePage: $activePage)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
                 .background(.clear)
         } detail: {
@@ -287,7 +284,7 @@ struct ContentView: View {
                         academicsInspectorPresented: $isAcademicsInspectorPresented
                     )
                 }
-                .glassToolbarEnvironment(density: ToolbarDensity.derived(from: navigationSplitViewVisibility))
+                .toolbarBackground(.hidden, for: .windowToolbar)
                 .focusedSceneValue(\.activePage, activePage)
                 .modifier(PortalWindowSearchModifier(activePage: activePage, searchText: $toolbarSearchText))
         }

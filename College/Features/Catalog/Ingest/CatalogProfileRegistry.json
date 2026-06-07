@@ -1,0 +1,28 @@
+{
+  "profiles": [
+    {
+      "id": "profileA",
+      "label": "NYU-style detail codes",
+      "schoolIDs": ["new_york_university"],
+      "domSignals": ["detail_code", "div.courseblock"]
+    },
+    {
+      "id": "profileB",
+      "label": "Fordham-style courseblocktitle",
+      "schoolIDs": ["fordham_university"],
+      "domSignals": ["courseblocktitle", "div.courseblock"]
+    },
+    {
+      "id": "profileC",
+      "label": "CMU-style dl.courseblock",
+      "schoolIDs": ["carnegie_mellon_university"],
+      "domSignals": ["dl.courseblock"]
+    },
+    {
+      "id": "profileDefault",
+      "label": "Generic CourseLeaf fallback",
+      "schoolIDs": [],
+      "domSignals": []
+    }
+  ]
+}

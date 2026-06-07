@@ -1,0 +1,7 @@
+#include? "Secrets.xcconfig"
+
+// Apple Silicon Macs only (no Intel/x86_64 build).
+ARCHS = arm64
+EXCLUDED_ARCHS[sdk=macosx*] = x86_64
+
+MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE

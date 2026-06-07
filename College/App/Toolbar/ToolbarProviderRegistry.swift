@@ -19,8 +19,12 @@ enum ToolbarProviderRegistry {
             CareerToolbarProvider.toolbarContent(context: context)
         case .webShortcut:
             WebToolbarProvider.toolbarContent(context: context)
-        default:
+        case .degree, .documents, .assistant, .profile, .settings, .brightspace:
             ToolbarContentEmpty()
+        #if DEBUG
+        case .debug:
+            ToolbarContentEmpty()
+        #endif
         }
     }
 }

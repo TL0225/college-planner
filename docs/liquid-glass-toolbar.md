@@ -1,40 +1,38 @@
 # Liquid Glass Toolbar
 
-Developer guide for the Tahoe Liquid Glass toolbar design system. See ADR 007 for architecture.
+Developer guide for native macOS 26 Liquid Glass in the main window toolbar.
 
 ## Rules
 
-### 1. No magic numbers
+### 1. Native APIs only
 
-All visual constants read from `GlassToolbarStyle` / `ToolbarGlassTheme` tokens. Controls use `style.theme.circleControlSize`, `style.theme.searchFieldWidth`, etc.—never hardcoded `.padding(8)` or `.cornerRadius(12)` in controls or `*ToolbarContent`.
+Use Apple's Liquid Glass APIs directly in `App/Toolbar/**` — no custom wrapper module.
 
-### 2. Interaction states
+| Pattern | API |
+| --- | --- |
+| Icon toolbar button | `.buttonStyle(.glass)` |
+| Multiple glass shapes | `GlassEffectContainer(spacing:) { … }` |
+| Layout | `ToolbarMetrics.iconControlSize`, `ToolbarMetrics.minHitTarget` |
 
-All controls use `GlassInteractionState` for `idle`, `hover`, `focus`, `pressed`, `selected`, and `disabled`. Route interactive chrome through `GlassInteractiveSurface`; do not apply `.opacity` or `.scale` directly on public controls.
+### 2. Accessibility
 
-### 3. Motion tokens
+Every toolbar control requires:
 
-All controls animate via `GlassMotionTokens` from the active `GlassToolbarStyle`. No one-off `withAnimation` curves or per-control spring definitions.
-
-### 4. Density
-
-Controls respect `@Environment(\.toolbarDensity)` and `GlassToolbarStyle.effectiveTheme(for:)`. v1 derivation: sidebar open → `.expanded`, collapsed → `.compact`, default → `.regular`. v2 applies compact/expanded multipliers to circle size, search width, group inset, and spacing.
-
-### 5. New controls
-
-New glass control → add to `GlassToolbarControls.swift` (under `Toolbar/Glass/`) + add snapshot coverage in `ToolbarVisualTests`.
-
-### 6. Accessibility
-
-Every public control requires:
-
-- `.accessibilityLabel(...)` — required parameter or derived from `tip`
+- `.accessibilityLabel(...)`
 - `.accessibilityIdentifier(...)` — stable for UI tests (e.g. `"toolbar.calendar.next"`)
-- `frame(minWidth:minHeight:)` from `theme.minHitTarget` (typically 44pt)
+- `.frame(minWidth:minHeight:)` from `ToolbarMetrics.minHitTarget` (44pt)
+
+### 3. Dispatch-only toolbar views
+
+Toolbar chrome dispatches via `ToolbarDispatcher`; feature views register handlers and mutate `*SceneState`. Do not mutate scene state from toolbar views except via dispatch.
+
+### 4. New controls
+
+Add controls inline in `*ToolbarContent.swift` or `AppToolbarViews.swift` using native APIs. Add snapshot coverage in `ToolbarVisualTests` when visuals change.
 
 ## Record-mode workflow
 
-Visual regression is a **hard merge gate** for toolbar glass changes. Baselines must exist before the toolbar refactor PR merges.
+Visual regression is a merge gate for toolbar chrome changes.
 
 ### Seed or update snapshots
 
@@ -42,28 +40,25 @@ Visual regression is a **hard merge gate** for toolbar glass changes. Baselines 
 bash scripts/record_toolbar_snapshots.sh
 ```
 
+Or:
+
+```bash
+RECORD_SNAPSHOTS=1 xcodebuild test -scheme College -only-testing:CollegeTests/ToolbarVisualTests CODE_SIGNING_ALLOWED=NO
+```
+
 ### PR requirements
 
-1. Run record mode locally when changing `College/App/Toolbar/Glass/**` or `GlassToolbarControls.swift`.
-2. Commit snapshot artifacts (e.g. `CollegeTests/__Snapshots__/ToolbarVisual/`).
-3. Include intentional snapshot diff in PR with screenshot review.
-4. CI runs visual tests on PR—failures block merge.
+1. Run record mode when changing toolbar chrome in `App/Toolbar/**`.
+2. Commit snapshot artifacts under `CollegeTests/__Snapshots__/ToolbarVisual/`.
+3. Include intentional snapshot diff in PR review.
 
 ### Snapshot matrix (minimum)
 
 | Scenario | Validates |
 | --- | --- |
-| Light / dark appearance | Material and stroke legibility |
-| Vibrant window / wallpaper | Glass legibility |
-| Fullscreen | Density + placement |
-| Sidebar open | `ToolbarDensity.expanded` |
-| Sidebar closed | `ToolbarDensity.compact` |
+| Light appearance | Calendar chrome legibility |
+| Dark appearance | Calendar chrome legibility |
 
-## Future style swaps
+## Superseded custom stack
 
-When Apple ships new materials (e.g. macOS 27):
-
-1. Add `macOS27GlassStyle: GlassToolbarStyle` in `College/App/Toolbar/Glass/`.
-2. Swap default in `GlassToolbarEnvironment` or feature-flag.
-3. Re-run `ToolbarVisualTests` in record mode; review diff.
-4. Zero edits to `*ToolbarContent` files.
+The former `College/App/Toolbar/Glass/` design system (ADR 007) was removed in favor of native APIs. See ADR 007 superseded note for history.

@@ -11,6 +11,7 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UserDefaultsWindowAutosaveCleanup.runAtLaunch()
+        HostedUnitTestWindowPolicy.applyIfNeeded()
         installEarlyWindowChromeObserver()
         AppActivityCoordinator.shared.refreshPolicyFromSettings()
         UITestLaunchFlags.scheduleUITestActivationRetriesIfNeeded()
@@ -166,5 +167,32 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openDockSettings(_ sender: Any?) {
         MacPreferencesWindow.show()
+    }
+}
+
+// MARK: - Hosted unit test window suppression
+
+/// App-hosted unit tests (`CollegeTests` inside `College.app`) still create a SwiftUI
+/// `WindowGroup`. Without this, users see a large empty gray window while tests run.
+enum HostedUnitTestWindowPolicy {
+    private static var shouldSuppress: Bool {
+        CollegeTestRuntime.isUnitTestProcess && !UITestLaunchFlags.forcesMainUI
+    }
+
+    static func applyIfNeeded() {
+        guard shouldSuppress else { return }
+        orderOutAllWindows()
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeMainNotification,
+            object: nil,
+            queue: .main
+        ) { note in
+            guard shouldSuppress, let window = note.object as? NSWindow else { return }
+            window.orderOut(nil)
+        }
+    }
+
+    private static func orderOutAllWindows() {
+        NSApp.windows.forEach { $0.orderOut(nil) }
     }
 }

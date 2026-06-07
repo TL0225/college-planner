@@ -104,7 +104,14 @@ enum CatalogSchoolImportService {
                     descriptionText: finalDescription,
                     department: finalDepartment,
                     departmentID: departmentID,
-                    isArchived: false
+                    isArchived: false,
+                    catalogStableID: nil,
+                    provenanceJSON: nil,
+                    prerequisiteRulesJSON: {
+                        guard let rule = catalogCourse.prerequisites,
+                              let data = try? JSONEncoder().encode(rule) else { return nil }
+                        return String(data: data, encoding: .utf8)
+                    }()
                 )
             )
 
@@ -145,7 +152,9 @@ enum CatalogSchoolImportService {
                 parentCategory: degreeReq.parentCategory,
                 displayTitle: degreeReq.displayTitle,
                 trackVariant: nil,
-                requirementsHash: nil
+                requirementsHash: nil,
+                catalogStableID: nil,
+                provenanceJSON: nil
             )
         }
         try repo.upsertDegreeRequirements(universityID: university.id, inputs: requirementInputs)

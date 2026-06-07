@@ -107,6 +107,9 @@ struct CatalogRepository {
         let descriptionText: String?
         let department: String?
         let isArchived: Bool
+        let catalogStableID: UUID?
+        let provenanceJSON: String?
+        let prerequisiteRulesJSON: String?
     }
 
     func upsertCourses(universityID: UUID, inputs: [CourseUpsertInput]) throws {
@@ -139,9 +142,65 @@ struct CatalogRepository {
             course.department = input.department
             course.isArchived = input.isArchived
             course.lastUpdated = .now
+            if let stableID = input.catalogStableID {
+                course.catalogStableID = stableID
+            }
+            if let provenanceJSON = input.provenanceJSON {
+                course.provenanceJSON = provenanceJSON
+            }
+            if let prerequisiteRulesJSON = input.prerequisiteRulesJSON {
+                course.prerequisiteRulesJSON = prerequisiteRulesJSON
+            }
         }
 
         ModelMergeCoalescer.scheduleSave(context)
+    }
+
+    func loadStoredEntityIdentities(
+        universityID: UUID,
+        catalogVersionID: String
+    ) throws -> [CatalogEntityIdentity] {
+        var identities: [CatalogEntityIdentity] = []
+
+        var majorDescriptor = FetchDescriptor<Major>(
+            predicate: #Predicate { $0.university?.id == universityID }
+        )
+        majorDescriptor.fetchLimit = 20_000
+        for major in try context.fetch(majorDescriptor) {
+            guard let stableID = major.catalogStableID else { continue }
+            let url = major.programURL ?? ""
+            let programType = major.isMinor ? "minor" : (major.degreeType ?? major.degreeLevel)
+            identities.append(
+                CatalogEntityIdentity(
+                    stableID: stableID,
+                    entityType: .program,
+                    catalogVersionID: catalogVersionID,
+                    displayKey: CatalogEntityIdentityMatcher.displayKeyForProgram(
+                        url: url,
+                        name: major.name,
+                        type: programType
+                    )
+                )
+            )
+        }
+
+        var courseDescriptor = FetchDescriptor<CourseCatalog>(
+            predicate: #Predicate { $0.university?.id == universityID }
+        )
+        courseDescriptor.fetchLimit = 50_000
+        for course in try context.fetch(courseDescriptor) {
+            guard let stableID = course.catalogStableID else { continue }
+            identities.append(
+                CatalogEntityIdentity(
+                    stableID: stableID,
+                    entityType: .course,
+                    catalogVersionID: catalogVersionID,
+                    displayKey: CatalogEntityIdentityMatcher.displayKeyForCourse(courseCode: course.courseCode)
+                )
+            )
+        }
+
+        return identities
     }
 
     /// Search catalog courses with a hard `fetchLimit`. When `performBackfill` is true, callers may

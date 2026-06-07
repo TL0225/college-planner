@@ -123,6 +123,7 @@ struct CatalogPDFIngestOutput: Sendable {
     let foundation: CatalogPDFFoundationResult
     let classificationDiagnostics: CatalogPDFBlockClassificationDiagnostics
     let ocrPagesUsed: Int
+    let documentIR: CatalogDocumentIR?
 }
 
 struct CatalogPDFFoundationResult: Sendable {

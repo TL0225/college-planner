@@ -44,6 +44,14 @@ struct CatalogEngineCapabilities: Sendable, Codable, Equatable {
     let supportsCatalogYear: Bool
     let supportsDiffing: Bool
     let supportsHistoricalSnapshots: Bool
+    /// Document IR analyze → classify → profile extract (Tier 1).
+    let supportsDocumentIR: Bool
+    /// Immutable `CatalogGraph` discovery before extraction (Tier 1).
+    let supportsGraphDiscovery: Bool
+    /// Transfer equivalency tables (Transferology, ASSIST, etc.) — Tier 3.
+    let supportsTransferEquivalencies: Bool
+    /// Articulation row ingest keyed by course code — Tier 3.
+    let supportsArticulationIngest: Bool
 }
 
 protocol CatalogEngineCapabilityProvider: Sendable {
@@ -63,7 +71,11 @@ struct CatalogEngineCapabilityDefaults: CatalogEngineCapabilityProvider {
                 supportsRequirements: true,
                 supportsCatalogYear: true,
                 supportsDiffing: true,
-                supportsHistoricalSnapshots: true
+                supportsHistoricalSnapshots: true,
+                supportsDocumentIR: true,
+                supportsGraphDiscovery: true,
+                supportsTransferEquivalencies: false,
+                supportsArticulationIngest: false
             )
         case .courseLeaf:
             return CatalogEngineCapabilities(
@@ -73,7 +85,11 @@ struct CatalogEngineCapabilityDefaults: CatalogEngineCapabilityProvider {
                 supportsRequirements: true,
                 supportsCatalogYear: true,
                 supportsDiffing: true,
-                supportsHistoricalSnapshots: true
+                supportsHistoricalSnapshots: true,
+                supportsDocumentIR: true,
+                supportsGraphDiscovery: true,
+                supportsTransferEquivalencies: false,
+                supportsArticulationIngest: false
             )
         case .pdf:
             return CatalogEngineCapabilities(
@@ -83,7 +99,11 @@ struct CatalogEngineCapabilityDefaults: CatalogEngineCapabilityProvider {
                 supportsRequirements: true,
                 supportsCatalogYear: true,
                 supportsDiffing: false,
-                supportsHistoricalSnapshots: true
+                supportsHistoricalSnapshots: true,
+                supportsDocumentIR: true,
+                supportsGraphDiscovery: false,
+                supportsTransferEquivalencies: false,
+                supportsArticulationIngest: false
             )
         case .profile:
             return CatalogEngineCapabilities(
@@ -93,7 +113,11 @@ struct CatalogEngineCapabilityDefaults: CatalogEngineCapabilityProvider {
                 supportsRequirements: true,
                 supportsCatalogYear: false,
                 supportsDiffing: false,
-                supportsHistoricalSnapshots: false
+                supportsHistoricalSnapshots: false,
+                supportsDocumentIR: false,
+                supportsGraphDiscovery: false,
+                supportsTransferEquivalencies: false,
+                supportsArticulationIngest: false
             )
         case .unknown:
             return CatalogEngineCapabilities(
@@ -103,7 +127,11 @@ struct CatalogEngineCapabilityDefaults: CatalogEngineCapabilityProvider {
                 supportsRequirements: false,
                 supportsCatalogYear: false,
                 supportsDiffing: false,
-                supportsHistoricalSnapshots: false
+                supportsHistoricalSnapshots: false,
+                supportsDocumentIR: false,
+                supportsGraphDiscovery: false,
+                supportsTransferEquivalencies: false,
+                supportsArticulationIngest: false
             )
         }
     }
@@ -123,7 +151,17 @@ extension CollegePersistence.CatalogCapability {
             supportsRequirements: declared.supportsRequirements && requirementsReady,
             supportsCatalogYear: declared.supportsCatalogYear,
             supportsDiffing: declared.supportsDiffing,
-            supportsHistoricalSnapshots: declared.supportsHistoricalSnapshots && fullArchiveReady
+            supportsHistoricalSnapshots: declared.supportsHistoricalSnapshots && fullArchiveReady,
+            supportsDocumentIR: declared.supportsDocumentIR,
+            supportsGraphDiscovery: declared.supportsGraphDiscovery,
+            supportsTransferEquivalencies: declared.supportsTransferEquivalencies,
+            supportsArticulationIngest: declared.supportsArticulationIngest
         )
+    }
+}
+
+extension SchoolManifest {
+    var catalogCapabilities: CatalogManifestCapabilities {
+        CatalogManifestCapabilityStore.capabilities(forSchoolID: id, format: catalogFormat)
     }
 }

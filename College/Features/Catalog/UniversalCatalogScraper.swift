@@ -54,6 +54,11 @@ actor UniversalCatalogScraper {
     /// Keyed by canonicalized preview_program URL.
     private var ownershipByProgramURLCache: [String: (department: String?, college: String?)] = [:]
 
+    /// Document IR nodes accumulated from hierarchy container pages (graph consumer companion).
+    private var accumulatedIRNodes: [CatalogDocumentNode] = []
+    private var runSchoolID: String = ""
+    private var runCatalogVersionID: String = ""
+
     nonisolated private static func normalizeCourseCodeForLookup(_ raw: String) -> String? {
         let s = raw
             .replacingOccurrences(of: "\u{00A0}", with: " ")
@@ -298,11 +303,20 @@ actor UniversalCatalogScraper {
         programNameByURL.removeAll(keepingCapacity: true)
         courseDetailsByCode.removeAll(keepingCapacity: true)
         ownershipByProgramURLCache.removeAll(keepingCapacity: true)
+        accumulatedIRNodes.removeAll(keepingCapacity: true)
+        runSchoolID = ""
+        runCatalogVersionID = ""
     }
     
     /// The main entry point. Probes the sidebar, finds relevant pages, and scrapes them.
     /// - Parameter programsIndexOnly: When `true`, builds the program index only (no per-program requirement pages). Used for onboarding skeleton sync.
-    func scrapeAllPrograms(baseURL: URL, catalogID: Int, programsIndexOnly: Bool = false) async throws -> [ScrapedProgram] {
+    func scrapeAllPrograms(
+        baseURL: URL,
+        catalogID: Int,
+        programsIndexOnly: Bool = false,
+        schoolID: String = "",
+        catalogVersionID: String = ""
+    ) async throws -> [ScrapedProgram] {
         let logger = DebugLogger.shared
         logger.logSection("🌍 UNIVERSAL SCRAPER STARTED")
         logger.log("🎯 Target: \(baseURL.absoluteString)")
@@ -310,6 +324,11 @@ actor UniversalCatalogScraper {
 
         // Ensure no stale state leaks across runs/campuses.
         resetRunScopedState()
+        runSchoolID = schoolID.trimmingCharacters(in: .whitespacesAndNewlines)
+        runCatalogVersionID = catalogVersionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if runCatalogVersionID.isEmpty {
+            runCatalogVersionID = "catoid:\(catalogID)"
+        }
         
         // 0. Build course cache (robots-compliant) so requirement parsing can fill missing credits/titles.
         if !programsIndexOnly {
@@ -326,7 +345,7 @@ actor UniversalCatalogScraper {
         // 1b. UB-only: build program ownership overrides from department entity pages.
         // This gives us deterministic (department, college) for program URLs even when
         // the program page doesn't include ownership text.
-        if baseURL.host?.contains("buffalo.edu") == true {
+        if ModernCampusProfileConfig.forHost(baseURL.host).prefersEntityPageProgramDiscovery {
             do {
                 try await buildProgramOwnershipOverridesFromDepartmentEntities(baseURL: baseURL, catalogID: catalogID)
                 logger.log("🧭 Built program ownership overrides (UB): \(programOwnershipOverridesByURL.count)")
@@ -367,7 +386,7 @@ actor UniversalCatalogScraper {
 
         // 2b. UB-only: include programs discovered on preview_entity pages even if they don't
         // appear on majors/minors container pages.
-        if baseURL.host?.contains("buffalo.edu") == true {
+        if ModernCampusProfileConfig.forHost(baseURL.host).prefersEntityPageProgramDiscovery {
             let existingProgramURLs = Set(allItems.map { $0.programURL })
             let before = allItems.count
             for (url, name) in programNameByURL {
@@ -568,6 +587,28 @@ actor UniversalCatalogScraper {
         let programs = programsWithRequirements
         
         return programs
+    }
+
+    /// Merged Document IR from container-page HTML analyzed during this scrape run.
+    func lastDocumentIR(layoutProfileID: String = "universal-scraper") -> CatalogDocumentIR? {
+        guard !runSchoolID.isEmpty else { return nil }
+        return UniversalCatalogScraperIRConsumer.buildDocumentIR(
+            schoolID: runSchoolID,
+            catalogVersionID: runCatalogVersionID,
+            nodes: accumulatedIRNodes,
+            layoutProfileID: layoutProfileID
+        )
+    }
+
+    private func accumulateDocumentIRNodes(html: String, sourceURL: URL) {
+        guard CatalogPlatformFlags.documentIREnabled, !runSchoolID.isEmpty else { return }
+        let analysis = CatalogModernCampusHTMLAnalyzer.analyze(
+            html: html,
+            sourceURL: sourceURL,
+            schoolID: runSchoolID,
+            catalogVersionID: runCatalogVersionID
+        )
+        UniversalCatalogScraperIRConsumer.mergeNodes(analysis.nodes, into: &accumulatedIRNodes)
     }
 
     // MARK: - Program Requirements (on-demand)
@@ -3126,7 +3167,8 @@ actor UniversalCatalogScraper {
         
         let html = try await ModernCampusEngine.fetchHTMLPublic(validURL.absoluteString)
         logger.log("📥 Fetched HTML (\(html.count) chars)")
-        
+        accumulateDocumentIRNodes(html: html, sourceURL: validURL)
+
         // Parse with base URL so relative links can be resolved
         let doc = try SwiftSoup.parse(html, validURL.absoluteString)
         
@@ -3351,7 +3393,7 @@ actor UniversalCatalogScraper {
             }
 
             // UB-only: final conservative refinement pass.
-            if validURL.host?.contains("buffalo.edu") == true {
+            if ModernCampusProfileConfig.forHost(validURL.host).prefersEntityPageProgramDiscovery {
                 let refined = refineUBOwnership(programName: pending.programName, department: department, college: college)
                 department = refined.department
                 college = refined.college

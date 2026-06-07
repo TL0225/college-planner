@@ -65,11 +65,11 @@ enum CollegeModelContainerFactory: Sendable {
     ]
 
     static var profileSchema: Schema {
-        Schema(profileModelTypes, version: CollegeSchemaV1.versionIdentifier)
+        Schema(profileModelTypes, version: CollegeSchemaV1_2.versionIdentifier)
     }
 
     static var catalogSchema: Schema {
-        Schema(catalogModelTypes, version: CollegeSchemaV1.versionIdentifier)
+        Schema(catalogModelTypes, version: CollegeSchemaV1_2.versionIdentifier)
     }
 
     // MARK: - Container factories
@@ -99,18 +99,23 @@ enum CollegeModelContainerFactory: Sendable {
         if inMemory {
             return try ModelContainer(
                 for: catalogSchema,
+                migrationPlan: CollegeSchemaMigrationPlan.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true)
             )
         }
         let url = catalogStoreURL(for: schoolID)
         let configuration = ModelConfiguration(url: url)
-        return try ModelContainer(for: catalogSchema, configurations: configuration)
+        return try ModelContainer(
+            for: catalogSchema,
+            migrationPlan: CollegeSchemaMigrationPlan.self,
+            configurations: configuration
+        )
     }
 
     /// In-memory container with the full V1 schema (CRUD smoke tests spanning both partitions).
     static func makeUnifiedInMemoryContainer() throws -> ModelContainer {
         try ModelContainer(
-            for: Schema(CollegeSchemaV1.models, version: CollegeSchemaV1.versionIdentifier),
+            for: Schema(CollegeSchemaV1_2.models, version: CollegeSchemaV1_2.versionIdentifier),
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
     }
