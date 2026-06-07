@@ -13,6 +13,8 @@
 .xcode_derived*
 
 # Xcode / Swift
+College.xcodeproj/
+CollegePlatform/
 DerivedData/
 build/
 *.o
