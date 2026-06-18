@@ -1,6 +1,6 @@
 # Development Guide
 
-For what College is, see the [README](../README.md). For every tracked file's purpose, see [REPOSITORY.md](REPOSITORY.md).
+For what Blueprint is, see the [README](../README.md). For every tracked file's purpose, see [REPOSITORY.md](REPOSITORY.md).
 
 ---
 

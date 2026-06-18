@@ -1,10 +1,10 @@
 > **Status:** Active development — no public release yet. Contributors can build from source; see [Development Guide](docs/DEVELOPMENT.md).
 
 <p align="center">
-  <img src="docs/assets/readme/app-icon.png" width="128" alt="College app icon"/>
+  <img src="docs/assets/readme/app-icon.png" width="128" alt="Blueprint app icon"/>
 </p>
 
-<h1 align="center">College</h1>
+<h1 align="center">Blueprint</h1>
 
 <p align="center"><em>One Mac app for your whole semester — plan your degree, track applications, sync your calendar, and keep documents in one local workspace.</em></p>
 
@@ -25,16 +25,16 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/readme/hero-overview.png" alt="College Overview dashboard"/>
+  <img src="docs/assets/readme/hero-overview.png" alt="Blueprint Overview dashboard"/>
 </p>
 
 ---
 
 ## The problem
 
-College students juggle degree planning, class schedules, job searches, and scattered files across registrar sites, LMS portals, calendars, and job boards. College brings those workflows into one local workspace on your Mac.
+College students juggle degree planning, class schedules, job searches, and scattered files across registrar sites, LMS portals, calendars, and job boards. Blueprint brings those workflows into one local workspace on your Mac.
 
-| Problem | College's answer |
+| Problem | Blueprint's answer |
 |---------|------------------|
 | "What do I need to do today?" spans LMS, calendar, and job apps | Overview dashboard with Needs Attention, widgets, and menu bar summary |
 | Degree progress is buried in registrar PDFs and bulletin sites | School catalog sync + live degree audit + semester planner |
@@ -48,9 +48,9 @@ College students juggle degree planning, class schedules, job searches, and scat
 
 ## How it works
 
-College is built around a single local workspace on your Mac. A guided **onboarding wizard** is your first experience — school, degrees, and integrations in one pass. After that, the app pulls in official catalog data, connects external tools, and keeps academic, calendar, career, and document state in sync.
+Blueprint is built around a single local workspace on your Mac. A guided **onboarding wizard** is your first experience — school, degrees, and integrations in one pass. After that, the app pulls in official catalog data, connects external tools, and keeps academic, calendar, career, and document state in sync.
 
-| When you… | College… |
+| When you… | Blueprint… |
 |-----------|----------|
 | Declare a major in Profile | Pulls requirement blocks from the synced catalog and shows live progress in Academics |
 | Drag a course onto a semester | Updates the planner, recalculates audit completion, and reflects credit counts on Overview |
@@ -118,16 +118,16 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 
 ---
 
-## What College does
+## What Blueprint does
 
 <p align="center">
-  <img src="docs/assets/readme/feature-sidebar.png" alt="College sidebar navigation" width="120"/>
+  <img src="docs/assets/readme/feature-sidebar.png" alt="Blueprint sidebar navigation" width="120"/>
 </p>
 
 ### Overview
 
 <p align="center">
-  <img src="docs/assets/readme/hero-overview.png" alt="College Overview dashboard" width="720"/>
+  <img src="docs/assets/readme/hero-overview.png" alt="Blueprint Overview dashboard" width="720"/>
 </p>
 
 - GPA and credit progress rings, configurable dashboard widgets, and a getting-started checklist
@@ -137,7 +137,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 ### Academics
 
 <p align="center">
-  <img src="docs/assets/readme/feature-academics.png" alt="College Academics semester planner and degree audit" width="720"/>
+  <img src="docs/assets/readme/feature-academics.png" alt="Blueprint Academics semester planner and degree audit" width="720"/>
 </p>
 
 - Multi-semester planner with drag-and-drop course placement
@@ -147,7 +147,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 ### Transfer Database
 
 <p align="center">
-  <img src="docs/assets/readme/feature-transfer.png" alt="College Transfer Database equivalency lookup" width="720"/>
+  <img src="docs/assets/readme/feature-transfer.png" alt="Blueprint Transfer Database equivalency lookup" width="720"/>
 </p>
 
 - Source-to-target equivalency lookup from official and community datasets
@@ -156,7 +156,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 ### Calendar
 
 <p align="center">
-  <img src="docs/assets/readme/feature-calendar.png" alt="College Calendar month view and event list" width="720"/>
+  <img src="docs/assets/readme/feature-calendar.png" alt="Blueprint Calendar month view and event list" width="720"/>
 </p>
 
 - Unified calendar grid with Google, Apple, iCloud, and Outlook sync
@@ -165,7 +165,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 ### Career
 
 <p align="center">
-  <img src="docs/assets/readme/feature-career.png" alt="College Career application tracker board" width="720"/>
+  <img src="docs/assets/readme/feature-career.png" alt="Blueprint Career application tracker board" width="720"/>
 </p>
 
 - Application tracker (kanban and list), scraped job board openings, and follow-up reminders
@@ -182,7 +182,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 **Documents (Vault)**
 
 <p align="center">
-  <img src="docs/assets/readme/feature-documents.png" alt="College Documents Repository vault" width="720"/>
+  <img src="docs/assets/readme/feature-documents.png" alt="Blueprint Documents Repository vault" width="720"/>
 </p>
 
 - Encrypted local vault, Spotlight search, auto-classification, watched-folder ingest, semester archive, PDF annotation
@@ -190,7 +190,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 **Profile**
 
 <p align="center">
-  <img src="docs/assets/readme/feature-profile.png" alt="College Profile with projects and skills" width="720"/>
+  <img src="docs/assets/readme/feature-profile.png" alt="Blueprint Profile with projects and skills" width="720"/>
 </p>
 
 - Multi-degree identity, experience and achievements, portfolio projects, and skills
@@ -198,7 +198,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 **Settings**
 
 <p align="center">
-  <img src="docs/assets/readme/feature-settings.png" alt="College Settings and privacy controls" width="720"/>
+  <img src="docs/assets/readme/feature-settings.png" alt="Blueprint Settings and privacy controls" width="720"/>
 </p>
 
 - Catalog sync, integrations, privacy controls, and diagnostics export
@@ -207,7 +207,7 @@ For module boundaries and repository layout, see [docs/ARCHITECTURE.md](docs/ARC
 
 - **LMS** — Embedded Brightspace/Canvas/Moodle portal with assignment import and vault downloads
 - **Syllabus AI** — Extract deadlines and grading from syllabi, review calendar conflicts, persist to course records
-- **Platform extras** — Menu bar extra, deep links (`college://`), Ask College sheet (⌘⇧K)
+- **Platform extras** — Menu bar extra, deep links (`college://`), Ask Blueprint sheet (⌘⇧K)
 
 </details>
 
