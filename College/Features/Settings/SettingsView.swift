@@ -9,6 +9,7 @@ import AppKit
 import WebKit
 
 enum SettingsFeaturePreloadRegistration {
+    @MainActor
     private static let preloadUserDefaultsKeys: [String] = [
         "appAppearance",
         "ui.inactiveStateEnabled",
@@ -17,8 +18,8 @@ enum SettingsFeaturePreloadRegistration {
         "calendar.timezone",
         "calendar.startWeekOn",
         "security.encryptionEnabled",
-        "brightspace.lastVisitedURL",
-        "brightspace.pendingLoadPortalOnNextAppear",
+        LMSStorageKeys.lastVisitedURL,
+        LMSStorageKeys.pendingLoadPortalOnNextAppear,
     ]
 
     @MainActor
@@ -51,7 +52,7 @@ struct SettingsView: View {
     /// When set (standalone Settings window), drives section selection and window toolbar chrome.
     var session: SettingsSessionController? = nil
 
-            private var collegePersistence: CollegePersistence { container.persistence }
+    private var collegePersistence: CollegePersistence { container.persistence }
     @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
 
     @State private var localSelectedSection: SettingsNavSection = .profile
@@ -68,10 +69,6 @@ struct SettingsView: View {
         sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var searchSuggestions: [SettingsSearchIndex.Hit] {
-        SettingsSearchIndex.suggestionHits(matching: trimmedSearch, limit: 8)
-    }
-
     private var visibleSections: [SettingsNavSection] {
         if trimmedSearch.isEmpty {
             return SettingsNavSection.allCases
@@ -79,8 +76,18 @@ struct SettingsView: View {
         let fromIndex = SettingsSearchIndex.visibleSections(forSearchText: trimmedSearch)
         if !fromIndex.isEmpty { return fromIndex }
         return SettingsNavSection.allCases.filter {
-            $0.rawValue.localizedCaseInsensitiveContains(trimmedSearch)
+            $0.displayName.localizedCaseInsensitiveContains(trimmedSearch)
+                || $0.rawValue.localizedCaseInsensitiveContains(trimmedSearch)
         }
+    }
+
+    private var navigableSections: [SettingsNavSection] {
+        visibleSections.filter { $0 != .profile }
+    }
+
+    private var searchHits: [SettingsSearchIndex.Hit] {
+        guard !trimmedSearch.isEmpty else { return [] }
+        return SettingsSearchIndex.suggestionHits(matching: trimmedSearch)
     }
 
     private var profileDisplayName: String {
@@ -95,22 +102,42 @@ struct SettingsView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: navigationColumnVisibility) {
             settingsSidebar
-                .navigationSplitViewColumnWidth(
-                    min: SettingsMetrics.sidebarWidth,
-                    ideal: SettingsMetrics.sidebarWidth,
-                    max: SettingsMetrics.sidebarWidth
-                )
+                .navigationSplitViewColumnWidth(min: 200, ideal: SettingsMetrics.sidebarWidth)
         } detail: {
             settingsDetailColumn
         }
         .navigationSplitViewStyle(.balanced)
-        .background(SettingsSidebarSplitLock(sidebarWidth: SettingsMetrics.sidebarWidth))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(DesignSystem.Colors.bgMain)
         .environment(\.settingsNavigateToSection, selectSection)
+        .toolbar { historyToolbarContent }
         .onChange(of: session?.selectedSection) { _, newValue in
             guard let newValue else { return }
             localSelectedSection = newValue
+        }
+    }
+
+    /// Back/forward history controls. The sidebar toggle is provided automatically by
+    /// `NavigationSplitView` — we intentionally do not add a custom sidebar button here.
+    @ToolbarContentBuilder
+    private var historyToolbarContent: some ToolbarContent {
+        if let session {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    session.goBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .help(String(localized: "settings.history.back", defaultValue: "Back"))
+                .disabled(!session.canGoBack)
+
+                Button {
+                    session.goForward()
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .help(String(localized: "settings.history.forward", defaultValue: "Forward"))
+                .disabled(!session.canGoForward)
+            }
         }
     }
 
@@ -124,9 +151,27 @@ struct SettingsView: View {
             },
             set: { newValue in
                 if let session {
-                    session.isSidebarVisible = (newValue != .detailOnly)
+                    let isVisible = (newValue != .detailOnly)
+                    Task { @MainActor in
+                        session.isSidebarVisible = isVisible
+                    }
                 } else {
                     columnVisibility = newValue
+                }
+            }
+        )
+    }
+
+    private var selectedSectionBinding: Binding<SettingsNavSection> {
+        Binding(
+            get: { selectedSection },
+            set: { section in
+                if let session {
+                    Task { @MainActor in
+                        session.selectSection(section)
+                    }
+                } else {
+                    localSelectedSection = section
                 }
             }
         )
@@ -141,63 +186,86 @@ struct SettingsView: View {
     }
 
     private var settingsSidebar: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SettingsSidebarSearchField(text: $sidebarSearchText)
+        List(selection: selectedSectionBinding) {
+            if trimmedSearch.isEmpty {
+                Section {
+                    SettingsSidebarProfileRow(
+                        displayName: profileDisplayName,
+                        subtitle: profileSubtitle
+                    )
+                    .tag(SettingsNavSection.profile)
+                    .accessibilityIdentifier(SettingsNavSection.profile.accessibilityIdentifier)
+                }
 
-            if !trimmedSearch.isEmpty, !searchSuggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "settings.search.suggestions", defaultValue: "Suggestions"))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-                        .padding(.horizontal, 4)
-
-                    ForEach(searchSuggestions) { hit in
-                        SettingsSearchSuggestionRow(hit: hit) {
-                            selectSection(hit.section)
-                            sidebarSearchText = ""
-                        }
+                Section {
+                    ForEach(navigableSections, id: \.self) { section in
+                        Label(section.displayName, systemImage: section.icon)
+                            .symbolRenderingMode(.monochrome)
+                            .tag(section)
+                            .accessibilityIdentifier(section.accessibilityIdentifier)
                     }
                 }
-                .padding(.bottom, 4)
+            } else {
+                searchResultsContent
             }
+        }
+        .listStyle(.sidebar)
+        .searchable(
+            text: $sidebarSearchText,
+            prompt: String(localized: "settings.search.prompt", defaultValue: "Search settings")
+        )
+    }
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 4) {
-                    SettingsSidebarProfileStrip(
-                        displayName: profileDisplayName,
-                        subtitle: profileSubtitle,
-                        isSelected: selectedSection == .profile
-                    ) {
-                        selectSection(.profile)
-                    }
-
-                    ForEach(visibleSections, id: \.self) { section in
-                        SettingsGlassSidebarRow(
-                            section: section,
-                            isSelected: selectedSection == section
-                        ) {
-                            selectSection(section)
+    @ViewBuilder
+    private var searchResultsContent: some View {
+        if searchHits.isEmpty {
+            Section {
+                Text(String(localized: "settings.search.no_results", defaultValue: "No results"))
+                    .font(DesignSystem.Fonts.body())
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Section(String(localized: "settings.search.results", defaultValue: "Results")) {
+                ForEach(searchHits) { hit in
+                    Button {
+                        selectSection(hit.section)
+                        sidebarSearchText = ""
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: hit.section.icon)
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(hit.title)
+                                    .font(DesignSystem.Fonts.body(weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Text(hit.subtitle)
+                                    .font(DesignSystem.Fonts.caption1())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
                         }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.search.result")
                 }
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(12)
     }
 
     private var settingsDetailColumn: some View {
         ScrollView(.vertical, showsIndicators: true) {
             settingsDetail(for: selectedSection)
-                .padding(32)
+                .padding(.horizontal, DesignSystem.Spacing.xl)
+                .padding(.vertical, DesignSystem.Spacing.lg)
                 .frame(maxWidth: SettingsMetrics.detailMaxWidth, alignment: .topLeading)
-                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(12)
-        .padding(.leading, 0)
+        .padding(.horizontal, DesignSystem.Spacing.sm)
+        .navigationTitle(selectedSection.displayName)
     }
 
     @ViewBuilder
@@ -209,292 +277,180 @@ struct SettingsView: View {
             SettingsAcademicsPanel()
         case .calendar:
             SettingsCalendarPanel()
-                case .career:
+        case .career:
             SettingsCareerPanel()
         case .assistant:
             SettingsAssistantPanel()
         case .documents:
             WatchdogSettingsPanel()
-        case .brightspace:
-            SettingsBrightspacePanel()
+        case .lms:
+            SettingsLMSPanel()
         case .shortcuts:
             SettingsWebShortcutsPanel()
         case .app:
             SettingsAppPanel()
         case .privacyAndData:
             SettingsPrivacyPanel()
-                }
-    }
-}
-
-// MARK: - SettingsCard
-
-struct SettingsCard<Content: View>: View {
-    let title: String
-    let icon: String
-    let iconColor: Color
-    let content: Content
-
-    init(
-        title: String,
-        icon: String,
-        iconColor: Color = DesignSystem.Colors.primary,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.icon = icon
-        self.iconColor = iconColor
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundColor(.white)
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(width: 24, height: 24)
-                    .background(iconColor.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                Text(title)
-                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-
-            VStack(spacing: 0) {
-                content
-            }
-            .background(.thinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
-            )
         }
-        .padding(14)
-        .background(DesignSystem.Colors.glassCardBase.background(.ultraThinMaterial))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
-        )
     }
 }
 
-// MARK: - SRow
+// MARK: - SettingsLMSPanel
 
-struct SRow: View {
-    let label: String
-    var subtitle: String? = nil
-    var value: String? = nil
+struct SettingsLMSPanel: View {
 
-    var body: some View {
-        HStack(alignment: subtitle != nil ? .top : .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                if let sub = subtitle {
-                    Text(sub)
-                        .font(DesignSystem.Fonts.main(size: 11))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                }
-            }
-            Spacer()
-            if let val = value {
-                Text(val)
-                    .font(DesignSystem.Fonts.main(size: 13))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(Color.primary.opacity(0.015))
-    }
-}
-
-// MARK: - SToggleRow
-
-struct SToggleRow: View {
-    let label: String
-    var subtitle: String? = nil
-    @Binding var isOn: Bool
-
-    var body: some View {
-        HStack(alignment: subtitle != nil ? .top : .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                if let sub = subtitle {
-                    Text(sub)
-                        .font(DesignSystem.Fonts.main(size: 11))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                }
-            }
-            Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(Color.primary.opacity(0.015))
-    }
-}
-
-// MARK: - SActionRow
-
-struct SActionRow: View {
-    let label: String
-    var subtitle: String? = nil
-    let actionLabel: String
-    var actionColor: Color = DesignSystem.Colors.primary
-    let action: () -> Void
-
-    var body: some View {
-        HStack(alignment: subtitle != nil ? .top : .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                if let sub = subtitle {
-                    Text(sub)
-                        .font(DesignSystem.Fonts.main(size: 11))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                }
-            }
-            Spacer()
-            Button(action: action) {
-                Text(actionLabel)
-                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(actionColor)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(Color.primary.opacity(0.015))
-    }
-}
-
-// MARK: - SMenuRow
-
-struct SMenuRow<SelectionType: Hashable>: View {
-    let label: String
-    var subtitle: String? = nil
-    let currentDisplay: String
-    let options: [SelectionType]
-    let optionLabel: (SelectionType) -> String
-    let onSelect: (SelectionType) -> Void
-
-    var body: some View {
-        HStack(alignment: subtitle != nil ? .top : .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                if let sub = subtitle {
-                    Text(sub)
-                        .font(DesignSystem.Fonts.main(size: 11))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                }
-            }
-            Spacer()
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button(optionLabel(option)) { onSelect(option) }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Text(currentDisplay)
-                        .font(DesignSystem.Fonts.main(size: 13))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                }
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(Color.primary.opacity(0.015))
-    }
-}
-
-// MARK: - SettingsBrightspacePanel
-
-private struct SettingsBrightspacePanel: View {
-
+    // Legacy global portal-URL key retained for backward compatibility (see LMSPortalConfiguration).
     @AppStorage("brightspace.portalURL") private var portalURL: String = ""
-    @AppStorage("brightspace.savePassword") private var savePassword: Bool = true
+    @AppStorage(LMSStorageKeys.savePassword) private var savePassword: Bool = true
     @State private var draftURL: String = ""
     @State private var clearSessionAlert: Bool = false
     @State private var sessionCleared: Bool = false
+    @State private var connectionStatus: String = ""
+    @State private var signedInHost: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            SettingsCard(title: "Portal & Session", icon: "network", iconColor: Color(hex: "0ea5e9")) {
-                VStack(spacing: 0) {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Portal URL")
-                                .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                                .foregroundColor(DesignSystem.Colors.textMain)
-                            Text("Override the default URL (e.g. https://ublearns.buffalo.edu)")
-                                .font(DesignSystem.Fonts.main(size: 11))
-                                .foregroundColor(DesignSystem.Colors.textLight)
-                        }
-                        Spacer()
-                        TextField("https://brightspace.yourschool.edu", text: $draftURL)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 240)
-                            .font(DesignSystem.Fonts.main(size: 12))
-                            .onSubmit { portalURL = draftURL.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+            SettingsCard(
+                title: String(localized: "settings.lms.portal_session", defaultValue: "Portal & Session"),
+                icon: "globe",
+                iconColor: DesignSystem.Colors.info
+            ) {
+                STextFieldRow(
+                    label: String(localized: "settings.lms.portal_url", defaultValue: "Portal URL"),
+                    subtitle: String(
+                        localized: "settings.lms.portal_url.help",
+                        defaultValue: "Your school's LMS sign-in URL."
+                    ),
+                    placeholder: LMSProvider.brightspace.portalURLPlaceholder,
+                    text: $draftURL,
+                    onSubmit: { portalURL = draftURL.trimmingCharacters(in: .whitespacesAndNewlines) }
+                )
 
-                    Divider().padding(.horizontal, 18)
+                Divider().padding(.horizontal, 18)
 
-                    SToggleRow(
-                        label: "Offer to Save Password",
-                        subtitle: "Prompts to save your Brightspace credentials in the Keychain",
-                        isOn: $savePassword
+                if !signedInHost.isEmpty {
+                    SRow(
+                        label: String(localized: "settings.lms.signed_in_host", defaultValue: "Signed-in host"),
+                        value: signedInHost,
+                        valueSelectable: true
                     )
-
                     Divider().padding(.horizontal, 18)
+                }
 
-                    SActionRow(
-                        label: "Clear Session Data",
-                        subtitle: "Signs you out and removes cookies and cached data",
-                        actionLabel: sessionCleared ? "Cleared" : "Clear",
-                        actionColor: sessionCleared ? DesignSystem.Colors.textLight : DesignSystem.Colors.error
-                    ) {
-                        clearSessionAlert = true
-                    }
+                if !connectionStatus.isEmpty {
+                    SRow(
+                        label: String(localized: "settings.lms.connection_status", defaultValue: "Connection"),
+                        value: connectionStatus,
+                        valueSelectable: true
+                    )
+                    Divider().padding(.horizontal, 18)
+                }
+
+                SToggleRow(
+                    label: String(localized: "settings.lms.save_password", defaultValue: "Offer to save password"),
+                    subtitle: String(
+                        localized: "settings.lms.save_password.help",
+                        defaultValue: "Prompts to save your LMS credentials in the Keychain."
+                    ),
+                    isOn: $savePassword
+                )
+
+                Divider().padding(.horizontal, 18)
+
+                SActionRow(
+                    label: String(localized: "settings.lms.test_connection", defaultValue: "Test connection"),
+                    subtitle: String(
+                        localized: "settings.lms.test_connection.help",
+                        defaultValue: "Validates the portal URL format."
+                    ),
+                    actionLabel: String(localized: "settings.lms.test_connection.action", defaultValue: "Test…"),
+                    action: testConnection
+                )
+
+                Divider().padding(.horizontal, 18)
+
+                SActionRow(
+                    label: String(localized: "settings.lms.clear_session", defaultValue: "Clear session data"),
+                    subtitle: String(
+                        localized: "settings.lms.clear_session.help",
+                        defaultValue: "Signs you out and removes cookies and cached data."
+                    ),
+                    actionLabel: sessionCleared
+                        ? String(localized: "settings.lms.cleared", defaultValue: "Cleared")
+                        : String(localized: "settings.lms.clear", defaultValue: "Clear"),
+                    actionColor: sessionCleared ? .secondary : DesignSystem.Colors.error,
+                    role: .destructive
+                ) {
+                    clearSessionAlert = true
+                }
+            }
+
+            SAdvancedDisclosure(
+                title: String(localized: "settings.advanced.title", defaultValue: "Advanced"),
+                subtitle: String(
+                    localized: "settings.advanced.subtitle",
+                    defaultValue: "Developer and reset options."
+                )
+            ) {
+                SActionRow(
+                    label: String(localized: "settings.lms.reset_onboarding", defaultValue: "Reset onboarding"),
+                    subtitle: String(
+                        localized: "settings.lms.reset_onboarding.help",
+                        defaultValue: "Show the first-run setup flow again on next launch."
+                    ),
+                    actionLabel: String(localized: "settings.lms.reset", defaultValue: "Reset"),
+                    actionColor: DesignSystem.Colors.warning
+                ) {
+                    OnboardingPreferenceBridge.resetOnboardingState()
                 }
             }
 
             Spacer()
         }
-        .onAppear { draftURL = portalURL }
-        .alert("Clear Brightspace Session?", isPresented: $clearSessionAlert) {
-            Button("Clear", role: .destructive) {
+        .onAppear {
+            draftURL = portalURL
+            refreshSignedInHost()
+        }
+        .confirmationDialog(
+            String(localized: "settings.lms.clear_session.confirm.title", defaultValue: "Clear LMS session?"),
+            isPresented: $clearSessionAlert,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "settings.lms.clear", defaultValue: "Clear"), role: .destructive) {
                 WKWebsiteDataStore.default().removeData(
                     ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
                     modifiedSince: .distantPast
                 ) {
                     sessionCleared = true
                 }
-                if let host = URL(string: portalURL.isEmpty ? "https://ublearns.buffalo.edu" : portalURL)?.host {
-                    BrightspaceKeychainService.shared.delete(host: host)
+                if let host = URL(string: portalURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host {
+                    LMSKeychainService.shared.delete(host: host)
                 }
+                signedInHost = ""
             }
-            Button("Cancel", role: .cancel) {}
+            Button(String(localized: "common.cancel", defaultValue: "Cancel"), role: .cancel) {}
         } message: {
-            Text("This will sign you out of Brightspace and delete all stored cookies and credentials.")
+            Text(String(
+                localized: "settings.lms.clear_session.confirm.message",
+                defaultValue: "This will sign you out of your learning management system and delete stored cookies and credentials."
+            ))
+        }
+    }
+
+    private func testConnection() {
+        let trimmed = draftURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let host = url.host, !host.isEmpty else {
+            connectionStatus = String(localized: "settings.lms.connection.invalid", defaultValue: "Invalid URL")
+            return
+        }
+        portalURL = trimmed
+        connectionStatus = String(localized: "settings.lms.connection.ok", defaultValue: "URL looks valid")
+        signedInHost = host
+    }
+
+    private func refreshSignedInHost() {
+        if let host = URL(string: portalURL.trimmingCharacters(in: .whitespacesAndNewlines))?.host, !host.isEmpty {
+            signedInHost = host
         }
     }
 }

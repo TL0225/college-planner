@@ -27,6 +27,12 @@ enum AssistantAttachmentIngestor {
 
     /// Copies and normalizes imported URLs into temporary storage and builds prompt text.
     static func ingest(securityScopedURLs: [URL]) async -> Result {
+        await BackgroundServiceOnDemand.runReturning(id: "assistant_attachment_ingest") {
+            await ingestImpl(securityScopedURLs: securityScopedURLs)
+        }
+    }
+
+    private static func ingestImpl(securityScopedURLs: [URL]) async -> Result {
         guard !securityScopedURLs.isEmpty else {
             return Result(contextBlock: "", displayNames: [])
         }
@@ -64,7 +70,7 @@ enum AssistantAttachmentIngestor {
 
     private static func ingestPDF(from url: URL, baseName: String, lines: inout [String]) async {
         do {
-            let ingest = try SyllabusPDFIngestService().extractText(from: url)
+            let ingest = try await SyllabusPDFIngestService().extractText(from: url)
             let clipped = String(ingest.cleanedText.prefix(caps.maxTextPerFile))
             lines.append("### \(baseName) (PDF, \(ingest.pageCount) pages)\n\(clipped)")
             return

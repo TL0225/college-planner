@@ -25,7 +25,14 @@ struct CatalogExtractorMetrics: Codable, Sendable, Equatable {
         pageCount: Int,
         ocrPagesUsed: Int = 0
     ) -> CatalogIngestMetricSample {
-        CatalogIngestMetricSample(
+        let telemetry: [String: Int]? = {
+            guard source == "moderncampus" else { return nil }
+            let counts = ModernCampusEngine.snapshotDiscoveryTelemetryCounts()
+            return counts.isEmpty ? nil : counts
+        }()
+        let retryCount = telemetry?["fetch.retry"] ?? telemetry?["fetch.retries"]
+        let wafFallbackUsed = (telemetry?["waf.fallback"] ?? 0) > 0
+        return CatalogIngestMetricSample(
             schoolID: schoolID,
             source: source,
             succeeded: succeeded,
@@ -37,7 +44,12 @@ struct CatalogExtractorMetrics: Codable, Sendable, Equatable {
             programsFound: programsFound,
             coursesFound: coursesFound,
             requirementsFound: requirementsFound,
-            layoutProfileID: layoutProfileID
+            layoutProfileID: layoutProfileID,
+            discoveryTelemetry: telemetry,
+            retryCount: retryCount,
+            layoutProfileCounts: layoutProfileID.map { [$0: 1] },
+            wafFallbackUsed: wafFallbackUsed,
+            signatureVersion: "v2"
         )
     }
 }
@@ -74,6 +86,11 @@ enum CatalogExtractorMetricsBaselineStore {
         if let data = try? JSONEncoder().encode(baseline) {
             UserDefaults.standard.set(data, forKey: key(schoolID: metrics.schoolID, catalogVersionID: metrics.catalogVersionID))
         }
+    }
+
+    /// Drops the stored baseline when catalog discovery changes or the user forces a re-scrape.
+    static func clear(schoolID: String, catalogVersionID: String) {
+        UserDefaults.standard.removeObject(forKey: key(schoolID: schoolID, catalogVersionID: catalogVersionID))
     }
 
     static func expectedPrograms(schoolID: String, catalogVersionID: String, fallback: Int) -> Int? {

@@ -37,6 +37,12 @@ actor AppUpdateCheckService {
     private let timeoutSeconds: TimeInterval = 8
 
     func checkForUpdates(currentVersion: String = AppUpdateCheckService.currentAppVersion()) async throws -> AppUpdateInfo {
+        try await BackgroundServiceOnDemand.runThrowing(id: "app_update_check") {
+            try await AppUpdateCheckService.shared.checkForUpdatesImpl(currentVersion: currentVersion)
+        }
+    }
+
+    func checkForUpdatesImpl(currentVersion: String = AppUpdateCheckService.currentAppVersion()) async throws -> AppUpdateInfo {
         var request = URLRequest(url: latestReleaseAPIURL)
         request.timeoutInterval = timeoutSeconds
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")

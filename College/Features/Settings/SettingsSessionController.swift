@@ -1,88 +1,38 @@
 // SettingsSessionController.swift
 // Feature: Settings
-// Purpose: Settings module — SettingsWindowChromeAttacher.
+// Purpose: Settings module — section state, history, and lightweight window chrome.
 // Data: CollegePersistence / repositories when applicable.
+//
+// The sidebar toggle and toolbar are owned entirely by SwiftUI's `NavigationSplitView`.
+// This controller intentionally does NOT install a custom `NSToolbar` — having both a
+// SwiftUI split-view toolbar and an AppKit toolbar caused the sidebar button to appear
+// twice / jump sides between sections.
 
 import AppKit
 import Combine
-import ObjectiveC
 import SwiftUI
 
-/// `NSToolbar` subclass that tolerates KVO observers SwiftUI's `Settings` scene installs on its own
-/// toolbar instances. When we replace SwiftUI's toolbar with our own, SwiftUI's `BarAppearanceBridge`
-/// may later call `removeObserver(_:forKeyPath:)` on our toolbar even though it was registered on a
-/// different instance — which would raise `NSException` and crash. We track our actual registrations
-/// and skip unmatched removals.
-private final class SettingsSafeToolbar: NSToolbar, @unchecked Sendable {
-    nonisolated private let lock = NSLock()
-    nonisolated(unsafe) private var registrations: [ObjectIdentifier: [String: Int]] = [:]
-
-    nonisolated override func addObserver(
-        _ observer: NSObject,
-        forKeyPath keyPath: String,
-        options: NSKeyValueObservingOptions = [],
-        context: UnsafeMutableRawPointer? = nil
-    ) {
-        let key = ObjectIdentifier(observer)
-        lock.lock()
-        registrations[key, default: [:]][keyPath, default: 0] += 1
-        lock.unlock()
-        super.addObserver(observer, forKeyPath: keyPath, options: options, context: context)
-    }
-
-    nonisolated override func removeObserver(_ observer: NSObject, forKeyPath keyPath: String) {
-        guard consume(observer: observer, keyPath: keyPath) else { return }
-        super.removeObserver(observer, forKeyPath: keyPath)
-    }
-
-    nonisolated override func removeObserver(
-        _ observer: NSObject,
-        forKeyPath keyPath: String,
-        context: UnsafeMutableRawPointer?
-    ) {
-        guard consume(observer: observer, keyPath: keyPath) else { return }
-        super.removeObserver(observer, forKeyPath: keyPath, context: context)
-    }
-
-    private nonisolated func consume(observer: NSObject, keyPath: String) -> Bool {
-        let key = ObjectIdentifier(observer)
-        lock.lock()
-        defer { lock.unlock() }
-        guard var byKeyPath = registrations[key], let count = byKeyPath[keyPath], count > 0 else {
-            return false
-        }
-        let next = count - 1
-        if next == 0 {
-            byKeyPath.removeValue(forKey: keyPath)
-        } else {
-            byKeyPath[keyPath] = next
-        }
-        if byKeyPath.isEmpty {
-            registrations.removeValue(forKey: key)
-        } else {
-            registrations[key] = byKeyPath
-        }
-        return true
-    }
-}
-
 @MainActor
-final class SettingsSessionController: NSObject, ObservableObject, NSToolbarDelegate {
-    private let sidebarItemID = NSToolbarItem.Identifier("com.college.settings.sidebar")
-    private let backItemID = NSToolbarItem.Identifier("com.college.settings.back")
-    private let forwardItemID = NSToolbarItem.Identifier("com.college.settings.forward")
-    private let toolbarIdentifier = NSToolbar.Identifier("com.college.settings-toolbar")
-
+final class SettingsSessionController: NSObject, ObservableObject {
     private weak var window: NSWindow?
-    private var cancellables = Set<AnyCancellable>()
 
-    @Published var selectedSection: SettingsNavSection = .profile
-    @Published var listSelection: SettingsNavSection? = .profile
-    @Published var history: [SettingsNavSection] = [.profile]
+    private static let lastSectionKey = "settings.lastSelectedSection"
+
+    @Published var selectedSection: SettingsNavSection
+    @Published var listSelection: SettingsNavSection?
+    @Published var history: [SettingsNavSection]
     @Published var historyIndex: Int = 0
     @Published var isSidebarVisible: Bool = true
 
     private var isHistoryNavigation = false
+
+    override init() {
+        let initial: SettingsNavSection = .profile
+        selectedSection = initial
+        listSelection = initial
+        history = [initial]
+        super.init()
+    }
 
     var canGoBack: Bool { historyIndex > 0 }
     var canGoForward: Bool { historyIndex < history.count - 1 }
@@ -96,6 +46,7 @@ final class SettingsSessionController: NSObject, ObservableObject, NSToolbarDele
         }
         selectedSection = section
         listSelection = section
+        UserDefaults.standard.set(section.rawValue, forKey: Self.lastSectionKey)
         refreshChrome()
     }
 
@@ -121,35 +72,18 @@ final class SettingsSessionController: NSObject, ObservableObject, NSToolbarDele
         refreshChrome()
     }
 
-    func toggleSidebar() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isSidebarVisible.toggle()
-        }
-    }
-
     func attachWindowIfNeeded(_ window: NSWindow) {
-        if self.window === window, window.toolbar?.identifier == toolbarIdentifier {
+        if self.window === window {
             refreshChrome()
             return
         }
-
         self.window = window
         configureWindowChrome(window)
-
-        let toolbar = SettingsSafeToolbar(identifier: toolbarIdentifier)
-        toolbar.delegate = self
-        toolbar.displayMode = .default
-        toolbar.allowsUserCustomization = false
-        window.toolbar = toolbar
-
-        bindButtonStates()
         refreshChrome()
     }
 
     func refreshChrome() {
-        window?.title = selectedSection.rawValue
-        setButtonEnabled(backItemID, enabled: canGoBack)
-        setButtonEnabled(forwardItemID, enabled: canGoForward)
+        window?.title = selectedSection.displayName
     }
 
     private func configureWindowChrome(_ window: NSWindow) {
@@ -158,97 +92,18 @@ final class SettingsSessionController: NSObject, ObservableObject, NSToolbarDele
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = false
         window.toolbarStyle = .unified
+        hideStandardWindowButtons(in: window)
     }
 
-    private func bindButtonStates() {
-        cancellables.removeAll()
-        Publishers.CombineLatest($historyIndex, $history)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _, _ in
-                self?.refreshChrome()
-            }
-            .store(in: &cancellables)
-    }
-
-    private func setButtonEnabled(_ id: NSToolbarItem.Identifier, enabled: Bool) {
-        guard let toolbar = window?.toolbar else { return }
-        for item in toolbar.items where item.itemIdentifier == id {
-            (item.view as? NSButton)?.isEnabled = enabled
+    /// Settings is a single-pane window, so only the close (red) traffic light is meaningful.
+    /// Remove the miniaturize (yellow) and zoom (green) dots entirely rather than dimming them.
+    /// `.resizable` is kept so SwiftUI's automatic window sizing/layout still works.
+    private func hideStandardWindowButtons(in window: NSWindow) {
+        window.styleMask.remove(.miniaturizable)
+        for role: NSWindow.ButtonType in [.miniaturizeButton, .zoomButton] {
+            window.standardWindowButton(role)?.isHidden = true
         }
     }
-
-    nonisolated func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        MainActor.assumeIsolated {
-            [sidebarItemID, backItemID, forwardItemID, .flexibleSpace, .flexibleSpace]
-        }
-    }
-
-    nonisolated func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        MainActor.assumeIsolated {
-            [sidebarItemID, backItemID, forwardItemID, .flexibleSpace, .space]
-        }
-    }
-
-    nonisolated func toolbar(
-        _ toolbar: NSToolbar,
-        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
-        willBeInsertedIntoToolbar flag: Bool
-    ) -> NSToolbarItem? {
-        MainActor.assumeIsolated { makeItem(for: itemIdentifier) }
-    }
-
-    private func makeItem(for id: NSToolbarItem.Identifier) -> NSToolbarItem? {
-        switch id {
-        case sidebarItemID:
-            return makeIconItem(id, symbol: "sidebar.leading", tip: "Toggle Sidebar") { [weak self] in
-                self?.toggleSidebar()
-            }
-        case backItemID:
-            let item = makeIconItem(id, symbol: "chevron.left", tip: "Back") { [weak self] in
-                Task { @MainActor in self?.goBack() }
-            }
-            (item.view as? NSButton)?.isEnabled = canGoBack
-            return item
-        case forwardItemID:
-            let item = makeIconItem(id, symbol: "chevron.right", tip: "Forward") { [weak self] in
-                Task { @MainActor in self?.goForward() }
-            }
-            (item.view as? NSButton)?.isEnabled = canGoForward
-            return item
-        default:
-            return nil
-        }
-    }
-
-    private func makeIconItem(
-        _ id: NSToolbarItem.Identifier,
-        symbol: String,
-        tip: String,
-        action: @escaping () -> Void
-    ) -> NSToolbarItem {
-        let item = NSToolbarItem(itemIdentifier: id)
-        let button = NSButton(frame: .zero)
-        button.bezelStyle = .texturedRounded
-        button.isBordered = false
-        let config = NSImage.SymbolConfiguration(scale: .medium)
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?
-            .withSymbolConfiguration(config)
-        button.toolTip = tip
-        let bridge = SettingsToolbarActionBridge(action: action)
-        objc_setAssociatedObject(button, &SettingsToolbarActionBridge.key, bridge, .OBJC_ASSOCIATION_RETAIN)
-        button.target = bridge
-        button.action = #selector(SettingsToolbarActionBridge.invoke)
-        item.view = button
-        item.toolTip = tip
-        return item
-    }
-}
-
-private final class SettingsToolbarActionBridge: NSObject {
-    nonisolated(unsafe) static var key: UInt8 = 0
-    private let action: () -> Void
-    init(action: @escaping () -> Void) { self.action = action }
-    @objc func invoke() { action() }
 }
 
 struct SettingsWindowChromeAttacher: NSViewRepresentable {
@@ -274,4 +129,3 @@ struct SettingsWindowChromeAttacher: NSViewRepresentable {
         session.refreshChrome()
     }
 }
-

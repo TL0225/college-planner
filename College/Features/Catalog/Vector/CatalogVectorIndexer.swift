@@ -16,6 +16,10 @@ actor CatalogVectorIndexer {
     private static func readyKey(_ id: UUID) -> String { "catalog.vectorIndex.\(id.uuidString).ready" }
     private static func versionKey(_ id: UUID) -> String { "catalog.vectorIndex.\(id.uuidString).embeddingVersion" }
 
+    private static func checkpointProcessedKey(_ id: UUID) -> String {
+        "catalog.vectorIndex.\(id.uuidString).processed"
+    }
+
     static func indexReady(for universityID: UUID) -> Bool {
         UserDefaults.standard.bool(forKey: readyKey(universityID))
     }
@@ -35,6 +39,12 @@ actor CatalogVectorIndexer {
     }
 
     func runFullReindex(universityID: UUID, reason: String) async {
+        await BackgroundServiceOnDemand.run(id: "catalog_vector_reindex") {
+            await CatalogVectorIndexer.shared.runFullReindexImpl(universityID: universityID, reason: reason)
+        }
+    }
+
+    private func runFullReindexImpl(universityID: UUID, reason: String) async {
         guard !isIndexing else { return }
         let reindexSignpost = PerformanceSignposts.beginCatalogVectorReindex(
             universityID: universityID,
@@ -43,6 +53,12 @@ actor CatalogVectorIndexer {
         isIndexing = true
         currentUniversityID = universityID
         UserDefaults.standard.set(false, forKey: Self.readyKey(universityID))
+        let priorVersion = Self.storedEmbeddingVersion(for: universityID)
+        let version = CatalogEmbeddingRuntime.embeddingVersion
+        if priorVersion != version {
+            try? await CatalogVectorStore.shared.deleteAll(universityId: universityID)
+            UserDefaults.standard.set(0, forKey: Self.checkpointProcessedKey(universityID))
+        }
         await MainActor.run { CatalogEmbedMemoryLifecycle.shared.cancelIdleRelease() }
         defer {
             PerformanceSignposts.endCatalogVectorReindex(reindexSignpost)
@@ -56,8 +72,7 @@ actor CatalogVectorIndexer {
         do {
             let coursePageSize = 80
             let pageSize = 200
-            let version = CatalogEmbeddingRuntime.embeddingVersion
-            var processed = 0
+            var processed = UserDefaults.standard.integer(forKey: Self.checkpointProcessedKey(universityID))
 
             guard let swiftContainer = await Self.resolveCatalogStoreContainer(universityID: universityID) else {
                 throw CatalogVectorIndexError.missingCatalogStore
@@ -71,7 +86,6 @@ actor CatalogVectorIndexer {
                 try await reader.estimatedChunkSourceCount(universityID: universityID),
                 1
             )
-            try await CatalogVectorStore.shared.deleteAll(universityId: universityID)
             processed = try await indexStoreCoursePages(
                 reader: reader,
                 universityID: universityID,
@@ -99,8 +113,11 @@ actor CatalogVectorIndexer {
 
             UserDefaults.standard.set(true, forKey: Self.readyKey(universityID))
             UserDefaults.standard.set(version, forKey: Self.versionKey(universityID))
+            UserDefaults.standard.removeObject(forKey: Self.checkpointProcessedKey(universityID))
             await MainActor.run {
-                CatalogMenuBarProgressNotifier.postSucceeded(title: "Search index complete")
+                CatalogSyncProgressReporter.vectorIndex.reportTerminal(
+                    .succeeded(summary: "Search index complete")
+                )
             }
             DebugLogger.shared.log(
                 "Catalog vector index rebuilt: university=\(universityID) chunks=\(processed) reason=\(reason)",
@@ -115,7 +132,9 @@ actor CatalogVectorIndexer {
             )
             UserDefaults.standard.set(false, forKey: Self.readyKey(universityID))
             await MainActor.run {
-                CatalogMenuBarProgressNotifier.postFailed(message: "Search index failed")
+                CatalogSyncProgressReporter.vectorIndex.reportTerminal(
+                    .failed(message: "Search index failed")
+                )
             }
         }
     }
@@ -159,10 +178,12 @@ actor CatalogVectorIndexer {
                 completed: next,
                 total: progressTotal,
                 title: "Building semantic index",
-                stage: "Search index"
+                stage: "Search index",
+                activityID: "catalog.vector_index"
             )
         }
         if next % 32 == 0 {
+            UserDefaults.standard.set(next, forKey: Self.checkpointProcessedKey(chunk.universityID))
             try Task.checkCancellation()
             await Task.yield()
         }

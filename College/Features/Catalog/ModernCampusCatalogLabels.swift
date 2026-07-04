@@ -23,7 +23,7 @@ enum ModernCampusCatalogLabels {
     static func shouldExcludeCatalogListTitle(_ rawTitle: String) -> Bool {
         let title = postedDisplayTitle(from: rawTitle)
         if title.isEmpty { return true }
-        if title.range(of: "archived", options: .caseInsensitive) != nil { return true }
+        if isArchivedCatalogListTitle(title) { return true }
 
         let lower = title.lowercased()
         if lower == "catalog home" || lower == "catalog home page" { return true }
@@ -35,13 +35,19 @@ enum ModernCampusCatalogLabels {
         return false
     }
 
+    /// True when a catalog list row is marked archived (e.g. UB's trailing `[ARCHIVED CATALOG]`).
+    static func isArchivedCatalogListTitle(_ rawTitle: String) -> Bool {
+        postedDisplayTitle(from: rawTitle).range(of: "archived", options: .caseInsensitive) != nil
+    }
+
     static func latestCatalogsPerNormalizedLabel(from descriptors: [ModernCampusCatalogDescriptor]) -> [ModernCampusCatalogDescriptor] {
-        guard !descriptors.isEmpty else { return [] }
+        let active = descriptors.filter { !isArchivedCatalogListTitle($0.title) }
+        guard !active.isEmpty else { return [] }
 
         var bestByLabel: [String: ModernCampusCatalogDescriptor] = [:]
         var labelOrder: [String] = []
 
-        for descriptor in descriptors {
+        for descriptor in active {
             let label = normalizedCatalogTypeLabel(from: descriptor.title, catoid: descriptor.catoid)
             if !labelOrder.contains(label) {
                 labelOrder.append(label)

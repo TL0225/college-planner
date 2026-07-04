@@ -13,17 +13,20 @@ final class WorkdayScraperLiveTests: XCTestCase {
     }
 
     func testLiveScrapeInsmedListings() async throws {
-        let company = WorkdayCompanyConfigEntry(
+        let company = JobBoardCompany(
             slug: "insmed",
             displayName: "Insmed Incorporated",
             careersURL: "https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL"
         )
 
+        let started = Date()
         let progress = ProgressBox()
         let jobs = try await WorkdayScraper.shared.scrapeCompanyListings(entry: company) { completed, total in
             progress.record(completed: completed, total: total)
         }
+        let elapsed = Date().timeIntervalSince(started)
 
+        XCTAssertLessThan(elapsed, 120, "Insmed listing scrape should finish within 120s")
         XCTAssertGreaterThanOrEqual(jobs.count, 80, "Expected Insmed board to return most of ~88 postings")
         XCTAssertTrue(jobs.allSatisfy { !$0.title.isEmpty && !$0.externalPath.isEmpty })
 
@@ -34,6 +37,40 @@ final class WorkdayScraperLiveTests: XCTestCase {
 
         let maxProgress = progress.maxFraction
         XCTAssertGreaterThanOrEqual(maxProgress, 0.99, "Listing scrape should reach ~100% progress")
+    }
+
+    func testLiveColdDetailScrapeWithoutPriorListingWarmup() async throws {
+        let company = JobBoardCompany(
+            slug: "insmed",
+            displayName: "Insmed Incorporated",
+            careersURL: "https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL"
+        )
+
+        let listings = try await WorkdayScraper.shared.scrapeCompanyListings(entry: company, reportProgress: nil)
+        guard let first = listings.first else {
+            XCTFail("Expected at least one listing for detail scrape")
+            return
+        }
+
+        WorkdayHTTP.resetSession()
+
+        var careersBase = company.careersURL
+        while careersBase.hasSuffix("/") { careersBase.removeLast() }
+        let externalPath = first.externalPath.hasPrefix("/") ? first.externalPath : "/\(first.externalPath)"
+        let applyURLString = careersBase + externalPath
+
+        let detail = try await WorkdayScraper.shared.scrapeDetail(
+            request: JobDetailScrapeRequest(
+                externalId: first.stableExternalId,
+                externalPath: first.externalPath,
+                fallbackTitle: first.title,
+                applyURLString: applyURLString,
+                cachedDescription: nil
+            ),
+            company: company
+        )
+
+        XCTAssertFalse(detail.descriptionPlain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 }
 

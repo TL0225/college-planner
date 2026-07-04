@@ -24,9 +24,9 @@ struct PrivacyMaskModifier: ViewModifier {
     let isConfidential: Bool
     let displayTitle: String
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        guard mirrorEnabled, isConfidential else { return AnyView(content) }
-        return AnyView(
+        if mirrorEnabled, isConfidential {
             content
                 .blur(radius: reduceTransparency ? 0 : 6)
                 .overlay {
@@ -42,7 +42,9 @@ struct PrivacyMaskModifier: ViewModifier {
                 }
                 .accessibilityLabel("Busy")
                 .accessibilityRemoveTraits(.isStaticText)
-        )
+        } else {
+            content
+        }
     }
 }
 

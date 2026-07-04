@@ -7,6 +7,14 @@ import Foundation
 import SwiftData
 
 // MARK: - Legacy local store entity name aliases (Phase 7f)
+//
+// Reduction plan (Wave 3): migrate call sites to real `@Model` names, then delete aliases.
+// Priority order by traffic: `CourseCatalogEntity` → `CourseCatalog` (CourseSearchView done),
+// `CourseEntity` → `PlannerCourse` (AddCourseView, EditCourseDetailsView done),
+// `SemesterEntity`/`PlanEntity` → `PlannerSemester`/`PlannerPlan` (CourseSearchView done),
+// then assistant tools and GPACalculatorPopoverView.
+// `PlannerCourse.catalogCourse` (@MainActor below) should be retired last: prefer `catalogCourseID`
+// + `CatalogRepository.fetchCatalogCourse` (CourseDashboardView migrated).
 
 typealias DegreeRequirementEntity = CatalogDegreeRequirement
 typealias CourseEntity = PlannerCourse
@@ -14,7 +22,9 @@ typealias SemesterEntity = PlannerSemester
 typealias PlanEntity = PlannerPlan
 typealias CourseCatalogEntity = CourseCatalog
 typealias VaultDocumentEntity = VaultDocument
-typealias WorkdayJobPostingEntity = WorkdayJobPosting
+/// SwiftData `@Model` class stays `WorkdayJobPosting` for on-disk schema compatibility.
+typealias JobBoardPosting = WorkdayJobPosting
+typealias JobBoardPostingEntity = WorkdayJobPosting
 typealias CalendarEventEntity = CalendarEvent
 typealias AcademicProfileEntity = AcademicProfile
 typealias ProfileEntity = Profile

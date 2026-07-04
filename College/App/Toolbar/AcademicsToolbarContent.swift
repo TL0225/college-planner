@@ -8,27 +8,23 @@ struct AcademicsToolbarContent: ToolbarContent {
     let dispatcher: ToolbarDispatcher
     let academicsScene: AcademicsSceneState
     let collegePersistence: CollegePersistence
-    @Binding var academicsInspectorPresented: Bool
 
     var body: some ToolbarContent {
         ToolbarItem(id: "academics.degreeScope", placement: .principal) {
-            HStack(spacing: 8) {
-                AcademicsDegreeScopeToolbar(
-                    collegePersistence: collegePersistence,
-                    academicsScene: academicsScene
-                )
-                AcademicsToolbarAddProfileButton(
-                    collegePersistence: collegePersistence,
-                    academicsScene: academicsScene
-                )
-            }
-        }
-        .sharedBackgroundVisibility(.hidden)
-        ToolbarItem(id: "academics.sidebarToggle", placement: .primaryAction) {
-            AcademicsToolbarSidebarToggleView(
-                dispatcher: dispatcher,
+            AcademicsDegreeScopeToolbar(
+                collegePersistence: collegePersistence,
                 academicsScene: academicsScene
             )
+        }
+        .sharedBackgroundVisibility(.hidden)
+        ToolbarItem(id: "academics.addCourse", placement: .primaryAction) {
+            Button {
+                dispatcher.dispatch(.academics(.addCourse))
+            } label: {
+                Label("Add Course", systemImage: "plus")
+            }
+            .help("Add a course from the catalog")
+            .accessibilityIdentifier("toolbar.academics.addCourse")
         }
         .sharedBackgroundVisibility(.hidden)
     }

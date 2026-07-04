@@ -18,7 +18,9 @@ actor VaultDocumentTextIndexer {
 
     @concurrent
     nonisolated func schedule(documentID: UUID) async {
-        await VaultDocumentTextIndexer.shared.enqueue(documentID: documentID)
+        await BackgroundServiceOnDemand.run(id: "vault_text_index") {
+            await VaultDocumentTextIndexer.shared.enqueue(documentID: documentID)
+        }
     }
 
     func enqueue(documentID: UUID) async {
@@ -29,6 +31,17 @@ actor VaultDocumentTextIndexer {
 
         let work = await MainActor.run { Self.prepareIndexWork(documentID: documentID) }
         guard let work else { return }
+
+        let activityID = BackgroundActivityCenter.vaultDocumentActivityID(documentID: documentID)
+        await MainActor.run {
+            BackgroundActivityReporter.running(
+                id: activityID,
+                domain: .vaultIndexing,
+                title: work.spotlightItem.name,
+                detail: String(localized: "vault.background.indexing", defaultValue: "Indexing for search…"),
+                indeterminate: true
+            )
+        }
 
         VaultSpotlightService.index(work.spotlightItem)
 
@@ -59,6 +72,14 @@ actor VaultDocumentTextIndexer {
 
         let count = (try? await PlannerVectorStore.shared.chunkCount()) ?? 0
         AssistantPlannerIndexingSettings.markIndexed(chunkCount: count)
+
+        await MainActor.run {
+            BackgroundActivityReporter.finish(
+                id: activityID,
+                succeeded: true,
+                summary: String(localized: "vault.background.indexed", defaultValue: "Indexed for search")
+            )
+        }
     }
 
     @concurrent

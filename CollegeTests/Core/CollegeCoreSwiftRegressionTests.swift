@@ -21,4 +21,13 @@ final class CollegeCoreSwiftRegressionTests: XCTestCase {
     func testParsePrereqWithoutRustReturnsNil() {
         XCTAssertNil(CollegeCore.parsePrereq("CSE 116 and MTH 142"))
     }
+
+    func testExtractLinksFallback_withoutRust() {
+        let html = #"<a href="/catalog/cse116">CSE 116</a><a href="/other">Other</a>"#
+        XCTAssertEqual(CollegeCore.extractLinks(from: html, containing: "catalog"), ["/catalog/cse116"])
+    }
+
+    func testSelectTextFallback_withoutRust_returnsEmpty() {
+        XCTAssertTrue(CollegeCore.selectText(in: "<p>Hello</p>", selector: "p").isEmpty)
+    }
 }

@@ -65,7 +65,7 @@ enum CatalogEntityLLMValidator {
     static func validate(_ request: ValidationRequest) async -> ValidationResult? {
         guard isEnabled else { return nil }
         guard request.confidence < 0.55 else { return nil }
-        guard AppleSiliconPlatform.isSupported else { return nil }
+        guard AppleSiliconPlatform.isMLXCompatible else { return nil }
 
         let spec = ModelSpec.jsonWorker
         guard let modelPath = try? await ModelManager.shared.ensureModelInstalled(spec, progress: { _ in }) else {

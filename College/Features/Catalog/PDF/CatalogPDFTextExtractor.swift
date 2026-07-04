@@ -14,12 +14,21 @@ actor CatalogPDFTextExtractor {
     private let document: PDFDocument
     private var ocrPagesUsedCount: Int = 0
 
-    init(pdfURL: URL) throws {
+    private let maxOCRPages: Int
+
+    init(pdfURL: URL, maxOCRPages: Int = CatalogPDFOperationalLimits.maxOCRPages) throws {
         guard let doc = PDFDocument(url: pdfURL) else {
             throw CatalogPDFError.failedToOpenPDF
         }
         self.document = doc
         self.pageCount = doc.pageCount
+        self.maxOCRPages = maxOCRPages
+    }
+
+    init(document: PDFDocument, maxOCRPages: Int = CatalogPDFOperationalLimits.maxOCRPages) {
+        self.document = document
+        self.pageCount = document.pageCount
+        self.maxOCRPages = maxOCRPages
     }
 
     /// All lines in document order with indent heuristics.
@@ -31,13 +40,14 @@ actor CatalogPDFTextExtractor {
         out.reserveCapacity(pageCount * 40)
 
         for pageIndex in 0..<pageCount {
+            if Task.isCancelled { break }
             if pageIndex == 0 || pageIndex % 25 == 0 || pageIndex == pageCount - 1 {
                 onPageProgress?(pageIndex + 1, pageCount)
             }
             let pageLines = extractPageLineStrings(pageIndex: pageIndex, ocrFallback: ocrFallback)
-            for (lineIndex, text) in pageLines.enumerated() {
-                let indent = leadingWhitespaceCount(in: text)
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            for (lineIndex, rawLine) in pageLines.enumerated() {
+                let indent = leadingWhitespaceCount(in: rawLine)
+                let trimmed = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { continue }
                 out.append(
                     CatalogPDFLine(
@@ -72,6 +82,7 @@ actor CatalogPDFTextExtractor {
         perPageLines.reserveCapacity(pageRange.count)
 
         for idx in pageRange {
+            if Task.isCancelled { break }
             perPageLines.append(extractPageLineStrings(pageIndex: idx, ocrFallback: ocrFallback))
         }
 
@@ -97,7 +108,7 @@ actor CatalogPDFTextExtractor {
         var text = (page.string ?? "")
             .replacingOccurrences(of: "\u{00A0}", with: " ")
 
-        if ocrFallback {
+        if ocrFallback, ocrPagesUsedCount < maxOCRPages {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             let nonWhitespaceCount = trimmed.filter { !$0.isWhitespace && !$0.isNewline }.count
             if nonWhitespaceCount < 40 {
@@ -110,8 +121,9 @@ actor CatalogPDFTextExtractor {
 
         return text
             .components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .filter { line in
+                !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
     }
 
     private static func ocrPDFPageTextSync(page: PDFPage) -> String {

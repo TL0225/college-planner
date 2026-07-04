@@ -62,8 +62,8 @@ extension CollegePersistence {
         category: VaultDocumentCategory = .other,
         source: String = "vault",
         parentFolderID: UUID? = nil
-    ) throws {
-        try vaultRepository.addVaultDocument(
+    ) async throws {
+        try await vaultRepository.addVaultDocument(
             fromSelectedURL: url,
             category: category,
             source: source,
@@ -74,13 +74,14 @@ extension CollegePersistence {
     }
 
     @MainActor
-    func addVaultDocument(
+    @discardableResult
+    func addVaultDocumentReturning(
         fromSelectedURL url: URL,
         category: VaultDocumentCategory = .other,
         source: String = "vault",
         parentFolderID: UUID? = nil
-    ) async throws {
-        try vaultRepository.addVaultDocument(
+    ) async throws -> VaultDocument {
+        let document = try await vaultRepository.addVaultDocument(
             fromSelectedURL: url,
             category: category,
             source: source,
@@ -88,6 +89,7 @@ extension CollegePersistence {
         )
         fetchVaultDocuments()
         bumpVaultRevision()
+        return document
     }
 
     @discardableResult

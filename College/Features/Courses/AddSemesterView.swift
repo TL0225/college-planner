@@ -67,7 +67,7 @@ struct AddSemesterView: View {
             HStack {
                 Spacer()
                 Text(selectedSeason.letters)
-                    .font(.system(size: 110, weight: .black, design: .rounded))
+                    .font(DesignSystem.Fonts.main(size: 110, weight: .black, design: .rounded))
                     .foregroundStyle(Color.white.opacity(0.10))
                     .padding(.trailing, 18)
                     .padding(.top, -8)
@@ -77,12 +77,12 @@ struct AddSemesterView: View {
             // Foreground content.
             VStack(alignment: .leading, spacing: 12) {
                 Text("\(selectedSeason.rawValue.uppercased()) SEMESTER")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .tracking(1.6)
                     .foregroundStyle(Color.white.opacity(0.85))
 
                 Text(String(selectedYear))
-                    .font(.system(size: 56, weight: .heavy, design: .rounded))
+                    .font(DesignSystem.Fonts.main(size: 56, weight: .heavy, design: .rounded))
                     .foregroundStyle(Color.white)
                     .monospacedDigit()
                     .lineLimit(1)
@@ -101,7 +101,7 @@ struct AddSemesterView: View {
                     isPresented = false
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                         .foregroundStyle(Color.white.opacity(0.92))
                         .frame(width: 26, height: 26)
                         .background(Circle().fill(Color.white.opacity(0.12)))
@@ -119,9 +119,9 @@ struct AddSemesterView: View {
     private var statusChip: some View {
         HStack(spacing: 6) {
             Image(systemName: selectedStatus.iconName)
-                .font(.system(size: 11, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
             Text(selectedStatus.rawValue)
-                .font(.system(size: 12, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -178,7 +178,7 @@ struct AddSemesterView: View {
                 selectedYear = max(2000, selectedYear - 1)
             }
             Text(String(selectedYear))
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .frame(minWidth: 50)
             stepperButton(symbol: "plus") {
@@ -200,7 +200,7 @@ struct AddSemesterView: View {
     private func stepperButton(symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                 .foregroundStyle(.primary)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
@@ -233,7 +233,7 @@ struct AddSemesterView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Text("COURSES")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .tracking(1.2)
                     .foregroundStyle(.secondary)
 
@@ -249,16 +249,16 @@ struct AddSemesterView: View {
     private var emptyCoursesState: some View {
         HStack(spacing: 10) {
             Image(systemName: "book.closed")
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(Color.secondary.opacity(0.10)))
             VStack(alignment: .leading, spacing: 2) {
                 Text("No courses yet")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                 Text("Use Add Course to pick from the catalog after the semester is created.")
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -274,9 +274,9 @@ struct AddSemesterView: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                 Text("Add Course")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -315,9 +315,9 @@ struct AddSemesterView: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "graduationcap.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     Text("Add Semester")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -345,7 +345,7 @@ struct AddSemesterView: View {
 
     private var footerSummary: some View {
         Text("Creates an empty \(selectedSeason.rawValue) \(String(selectedYear)) semester.")
-            .font(.system(size: 12))
+            .font(DesignSystem.Fonts.main(size: 12))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .truncationMode(.tail)
@@ -455,7 +455,7 @@ private struct SeasonPill: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 13, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 .padding(.horizontal, 18)
                 .padding(.vertical, 9)
                 .foregroundStyle(isSelected ? Color.white : Color.primary)
@@ -487,7 +487,7 @@ private struct StatusCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 Image(systemName: status.iconName)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                     .foregroundStyle(accentColor)
                     .frame(width: 28, height: 28)
                     .background(
@@ -495,15 +495,15 @@ private struct StatusCard: View {
                             .fill(accentColor.opacity(isSelected ? 0.18 : 0.10))
                     )
                 Text(status.rawValue)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                     .foregroundStyle(isSelected ? accentColor : Color.primary)
                 Text(status.subtitle)
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
+            .padding(DesignSystem.Spacing.md)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(isSelected ? accentColor.opacity(0.08) : Color.secondary.opacity(0.04))

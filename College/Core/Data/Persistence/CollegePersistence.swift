@@ -7,6 +7,7 @@ import Combine
 import Foundation
 import SwiftData
 
+/// Legacy façade over repositories. **Phase 7:** Features should use `ProfileRepository`, `VaultRepository`, etc. directly — not `CollegePersistence.shared`.
 @MainActor
 final class CollegePersistence: ObservableObject {
     static let shared = CollegePersistence()
@@ -24,11 +25,15 @@ final class CollegePersistence: ObservableObject {
     @Published private(set) var calendarDidChangeToken: Int = 0
     @Published var careerDidChangeToken: Int = 0
     @Published var vaultDidChangeToken: Int = 0
+    @Published var transferDidChangeToken: Int = 0
     @Published private(set) var plannerChangeToken: Int = 0
     @Published var calendarSelectedSemesterID: UUID?
     @Published var activePlanID: UUID?
 
     var profileContext: ModelContext { appDataStore.profileContext }
+
+    /// In-flight paginated job-board imports keyed by company slug.
+    var jobBoardListImportSessionStates: [String: JobBoardListImportSessionState] = [:]
 
     private init(appDataStore: AppDataStore = .shared) {
         self.appDataStore = appDataStore
@@ -37,16 +42,31 @@ final class CollegePersistence: ObservableObject {
 
     func finishStoreLoad() {
         refreshAll()
+        // Skip destructive profile cleanup when the on-disk store could not be opened.
+        if appDataStore.storeOpenError == nil {
+            pruneDuplicateEmptyAcademicProfiles()
+        }
         isStoreLoaded = true
     }
 
-    func refreshAll() {
+    func refreshProfileCaches() {
+        SnowLeopardHealthMetrics.recordRefreshProfileCaches()
         let repo = profileRepository
-        plans = (try? repo.fetchPlans(limit: 100)) ?? []
-        semesters = (try? repo.fetchSemesters(limit: 200)) ?? []
-        profile = try? repo.fetchPrimaryProfile()
-        academicProfiles = (try? repo.fetchAcademicProfiles()) ?? []
-        vaultDocuments = (try? vaultRepository.fetchDocuments(limit: 5000)) ?? []
+        do { plans = try repo.fetchPlans(limit: 100) }
+        catch { plans = []; AppLogger.shared.error("refreshProfileCaches fetchPlans failed: \(error)", category: .persistence) }
+        do { semesters = try repo.fetchSemesters(limit: 200) }
+        catch { semesters = []; AppLogger.shared.error("refreshProfileCaches fetchSemesters failed: \(error)", category: .persistence) }
+        do { profile = try repo.fetchPrimaryProfile() }
+        catch { profile = nil; AppLogger.shared.error("refreshProfileCaches fetchPrimaryProfile failed: \(error)", category: .persistence) }
+        do { academicProfiles = try repo.fetchAcademicProfiles() }
+        catch { academicProfiles = []; AppLogger.shared.error("refreshProfileCaches fetchAcademicProfiles failed: \(error)", category: .persistence) }
+    }
+
+    func refreshAll() {
+        SnowLeopardHealthMetrics.recordRefreshAll()
+        refreshProfileCaches()
+        do { vaultDocuments = try vaultRepository.fetchDocuments(limit: 500) }
+        catch { vaultDocuments = []; AppLogger.shared.error("refreshAll fetchDocuments failed: \(error)", category: .persistence) }
     }
 
     var profileRepository: ProfileRepository {
@@ -73,11 +93,26 @@ final class CollegePersistence: ObservableObject {
         profileRevision &+= 1
         plannerChangeToken &+= 1
         objectWillChange.send()
+        appDataStore.bumpProfileRevisionLocally()
+    }
+
+    /// Called when `AppDataStore` saved or otherwise bumped profile data without going through persistence helpers.
+    func applyProfileRevisionBumpFromAppDataStore() {
+        profileRevision &+= 1
+        plannerChangeToken &+= 1
+        objectWillChange.send()
     }
 
     func bumpCatalogDataRevision() {
         catalogDataRevision &+= 1
-        appDataStore.bumpCatalogDataRevision()
+        objectWillChange.send()
+        appDataStore.bumpCatalogDataRevisionLocally()
+    }
+
+    /// Called when `AppDataStore` saved or otherwise bumped catalog data without going through persistence helpers.
+    func applyCatalogDataRevisionBumpFromAppDataStore() {
+        catalogDataRevision &+= 1
+        objectWillChange.send()
     }
 
     func bumpCareerRevision() {
@@ -90,13 +125,18 @@ final class CollegePersistence: ObservableObject {
         objectWillChange.send()
     }
 
+    func bumpTransferRevision() {
+        transferDidChangeToken &+= 1
+        objectWillChange.send()
+    }
+
     // MARK: - Profile / planner reads
 
     func fetchPlans() { plans = (try? profileRepository.fetchPlans(limit: 100)) ?? [] }
     func fetchSemesters() { semesters = (try? profileRepository.fetchSemesters(limit: 200)) ?? [] }
     func fetchProfile() { profile = try? profileRepository.fetchPrimaryProfile() }
     func fetchAcademicProfiles() { academicProfiles = (try? profileRepository.fetchAcademicProfiles()) ?? [] }
-    func fetchVaultDocuments() { vaultDocuments = (try? vaultRepository.fetchDocuments(limit: 5000)) ?? [] }
+    func fetchVaultDocuments() { vaultDocuments = (try? vaultRepository.fetchDocuments(limit: 500)) ?? [] }
 
     func semester(with id: UUID) -> PlannerSemester? {
         try? profileRepository.fetchSemester(id: id)
@@ -144,7 +184,7 @@ final class CollegePersistence: ObservableObject {
 
     func save() {
         _ = try? appDataStore.profileSave()
-        refreshAll()
+        refreshProfileCaches()
     }
 
     func saveAsync() { save() }
@@ -154,21 +194,17 @@ final class CollegePersistence: ObservableObject {
     @discardableResult
     func setActiveUniversity(named name: String) -> Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, let repo = catalogRepository else {
+        guard !trimmed.isEmpty else { return false }
+        guard CatalogStoreSnapshotBridge.attachUniversity(
+            named: trimmed,
+            appDataStore: appDataStore,
+            activate: true
+        ) != nil else {
             return false
         }
-        do {
-            if let university = try repo.fetchUniversity(named: trimmed) {
-                try repo.activateUniversity(id: university.id, name: trimmed)
-                try appDataStore.catalogSave()
-                AppDataStoreBridge.syncActiveCatalogSchool(universityName: trimmed)
-                bumpCatalogDataRevision()
-                return true
-            }
-        } catch {
-            AppLogger.shared.error("setActiveUniversity: \(error)")
-        }
-        return false
+        AppDataStoreBridge.syncActiveCatalogSchool(universityName: trimmed)
+        bumpCatalogDataRevision()
+        return true
     }
 
     func getActiveUniversity() -> University? {
@@ -195,14 +231,18 @@ final class CollegePersistence: ObservableObject {
         calendarDidChangeToken &+= 1
     }
 
-    func taskExists(brightspaceItemId: String) -> Bool {
-        (try? calendarRepository.taskExists(brightspaceItemId: brightspaceItemId)) == true
+    func taskExists(lmsItemId: String) -> Bool {
+        (try? calendarRepository.taskExists(lmsItemId: lmsItemId)) == true
     }
 
     // MARK: - Calendar helpers
 
     func calendarEventEntity(id: UUID) -> CalendarEvent? {
         try? calendarRepository.fetchCalendarEvent(id: id)
+    }
+
+    func calendarEventEntities(ids: [UUID]) -> [CalendarEvent] {
+        (try? calendarRepository.fetchCalendarEvents(ids: ids)) ?? []
     }
 
     // MARK: - Catalog import

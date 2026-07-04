@@ -20,6 +20,8 @@ struct SettingsCatalogSyncSection: View {
     @State private var schoolSearch = ""
     @State private var isLoadingSchools = false
     @State private var activeCatalogSync: CatalogBackgroundSyncRunner.CatalogSyncDepth?
+    @State private var catalogSyncResults: [String: CatalogSyncTerminal] = [:]
+    @State private var catalogPhaseBCoursesInFlight = false
     @State private var isRequirementsSyncRunning = false
     @State private var forceRequirementsRefresh = false
     @State private var hydratableMajors: [CatalogProgramRequirementsHydrator.SelectableMajor] = []
@@ -27,10 +29,29 @@ struct SettingsCatalogSyncSection: View {
     @State private var expandedSchoolSections: Set<String> = []
     @State private var didApplyDefaultSchoolSelection = false
     @State private var localCatalogFiles: [LocalCatalogInfo] = []
-    @State private var showTrustedSources = false
     @State private var showClearScrapedDataConfirm = false
     @ObservedObject private var catalogPurgeRunner = CatalogSchoolDataPurgeRunner.shared
     @AppStorage("catalog.ingest.forceNext.v1") private var forceNextCatalogRescrape: Bool = false
+
+    private struct HydratableMajorsRefreshTrigger: Equatable {
+        var catalogDataRevision: Int
+        var profileRevision: Int
+        var profileCollegeName: String
+        var selectedSchools: Set<String>
+        var activeCatalogSync: CatalogBackgroundSyncRunner.CatalogSyncDepth?
+        var availableSchoolsCount: Int
+    }
+
+    private var hydratableMajorsRefreshTrigger: HydratableMajorsRefreshTrigger {
+        HydratableMajorsRefreshTrigger(
+            catalogDataRevision: collegePersistence.catalogDataRevision,
+            profileRevision: collegePersistence.profileRevision,
+            profileCollegeName: collegePersistence.profile?.collegeName ?? "",
+            selectedSchools: selectedSchools,
+            activeCatalogSync: activeCatalogSync,
+            availableSchoolsCount: availableSchools.count
+        )
+    }
 
     private var filteredSchools: [String] {
         let query = schoolSearch.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -38,7 +59,9 @@ struct SettingsCatalogSyncSection: View {
         return availableSchools.filter { $0.localizedCaseInsensitiveContains(query) }
     }
 
-    private var isCatalogSyncRunning: Bool { activeCatalogSync != nil }
+    private var isCatalogSyncRunning: Bool {
+        activeCatalogSync != nil || catalogPhaseBCoursesInFlight
+    }
     private var isAnySyncRunning: Bool {
         isCatalogSyncRunning || isRequirementsSyncRunning || catalogPurgeRunner.isRunning
     }
@@ -48,13 +71,19 @@ struct SettingsCatalogSyncSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            schoolPickerBlock
+        VStack(alignment: .leading, spacing: 24) {
+            SettingsCard(
+                title: String(localized: "settings.general.catalog_schools_title", defaultValue: "Schools"),
+                icon: "building.columns",
+                iconColor: DesignSystem.Colors.primary,
+                contentPadding: DesignSystem.Spacing.md
+            ) {
+                schoolPickerContent
+            }
 
-            clearScrapedCatalogDataBlock
-
-            catalogSyncDepthBlock(
+            catalogSyncDepthCard(
                 depth: .light,
+                icon: "rectangle.stack",
                 sectionTitle: String(
                     localized: "settings.general.catalog_skeleton_title",
                     defaultValue: "Skeleton catalog"
@@ -66,51 +95,107 @@ struct SettingsCatalogSyncSection: View {
                 syncButtonLabel: syncButtonTitle(for: .light)
             )
 
-            SettingsCatalogSelectedProgramsBlock(
-                universityNames: selectedSchoolNames,
-                isOtherSyncRunning: isAnySyncRunning,
-                onSyncStateChange: { running in
-                    isRequirementsSyncRunning = running
-                    if !running { refreshHydratableMajors() }
-                }
-            )
-
-            requirementsSyncBlock
-
-            Toggle(
-                String(
-                    localized: "settings.general.catalog_force_rescrape_once",
-                    defaultValue: "Force next catalog re-scrape (ignore unchanged signature checks once)"
+            SettingsCard(
+                title: String(
+                    localized: "settings.general.catalog_selected_title",
+                    defaultValue: "Selected programs only"
                 ),
-                isOn: $forceNextCatalogRescrape
-            )
-            .toggleStyle(.checkbox)
-            .disabled(isAnySyncRunning)
+                icon: "checklist",
+                iconColor: DesignSystem.Colors.info,
+                contentPadding: DesignSystem.Spacing.md
+            ) {
+                SettingsCatalogSelectedProgramsBlock(
+                    universityNames: selectedSchoolNames,
+                    isOtherSyncRunning: isAnySyncRunning,
+                    onSyncStateChange: { running in
+                        Task { @MainActor in
+                            await Task.yield()
+                            isRequirementsSyncRunning = running
+                        }
+                    }
+                )
+            }
 
-            catalogSyncDepthBlock(
-                depth: .full,
-                sectionTitle: String(
+            requirementsSyncCard
+
+            SettingsCard(
+                title: String(
                     localized: "settings.general.catalog_full_title",
                     defaultValue: "Full catalog"
                 ),
-                sectionDescription: String(
-                    localized: "settings.general.catalog_full_help",
-                    defaultValue: "Heavy sync — fetches degree requirements for every program. Can take a long time on large catalogs (especially with strict crawl delays). Prefer skeleton first; Profile can hydrate requirements when you pick a major."
-                ),
-                syncButtonLabel: syncButtonTitle(for: .full)
-            )
+                icon: "books.vertical",
+                iconColor: DesignSystem.Colors.warning,
+                contentPadding: DesignSystem.Spacing.md
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(String(
+                        localized: "settings.general.catalog_full_help",
+                        defaultValue: "Heavy sync — fetches degree requirements for every program. Can take a long time on large catalogs (especially with strict crawl delays). Prefer skeleton first; Profile can hydrate requirements when you pick a major."
+                    ))
+                    .font(DesignSystem.Fonts.caption1())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Toggle(
+                        String(
+                            localized: "settings.general.catalog_force_rescrape_once",
+                            defaultValue: "Force next catalog re-scrape (ignore unchanged signature checks once)"
+                        ),
+                        isOn: $forceNextCatalogRescrape
+                    )
+                    .toggleStyle(.checkbox)
+                    .disabled(isAnySyncRunning)
+
+                    catalogSyncDepthActions(
+                        depth: .full,
+                        syncButtonLabel: syncButtonTitle(for: .full)
+                    )
+                }
+            }
 
             catalogBundleSharingBlock
 
-            catalogDiagnosticsBlock
+            clearScrapedCatalogDataBlock
+
+            #if DEBUG
+            SAdvancedDisclosure(
+                title: String(
+                    localized: "settings.general.catalog_diagnostics_title",
+                    defaultValue: "Catalog diagnostics"
+                )
+            ) {
+                CatalogDataDiagnosticsView(
+                    schoolID: CatalogDataDiagnosticsView.resolvedSchoolID(from: collegePersistence),
+                    isAnySyncRunning: isAnySyncRunning
+                )
+            }
+            #endif
         }
         .task { await loadSchools() }
-        .alert(
+        .onReceive(NotificationCenter.default.publisher(for: .catalogSyncProgressDidUpdate)) { note in
+            guard let activityID = note.userInfo?["activityID"] as? String,
+                  activityID == BackgroundActivityCenter.catalogCoursesID,
+                  let phase = note.userInfo?["phase"] as? String else { return }
+            if phase == CatalogSyncProgress.Phase.succeeded.rawValue
+                || phase == CatalogSyncProgress.Phase.failed.rawValue
+                || phase == CatalogSyncProgress.Phase.skipped.rawValue {
+                catalogPhaseBCoursesInFlight = false
+                activeCatalogSync = nil
+            }
+        }
+        .task(id: hydratableMajorsRefreshTrigger) {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            await Task.yield()
+            applyHydratableMajorsRefresh()
+        }
+        .confirmationDialog(
             String(
                 localized: "settings.general.catalog_clear_scraped_confirm_title",
                 defaultValue: "Clear scraped catalog data?"
             ),
-            isPresented: $showClearScrapedDataConfirm
+            isPresented: $showClearScrapedDataConfirm,
+            titleVisibility: .visible
         ) {
             Button(
                 String(localized: "settings.general.catalog_clear_scraped_confirm_action", defaultValue: "Clear"),
@@ -127,23 +212,9 @@ struct SettingsCatalogSyncSection: View {
                 )
             )
         }
-        .onAppear { refreshLocalCatalogFiles() }
-        .onChange(of: selectedSchools) { _, _ in
-            refreshHydratableMajors()
-        }
-        .onChange(of: collegePersistence.profileRevision) { _, _ in
-            refreshHydratableMajors()
-        }
-        .onChange(of: collegePersistence.profile?.collegeName) { _, _ in
-            refreshHydratableMajors()
-        }
-        .onChange(of: activeCatalogSync) { _, newValue in
-            if newValue == nil {
-                refreshHydratableMajors()
-            }
-        }
-        .onChange(of: collegePersistence.profileRevision) { _, _ in
-            refreshHydratableMajors()
+        .task {
+            await Task.yield()
+            refreshLocalCatalogFiles()
         }
     }
 
@@ -157,11 +228,8 @@ struct SettingsCatalogSyncSection: View {
 
     // MARK: - School picker
 
-    private var schoolPickerBlock: some View {
+    private var schoolPickerContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(String(localized: "settings.general.catalog_schools_title", defaultValue: "Schools"))
-                .font(.subheadline.weight(.medium))
-
             TextField(
                 String(localized: "settings.general.catalog_search", defaultValue: "Search schools"),
                 text: $schoolSearch
@@ -206,7 +274,12 @@ struct SettingsCatalogSyncSection: View {
                     List {
                         ForEach(filteredSchools, id: \.self) { school in
                             Toggle(isOn: schoolSelectionBinding(school)) {
-                                Text(school)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(school)
+                                    Text(schoolCatalogStatusLabel(for: school))
+                                        .font(DesignSystem.Fonts.caption1())
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                             .toggleStyle(.checkbox)
                             .disabled(isAnySyncRunning)
@@ -218,48 +291,87 @@ struct SettingsCatalogSyncSection: View {
         }
     }
 
+    private func schoolCatalogStatusLabel(for school: String) -> String {
+        let programs = collegePersistence.catalogProgramCount(for: school)
+        let courses = collegePersistence.existingCatalogCourseCount(for: school)
+        if programs == 0, courses == 0 {
+            return String(
+                localized: "settings.general.catalog_school_not_synced",
+                defaultValue: "Not synced"
+            )
+        }
+        return String(
+            format: String(
+                localized: "settings.general.catalog_school_status_fmt",
+                defaultValue: "%d programs · %d courses"
+            ),
+            programs,
+            courses
+        )
+    }
+
     @ViewBuilder
-    private func catalogSyncDepthBlock(
+    private func catalogSyncDepthCard(
         depth: CatalogBackgroundSyncRunner.CatalogSyncDepth,
+        icon: String,
         sectionTitle: String,
         sectionDescription: String,
         syncButtonLabel: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(sectionTitle)
-                .font(.subheadline.weight(.medium))
+        SettingsCard(
+            title: sectionTitle,
+            icon: icon,
+            iconColor: DesignSystem.Colors.primary,
+            contentPadding: DesignSystem.Spacing.md
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(sectionDescription)
+                    .font(DesignSystem.Fonts.caption1())
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Text(sectionDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            SettingsLabeledAction(title: syncActionRowTitle(for: depth)) {
-                Button(syncButtonLabel) {
-                    runCatalogSync(depth: depth)
-                }
-                .disabled(isAnySyncRunning || selectedSchools.isEmpty)
+                catalogSyncDepthActions(depth: depth, syncButtonLabel: syncButtonLabel)
             }
+            .opacity(activeCatalogSync == depth ? 1 : (isCatalogSyncRunning ? 0.65 : 1))
         }
-        .padding(.vertical, 2)
-        .opacity(activeCatalogSync == depth ? 1 : (isCatalogSyncRunning ? 0.65 : 1))
+    }
+
+    @ViewBuilder
+    private func catalogSyncDepthActions(
+        depth: CatalogBackgroundSyncRunner.CatalogSyncDepth,
+        syncButtonLabel: String
+    ) -> some View {
+        SettingsLabeledAction(title: syncActionRowTitle(for: depth)) {
+            Button(syncButtonLabel) {
+                runCatalogSync(depth: depth)
+            }
+            .disabled(isAnySyncRunning || selectedSchools.isEmpty)
+        }
     }
 
     // MARK: - Requirements sync (selected majors)
 
-    private var requirementsSyncBlock: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(String(
+    private var requirementsSyncCard: some View {
+        SettingsCard(
+            title: String(
                 localized: "settings.general.catalog_requirements_title",
                 defaultValue: "Degree requirements"
-            ))
-            .font(.subheadline.weight(.medium))
+            ),
+            icon: "doc.text",
+            iconColor: DesignSystem.Colors.info,
+            contentPadding: DesignSystem.Spacing.md
+        ) {
+            requirementsSyncContent
+        }
+    }
 
+    private var requirementsSyncContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Text(String(
                 localized: "settings.general.catalog_requirements_help",
                 defaultValue: "Programs from your Edit Profile degrees only, grouped by school. After skeleton sync for a school, fetch requirement pages for the majors and minors on that school’s degrees. Requirements are stored per university in the app database."
             ))
-            .font(.caption)
+            .font(DesignSystem.Fonts.caption1())
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -323,7 +435,7 @@ struct SettingsCatalogSyncSection: View {
                         )
                     }
                 }
-                .padding(8)
+                .padding(DesignSystem.Spacing.sm)
                 .background(Color.primary.opacity(0.04))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
@@ -345,9 +457,7 @@ struct SettingsCatalogSyncSection: View {
                 .disabled(isAnySyncRunning || selectedMajorWorkItems.isEmpty)
             }
         }
-        .padding(.vertical, 2)
         .opacity(isRequirementsSyncRunning ? 1 : (isCatalogSyncRunning ? 0.65 : 1))
-        .onAppear { refreshHydratableMajors() }
     }
 
     private var catalogProgramCountLabel: String {
@@ -470,7 +580,7 @@ struct SettingsCatalogSyncSection: View {
         )
     }
 
-    private func refreshHydratableMajors() {
+    private func applyHydratableMajorsRefresh() {
         hydratableMajors = CatalogProgramRequirementsHydrator.selectablePrograms(
             profiles: AcademicProfileReadBridge.entities(collegePersistence: collegePersistence),
             universityNames: [],
@@ -518,6 +628,13 @@ struct SettingsCatalogSyncSection: View {
     }
 
     private func syncButtonTitle(for depth: CatalogBackgroundSyncRunner.CatalogSyncDepth) -> String {
+        if catalogPhaseBCoursesInFlight, activeCatalogSync == depth || activeCatalogSync == nil {
+            return String(
+                localized: "settings.general.syncing_courses_background",
+                defaultValue: "Courses importing…"
+            )
+        }
+
         if activeCatalogSync == depth {
             switch depth {
             case .light:
@@ -525,6 +642,17 @@ struct SettingsCatalogSyncSection: View {
             case .full:
                 return String(localized: "settings.general.syncing_full", defaultValue: "Full sync…")
             }
+        }
+
+        let failedSchools = selectedSchoolNames.filter { school in
+            if case .failed = catalogSyncResults[school] { return true }
+            return false
+        }
+        if !failedSchools.isEmpty {
+            return String(
+                localized: "settings.general.sync_failed_retry",
+                defaultValue: "Sync failed — Retry"
+            )
         }
 
         let count = selectedSchools.count
@@ -594,7 +722,6 @@ struct SettingsCatalogSyncSection: View {
             } else {
                 selectedSchools = selectedSchools.filter { names.contains($0) }
             }
-            refreshHydratableMajors()
         }
     }
 
@@ -620,85 +747,114 @@ struct SettingsCatalogSyncSection: View {
         guard !schools.isEmpty else { return }
 
         activeCatalogSync = depth
+        catalogSyncResults = [:]
+        catalogPhaseBCoursesInFlight = false
         Task {
+            var anyScheduledPassB = false
+            var results: [String: CatalogSyncTerminal] = [:]
             for school in schools {
-                await CatalogBackgroundSyncRunner.runUserInitiatedCatalogSync(
+                let result = await CatalogBackgroundSyncRunner.runUserInitiatedCatalogSync(
                     schoolName: school,
                     collegePersistence: collegePersistence,
                     notifications: appNotifications,
                     depth: depth
                 )
+                if let terminal = result.terminal {
+                    results[school] = terminal
+                }
+                if result.scheduledBackgroundCourseImport {
+                    anyScheduledPassB = true
+                }
             }
             await MainActor.run {
-                activeCatalogSync = nil
-                refreshHydratableMajors()
+                catalogSyncResults = results
+                if anyScheduledPassB {
+                    catalogPhaseBCoursesInFlight = true
+                    activeCatalogSync = depth
+                } else {
+                    activeCatalogSync = nil
+                }
             }
         }
     }
 
     private var catalogBundleSharingBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Catalog bundle sharing")
-                .font(.headline)
-            Text("Export signed catalog bundles for other College users, or import a bundle you received (AirDrop, email, etc.).")
-                .font(.caption)
+        SettingsCard(
+            title: String(
+                localized: "settings.general.catalog_bundle_title",
+                defaultValue: "Catalog bundle sharing"
+            ),
+            icon: "square.and.arrow.up.on.square",
+            iconColor: DesignSystem.Colors.primary,
+            contentPadding: DesignSystem.Spacing.md
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(String(
+                    localized: "settings.general.catalog_bundle_help",
+                    defaultValue: "Export signed catalog bundles for other College users, or import a bundle you received (AirDrop, email, etc.)."
+                ))
+                .font(DesignSystem.Fonts.caption1())
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 12) {
-                Button("Import Catalog Bundle…") {
-                    openCatalogBundleImportPanel()
-                }
-                .disabled(isAnySyncRunning)
+                HStack(spacing: 12) {
+                    Button(String(
+                        localized: "settings.general.catalog_bundle_import",
+                        defaultValue: "Import Catalog Bundle…"
+                    )) {
+                        openCatalogBundleImportPanel()
+                    }
+                    .disabled(isAnySyncRunning)
 
-                Button("Import Local Catalog PDF…") {
-                    runManualLocalPDFImport()
+                    Button(String(
+                        localized: "settings.general.catalog_bundle_import_pdf",
+                        defaultValue: "Import Local Catalog PDF…"
+                    )) {
+                        runManualLocalPDFImport()
+                    }
+                    .disabled(isAnySyncRunning || selectedSchoolNames.count != 1)
                 }
-                .disabled(isAnySyncRunning || selectedSchoolNames.count != 1)
 
-                Button("Trusted Catalog Sources…") {
-                    showTrustedSources = true
-                }
-            }
-
-            if !localCatalogFiles.isEmpty {
-                Text("Local catalog files")
-                    .font(.subheadline.weight(.semibold))
-                ForEach(localCatalogFiles, id: \.fileURL) { info in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(info.schoolName)
-                                .font(.subheadline.weight(.medium))
-                            HStack(spacing: 8) {
-                                Text(ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))
-                                Text(info.lastModified, style: .date)
-                                if let fp = info.signerFingerprint {
-                                    Text(fp)
-                                        .font(.system(.caption2, design: .monospaced))
-                                        .lineLimit(1)
+                if !localCatalogFiles.isEmpty {
+                    Text(String(
+                        localized: "settings.general.catalog_bundle_local_files",
+                        defaultValue: "Local catalog files"
+                    ))
+                    .font(DesignSystem.Fonts.body(weight: .semibold))
+                    ForEach(localCatalogFiles, id: \.fileURL) { info in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(info.schoolName)
+                                    .font(DesignSystem.Fonts.body(weight: .medium))
+                                HStack(spacing: 8) {
+                                    Text(ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))
+                                    Text(info.lastModified, style: .date)
+                                    if let fp = info.signerFingerprint {
+                                        Text(fp)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .lineLimit(1)
+                                    }
                                 }
+                                .font(DesignSystem.Fonts.caption1())
+                                .foregroundStyle(.secondary)
                             }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("Share") {
-                            shareLocalCatalog(info)
+                            Spacer()
+                            Button(String(localized: "common.share", defaultValue: "Share")) {
+                                shareLocalCatalog(info)
+                            }
                         }
                     }
                 }
             }
         }
-        .padding(.top, 8)
-        .sheet(isPresented: $showTrustedSources) {
-            NavigationStack {
-                CatalogTrustedSourcesView()
-            }
-            .frame(minWidth: 520, minHeight: 400)
-        }
     }
 
     private var clearScrapedCatalogDataBlock: some View {
-        SettingsCard(title: "Reset scraped catalog", icon: "arrow.counterclockwise.circle", iconColor: .orange) {
+        SettingsCard(
+            title: "Reset scraped catalog",
+            icon: "arrow.counterclockwise.circle",
+            iconColor: .orange,
+            contentPadding: DesignSystem.Spacing.md
+        ) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(String(
                     localized: "settings.general.catalog_clear_scraped_help",
@@ -771,6 +927,7 @@ struct SettingsCatalogSyncSection: View {
         guard !schools.isEmpty else { return }
 
         Task {
+            await BackgroundServiceOnDemand.run(id: "catalog_school_purge") {
             let manifests = GitHubDataService().loadResolvedSchoolsList()
             var targets: [CatalogSchoolDataPurgeRunner.Target] = []
             var failures: [String] = []
@@ -796,7 +953,6 @@ struct SettingsCatalogSyncSection: View {
             let summary = await catalogPurgeRunner.run(targets: targets, persistence: collegePersistence)
 
             await MainActor.run {
-                refreshHydratableMajors()
                 forceNextCatalogRescrape = true
 
                 if summary.deletedRows > 0 || summary.remainingRows == 0 {
@@ -822,100 +978,7 @@ struct SettingsCatalogSyncSection: View {
                     )
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var catalogDiagnosticsBlock: some View {
-        let profileSchool = collegePersistence.profile?.collegeName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let schoolID = collegePersistence.catalogManifestSchoolID(forUniversityName: profileSchool) ?? ""
-        let pdfReport = schoolID.isEmpty ? nil : PDFScrapeReport.load(schoolID: schoolID)
-        let integrity = schoolID.isEmpty ? nil : CatalogIntegrityReport.load(schoolID: schoolID)
-        let archiveIndex = schoolID.isEmpty ? nil : CatalogArchiveStore.loadIndex(schoolID: schoolID)
-        let storeDiagnostics = schoolID.isEmpty ? nil : CatalogStoreCoordinator.shared.diagnostics(for: schoolID)
-        let ingestObs = CatalogIngestObservability.summarizeRecent()
-        let reviewItems = CatalogReviewQueue.load()
-        let reviewQueueCount = reviewItems.count
-        let criticalReviewCount = reviewItems.filter { $0.severity == .critical }.count
-        let warningReviewCount = reviewItems.filter { $0.severity == .warning }.count
-        let layoutFingerprint = schoolID.isEmpty ? nil : CatalogLayoutFingerprintStore.latest(forSchoolID: schoolID)
-        let structuralDiff = schoolID.isEmpty ? nil : CatalogStructuralDiffStore.load(schoolID: schoolID)
-
-        if pdfReport != nil || integrity != nil || archiveIndex != nil {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(String(localized: "settings.general.catalog_diagnostics_title", defaultValue: "Catalog diagnostics"))
-                    .font(.subheadline.weight(.medium))
-
-                if let pdfReport {
-                    Text("PDF scrape — \(pdfReport.schoolName)")
-                        .font(.caption.weight(.semibold))
-                    Text("Pages \(pdfReport.pageCount) · Programs \(pdfReport.programsExtracted) · Courses \(pdfReport.coursesExtracted) · Requirements \(pdfReport.requirementsExtracted)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let blocks = pdfReport.blockClassification {
-                        Text("Blocks \(blocks.totalBlocks) · Program candidates \(blocks.programCandidates) accepted \(blocks.programAccepted) rejected \(blocks.programRejected)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !pdfReport.warnings.isEmpty {
-                        Text(pdfReport.warnings.joined(separator: " · "))
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                    }
-                }
-
-                if let integrity {
-                    Text("Integrity — academic \(integrity.academicReady ? "ready" : "partial") · archive \(integrity.archiveReady ? "ready" : "pending") · search \(integrity.vectorsReady ? "ready" : "indexing")")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let archiveIndex {
-                    Text("Archive index — \(archiveIndex.archivedPages)/\(archiveIndex.totalPages) pages")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let storeDiagnostics {
-                    Text("Per-school sqlite — \(storeDiagnostics.exists ? "present" : "missing") · \(ByteCountFormatter.string(fromByteCount: storeDiagnostics.sizeBytes, countStyle: .file))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(storeDiagnostics.sqlitePath)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-
-                Text("Ingest observability — failures \(Int((ingestObs.failureRate * 100).rounded()))% · avg duration \(Int(ingestObs.avgDurationMs.rounded()))ms · avg OCR usage \(Int((ingestObs.avgOCRRate * 100).rounded()))%")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Parser capability \(CatalogParserCapability.version) · review \(reviewQueueCount) (\(criticalReviewCount) critical, \(warningReviewCount) warning)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let layoutFingerprint {
-                    Text("Layout fingerprint — profile \(layoutFingerprint.layoutProfileID) · updated \(layoutFingerprint.recordedAt.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                if !schoolID.isEmpty {
-                    SettingsCatalogReviewDiagnosticsView(schoolID: schoolID)
-                }
-
-                if !schoolID.isEmpty {
-                    Button(String(localized: "settings.general.catalog_cancel_import", defaultValue: "Request catalog import cancel")) {
-                        CatalogIngestCheckpoint.requestCancel(schoolID: schoolID)
-                        appNotifications.post(
-                            kind: .info,
-                            title: "Cancel requested",
-                            message: "The current catalog import will stop at the next checkpoint.",
-                            isDismissible: true,
-                            autoDismissAfter: 5
-                        )
-                    }
-                    .disabled(isAnySyncRunning == false)
-                }
             }
-            .padding(.top, 8)
         }
     }
 
@@ -933,11 +996,7 @@ struct SettingsCatalogSyncSection: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        NotificationCenter.default.post(
-            name: .plannerImportCatalogBundleFileURL,
-            object: nil,
-            userInfo: ["url": url]
-        )
+        AppTypedNavigationRouter.importCatalogBundle(at: url)
     }
 
     private func shareLocalCatalog(_ info: LocalCatalogInfo) {
@@ -984,7 +1043,6 @@ struct SettingsCatalogSyncSection: View {
             defer {
                 Task { @MainActor in
                     activeCatalogSync = nil
-                    refreshHydratableMajors()
                 }
             }
 
@@ -1010,6 +1068,8 @@ struct SettingsCatalogSyncSection: View {
                 opeID: manifest.opeID,
                 profileURL: manifest.profileURL,
                 catalogURL: localURL.absoluteString,
+                academicCalendarURL: manifest.academicCalendarURL,
+                timeZoneID: manifest.timeZoneID,
                 countryCode: manifest.countryCode,
                 stateCode: manifest.stateCode,
                 officialWebsiteURL: manifest.officialWebsiteURL,

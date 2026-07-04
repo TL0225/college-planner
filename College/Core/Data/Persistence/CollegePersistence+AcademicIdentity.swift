@@ -13,13 +13,67 @@ extension CollegePersistence {
 
     @discardableResult
     func ensurePrimaryAcademicProfile(linkExistingPlan: Bool = true) -> AcademicProfile? {
-        if let existing = primaryAcademicProfile { return existing }
+        if let existing = try? profileRepository.fetchPrimaryAcademicProfile() {
+            if academicProfiles.isEmpty {
+                fetchAcademicProfiles()
+            }
+            return existing
+        }
         guard profile != nil else { return nil }
-        return try? profileRepository.createAcademicProfile(
+        let created = try? profileRepository.createAcademicProfile(
             degreeLevel: DegreeConfiguration.undergraduate,
             collegeName: profile?.collegeName,
             linkExistingPlan: linkExistingPlan
         )
+        fetchAcademicProfiles()
+        return created
+    }
+
+    /// Removes empty duplicate academic profiles left by repeated ensure calls before cache refresh.
+    func pruneDuplicateEmptyAcademicProfiles() {
+        let stored = (try? profileRepository.fetchAcademicProfiles()) ?? []
+        guard stored.count > 1 else { return }
+
+        func hasDeclaredPrograms(_ profile: AcademicProfile) -> Bool {
+            !AcademicProfileProgramLists.majors(from: profile).isEmpty
+                || !AcademicProfileProgramLists.minors(from: profile).isEmpty
+        }
+
+        func hasDeclaredDegreeType(_ profile: AcademicProfile) -> Bool {
+            !(profile.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+
+        let keeper = stored.first(where: { $0.isPrimary && hasDeclaredPrograms($0) })
+            ?? stored.first(where: hasDeclaredPrograms)
+            ?? stored.first(where: { $0.isPrimary && hasDeclaredDegreeType($0) })
+            ?? stored.first(where: hasDeclaredDegreeType)
+            ?? stored.first(where: \.isPrimary)
+            ?? stored.first
+        guard let keeper else { return }
+
+        var didChange = false
+        for candidate in stored where candidate.id != keeper.id {
+            if hasDeclaredPrograms(candidate) || hasDeclaredDegreeType(candidate) {
+                continue
+            }
+            try? profileRepository.deleteAcademicProfile(id: candidate.id)
+            didChange = true
+        }
+
+        let remaining = (try? profileRepository.fetchAcademicProfiles()) ?? []
+        for profile in remaining {
+            let shouldBePrimary = profile.id == keeper.id
+            if profile.isPrimary != shouldBePrimary {
+                profile.isPrimary = shouldBePrimary
+                didChange = true
+            }
+        }
+
+        if didChange {
+            save()
+            fetchAcademicProfiles()
+            bumpProfileRevision()
+        }
     }
 
     func primaryDegreeType() -> String? {

@@ -68,6 +68,9 @@ final class ToolbarDispatcher {
         case .academics: return .academics
         case .web: return .webPortal(nil)
         case .career: return .career
+        case .transfer: return .transfer
+        case .assistant: return .assistant
+        case .profile: return .profile
         }
     }
 }

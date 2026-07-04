@@ -12,6 +12,12 @@ struct ModernCampusDOMAnalysis: Sendable {
 }
 
 enum CatalogModernCampusHTMLAnalyzer {
+    /// Upper guards against pathological pages while comfortably covering real catalogs.
+    /// A single Acalog program-index page routinely lists 150–300 programs (e.g. DSU ≈ 194),
+    /// so the previous 64-program cap silently dropped most entries on large pages.
+    private static let maxProgramAnchorsPerPage = 2_000
+    private static let maxCourseAnchorsPerPage = 5_000
+
     static func analyze(
         html: String,
         sourceURL: URL,
@@ -150,7 +156,7 @@ enum CatalogModernCampusHTMLAnalyzer {
         }
 
         let courseAnchors = (try? content.select("a[href*=preview_course], a[href*=preview_course_nopop]").array()) ?? []
-        for anchor in courseAnchors.prefix(256) {
+        for anchor in courseAnchors.prefix(maxCourseAnchorsPerPage) {
             let label = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let href = ((try? anchor.attr("abs:href")) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !href.isEmpty else { continue }
@@ -169,7 +175,7 @@ enum CatalogModernCampusHTMLAnalyzer {
 
         let programAnchors = (try? content.select("a[href*=preview_program]").array()) ?? []
         features.previewProgramLinkCount = programAnchors.count
-        for anchor in programAnchors.prefix(64) {
+        for anchor in programAnchors.prefix(maxProgramAnchorsPerPage) {
             let label = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let href = ((try? anchor.attr("abs:href")) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !href.isEmpty else { continue }
@@ -181,6 +187,25 @@ enum CatalogModernCampusHTMLAnalyzer {
                     text: label.isEmpty ? nil : label,
                     sourceURL: href,
                     elementSignature: "a.preview_program",
+                    sectionLabel: .programs
+                )
+            )
+        }
+
+        // Entity pages can be a first hop to program anchors on hosts like UB.
+        let entityAnchors = (try? content.select("a[href*=preview_entity]").array()) ?? []
+        for anchor in entityAnchors.prefix(maxProgramAnchorsPerPage) {
+            let label = ((try? anchor.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let href = ((try? anchor.attr("abs:href")) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !href.isEmpty else { continue }
+            nodes.append(
+                CatalogDocumentNode(
+                    parentID: parentID,
+                    depth: depth + 1,
+                    kind: .linkList,
+                    text: label.isEmpty ? nil : label,
+                    sourceURL: href,
+                    elementSignature: "a.preview_entity",
                     sectionLabel: .programs
                 )
             )

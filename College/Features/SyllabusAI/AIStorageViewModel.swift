@@ -16,14 +16,17 @@ final class AIStorageViewModel: ObservableObject {
     @Published private(set) var installedSizeBytes: Int64 = 0
     @Published private(set) var isInstalled: Bool = false
     @Published private(set) var hasStaleInstallFiles: Bool = false
+    @Published private(set) var isAutoInstallSuppressed: Bool = false
 
     func refreshSize(for spec: ModelSpec) async {
         let sizeBytes = await ModelManager.shared.installedModelSizeBytes(spec)
         let validInstall = await ModelManager.shared.isModelInstalled(spec)
+        let suppressed = await ModelManager.shared.isAutoInstallSuppressed(spec)
 
         installedSizeBytes = sizeBytes
         isInstalled = validInstall
         hasStaleInstallFiles = sizeBytes > 0 && !validInstall
+        isAutoInstallSuppressed = suppressed
     }
 
     func ensureInstalled(spec: ModelSpec) async throws {
@@ -32,7 +35,7 @@ final class AIStorageViewModel: ObservableObject {
         detail = "Preparing…"
         defer { isWorking = false }
 
-        _ = try await ModelManager.shared.ensureModelInstalled(spec) { p in
+        _ = try await ModelManager.shared.ensureModelInstalled(spec, allowUserInitiatedInstall: true) { p in
             Task { @MainActor in
                 self.progress = p.fractionCompleted
                 self.detail = "Downloading (\(p.completedFiles)/\(p.totalFiles))"

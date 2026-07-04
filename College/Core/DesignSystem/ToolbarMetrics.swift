@@ -33,7 +33,8 @@ enum ToolbarMetrics {
     @ViewBuilder
     static func glassIconLabel(systemName: String) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: 13, weight: .medium))
+            .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
+            .foregroundStyle(.primary)
             .frame(width: iconControlSize, height: iconControlSize)
             .padding(iconHitPadding)
             .contentShape(Rectangle())
@@ -47,6 +48,7 @@ extension View {
             .controlSize(.small)
             .frame(minWidth: ToolbarMetrics.minHitTarget, minHeight: ToolbarMetrics.minHitTarget)
             .contentShape(Rectangle())
+            .collegeInteractiveSurface(.toolbar)
     }
 
     /// Text/segment controls hosted in the window toolbar.

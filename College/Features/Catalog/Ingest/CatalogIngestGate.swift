@@ -69,10 +69,18 @@ enum CatalogIngestGate {
             expectCourses: expectCourses,
             expectPrograms: expectPrograms
         )
+        let semanticResult = CatalogSemanticConstraintValidator.evaluate(
+            programs: programs,
+            courses: courses,
+            requirements: requirements,
+            expectRequirements: expectRequirements
+        )
 
         let reviewSeverity: CatalogReviewSeverity = {
-            if sanityResult.severity == .critical || !invariantResult.passed { return .critical }
-            if !sanityResult.passed { return .warning }
+            if sanityResult.severity == .critical || semanticResult.severity == .critical || !invariantResult.passed {
+                return .critical
+            }
+            if !sanityResult.passed || !semanticResult.passed { return .warning }
             return .informational
         }()
 
@@ -94,7 +102,8 @@ enum CatalogIngestGate {
             metrics: metrics,
             reviewSeverity: reviewSeverity,
             sanityResult: sanityResult,
-            invariantResult: invariantResult
+            invariantResult: invariantResult,
+            semanticResult: semanticResult
         )
 
         let allowsRequirements = recovery.allowedScopes.contains(.requirements)
@@ -164,10 +173,18 @@ enum CatalogIngestGate {
             expectCourses: expectCourses,
             expectPrograms: expectPrograms
         )
+        let semanticResult = CatalogSemanticConstraintValidator.evaluate(
+            programs: programs,
+            courses: courses,
+            requirements: requirements,
+            expectRequirements: expectRequirements
+        )
 
         let reviewSeverity: CatalogReviewSeverity = {
-            if sanityResult.severity == .critical || !invariantResult.passed { return .critical }
-            if !sanityResult.passed { return .warning }
+            if sanityResult.severity == .critical || semanticResult.severity == .critical || !invariantResult.passed {
+                return .critical
+            }
+            if !sanityResult.passed || !semanticResult.passed { return .warning }
             return .informational
         }()
 
@@ -190,7 +207,8 @@ enum CatalogIngestGate {
             metrics: metrics,
             reviewSeverity: reviewSeverity,
             sanityResult: sanityResult,
-            invariantResult: invariantResult
+            invariantResult: invariantResult,
+            semanticResult: semanticResult
         )
 
         let allowsRequirements = recovery.allowedScopes.contains(.requirements)
@@ -259,10 +277,18 @@ enum CatalogIngestGate {
             expectCourses: expectCoursesResolved,
             expectPrograms: expectPrograms
         )
+        let semanticResult = CatalogSemanticConstraintValidator.evaluate(
+            programs: programs,
+            courses: courses,
+            requirements: requirements,
+            expectRequirements: expectRequirements
+        )
 
         let reviewSeverity: CatalogReviewSeverity = {
-            if sanityResult.severity == .critical || !invariantResult.passed { return .critical }
-            if !sanityResult.passed { return .warning }
+            if sanityResult.severity == .critical || semanticResult.severity == .critical || !invariantResult.passed {
+                return .critical
+            }
+            if !sanityResult.passed || !semanticResult.passed { return .warning }
             return .informational
         }()
 
@@ -284,7 +310,8 @@ enum CatalogIngestGate {
             metrics: metrics,
             reviewSeverity: reviewSeverity,
             sanityResult: sanityResult,
-            invariantResult: invariantResult
+            invariantResult: invariantResult,
+            semanticResult: semanticResult
         )
 
         let allowsRequirements = recovery.allowedScopes.contains(.requirements)
@@ -307,27 +334,49 @@ enum CatalogIngestGate {
         recordLayoutFingerprintAndDetectDrift(outcome.metrics)
     }
 
+    /// User-visible detail when ingest is blocked (replaces generic parse failures in sync toasts).
+    static func abortSummary(_ outcome: Outcome) -> String {
+        var messages = outcome.sanityResult.messages
+        messages.append(contentsOf: outcome.invariantResult.criticalMessages)
+        messages.append(contentsOf: outcome.recovery.reasons)
+        let trimmed = messages
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if trimmed.isEmpty {
+            return "Catalog import failed quality checks."
+        }
+        return trimmed.joined(separator: " ")
+    }
+
     private static func enqueueReviewItems(
         schoolID: String,
         metrics: CatalogExtractorMetrics,
         reviewSeverity: CatalogReviewSeverity,
         sanityResult: CatalogSanityConstraints.Result,
-        invariantResult: CatalogIngestRecoveryPolicy.InvariantResult
+        invariantResult: CatalogIngestRecoveryPolicy.InvariantResult,
+        semanticResult: CatalogSemanticConstraintValidator.Result
     ) {
-        if !sanityResult.passed, reviewSeverity != .critical {
-            for message in sanityResult.messages {
+        let nonCriticalMessages = sanityResult.messages + semanticResult.messages
+        if !nonCriticalMessages.isEmpty, reviewSeverity != .critical {
+            for message in nonCriticalMessages {
+                let itemSeverity: CatalogReviewSeverity = {
+                    if sanityResult.severity == .warning || semanticResult.severity == .warning {
+                        return .warning
+                    }
+                    return .informational
+                }()
                 CatalogReviewQueue.enqueue(
                     schoolID: schoolID,
                     reason: message,
-                    severity: sanityResult.severity,
+                    severity: itemSeverity,
                     metrics: metrics,
-                    contextMessages: sanityResult.messages
+                    contextMessages: nonCriticalMessages
                 )
             }
         }
 
         if reviewSeverity == .critical {
-            let reasons = invariantResult.criticalMessages + sanityResult.messages
+            let reasons = invariantResult.criticalMessages + sanityResult.messages + semanticResult.messages
             for reason in reasons {
                 CatalogReviewQueue.enqueue(
                     schoolID: schoolID,
@@ -348,6 +397,14 @@ enum CatalogIngestGate {
         )
         let drift = CatalogLayoutDriftDetector.evaluate(previous: previous, current: current)
         if drift.detected {
+            CatalogExtractorMetricsBaselineStore.clear(
+                schoolID: metrics.schoolID,
+                catalogVersionID: metrics.catalogVersionID
+            )
+            CatalogBackgroundSyncRunner.clearStoredIngestSignatures(
+                schoolID: metrics.schoolID,
+                format: metrics.source
+            )
             CatalogReviewQueue.enqueue(
                 schoolID: metrics.schoolID,
                 reason: "catalog_layout_drift: \(drift.message)",

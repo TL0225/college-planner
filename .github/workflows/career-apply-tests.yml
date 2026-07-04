@@ -1,0 +1,67 @@
+name: Career Apply Tests
+
+on:
+  pull_request:
+    paths:
+      - 'College/Features/Career/Apply/**'
+      - 'College/Features/Career/ApplicationProfile/**'
+      - 'College/Features/Career/ResumeParsing/**'
+      - 'College/Core/WebAuth/**'
+      - 'CollegeTests/Features/Career/Apply/**'
+      - 'CollegeTests/Fixtures/Apply/**'
+      - '.github/workflows/career-apply-tests.yml'
+  schedule:
+    - cron: '0 7 * * *'
+
+jobs:
+  career-apply-pr-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Career Apply Swift Testing smoke
+        run: |
+          set -euo pipefail
+          bash scripts/college-xcodebuild-test.sh \
+            -project College.xcodeproj \
+            -scheme College \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CollegeApplyCI \
+            -only-testing:CollegeTests/CareerApplicationPayloadBuilderTests \
+            -only-testing:CollegeTests/CareerApplyAccuracyGateTests \
+            -only-testing:CollegeTests/CareerApplyWorkdayURLTests \
+            -only-testing:CollegeTests/CareerApplyTierRegistryTests \
+            -only-testing:CollegeTests/CareerApplyFieldMapLoaderTests \
+            -only-testing:CollegeTests/CareerApplyGreenhouseFixtureTests \
+            -only-testing:CollegeTests/CareerApplyLeverFixtureTests \
+            -only-testing:CollegeTests/CareerApplyWorkdayFixtureTests \
+            test \
+            | xcpretty
+
+  career-apply-nightly-full:
+    if: github.event_name == 'schedule'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full Career Apply Swift Testing suite
+        run: |
+          set -euo pipefail
+          bash scripts/college-xcodebuild-test.sh \
+            -project College.xcodeproj \
+            -scheme College \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CollegeApplyNightly \
+            -only-testing:CollegeTests/CareerApplyGreenhouseFixtureTests \
+            -only-testing:CollegeTests/CareerApplyLeverFixtureTests \
+            -only-testing:CollegeTests/CareerApplyWorkdayFixtureTests \
+            -only-testing:CollegeTests/CareerApplyICIMSFixtureTests \
+            -only-testing:CollegeTests/CareerApplyOracleFixtureTests \
+            -only-testing:CollegeTests/CareerApplyTalemetryFixtureTests \
+            -only-testing:CollegeTests/CareerApplyCompletionTests \
+            -only-testing:CollegeTests/CareerApplySessionStoreTests \
+            -only-testing:CollegeTests/CareerApplyE2ESmokeTests \
+            -only-testing:CollegeTests/CareerApplyFieldMapLoaderTests \
+            -only-testing:CollegeTests/CareerApplicationPayloadBuilderTests \
+            -only-testing:CollegeTests/CareerApplyAccuracyGateTests \
+            test \
+            | xcpretty

@@ -13,12 +13,17 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../../CollegePlatform"),
+        .package(path: "../CollegeDesignSystem"),
     ],
     targets: [
         .target(
             name: "CollegeCalendar",
             dependencies: [
                 .product(name: "CollegePlatform", package: "CollegePlatform"),
+                .product(name: "CollegeDesignSystem", package: "CollegeDesignSystem"),
+            ],
+            resources: [
+                .process("Resources"),
             ],
             linkerSettings: [
                 .linkedFramework("EventKit"),

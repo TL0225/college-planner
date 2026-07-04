@@ -40,6 +40,18 @@ enum AssistantConversationMemory {
         persist(rows)
     }
 
+    static func removeHelpfulMatching(query: String) {
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        guard !normalized.isEmpty else { return }
+        var rows = loadRows()
+        rows.removeAll { existing in
+            let n = existing.query.lowercased().replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            return n == normalized
+        }
+        persist(rows)
+    }
+
     static func contextBlock(charBudget: Int) -> String {
         guard charBudget > 0 else { return "" }
         let rows = loadRows().prefix(8)

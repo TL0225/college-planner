@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Host allowlist for assistant-driven page fetches (SearXNG result hosts + user-configured extras).
+/// Host allowlist for assistant-driven page fetches (search result hosts + user-configured extras).
 enum AssistantWebFetchPolicy: Sendable {
     private static let policyHostsKey = "assistant.web.policyHosts"
 

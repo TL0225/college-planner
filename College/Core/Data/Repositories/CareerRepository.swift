@@ -37,8 +37,8 @@ struct CareerRepository {
         return try context.fetch(descriptor).first
     }
 
-    func fetchActiveWorkdayPostings(limit: Int = 80) throws -> [WorkdayJobPosting] {
-        var descriptor = FetchDescriptor<WorkdayJobPosting>(
+    func fetchActiveJobBoardPostings(limit: Int = 80) throws -> [JobBoardPosting] {
+        var descriptor = FetchDescriptor<JobBoardPosting>(
             predicate: #Predicate { $0.isActive == true },
             sortBy: [SortDescriptor(\.title, order: .forward)]
         )

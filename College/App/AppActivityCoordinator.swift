@@ -32,6 +32,17 @@ final class AppActivityCoordinator {
 
     private init() {}
 
+    #if DEBUG
+    /// Resets coordinator state between unit tests (avoids cross-test throttle leakage).
+    func _testingResetToActive() {
+        resumeTask?.cancel()
+        transitionToken = UUID()
+        isAppActive = true
+        isResourceThrottled = false
+        shouldApplyInactiveDim = false
+    }
+    #endif
+
     func appDidResignActive() {
         setInactive(source: "appDelegate")
     }

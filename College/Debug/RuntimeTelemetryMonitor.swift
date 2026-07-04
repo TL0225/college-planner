@@ -118,6 +118,12 @@ actor RuntimeTelemetryMonitor {
                         "threshold_s": "\(Self.stallThresholdSeconds)"
                     ]
                 )
+                DiagnosticsEvent.emit(
+                    subsystem: .runtime,
+                    severity: .warning,
+                    code: "HANG_DETECTED",
+                    message: "Main thread was unresponsive for about \(rounded) seconds."
+                )
             } else {
                 AppLogger.shared.warn(
                     "runtime.main_thread_stall_continues",
@@ -170,6 +176,17 @@ actor RuntimeTelemetryMonitor {
         lastMainThreadAckUptime = ProcessInfo.processInfo.systemUptime
     }
 
+    /// Seconds since the main thread last acknowledged the telemetry heartbeat.
+    func mainThreadLagSeconds() -> Double {
+        let nowUptime = ProcessInfo.processInfo.systemUptime
+        return max(0, nowUptime - lastMainThreadAckUptime)
+    }
+
+    /// Stall threshold in milliseconds (matches `stallThresholdKey` defaults).
+    static var mainThreadStallThresholdMs: Int {
+        stallThresholdSeconds * 1000
+    }
+
     private static var isEnabled: Bool {
         if let value = UserDefaults.standard.object(forKey: enabledKey) as? Bool {
             return value
@@ -179,7 +196,14 @@ actor RuntimeTelemetryMonitor {
 
     private static var heartbeatIntervalSeconds: Int {
         let value = UserDefaults.standard.integer(forKey: heartbeatIntervalKey)
-        return max(1, value == 0 ? 1 : value)
+        if value == 0 {
+            #if DEBUG
+            return 1
+            #else
+            return 10
+            #endif
+        }
+        return max(1, value)
     }
 
     private static var stallThresholdSeconds: Int {

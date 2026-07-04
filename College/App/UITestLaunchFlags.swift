@@ -5,6 +5,7 @@
 
 import Foundation
 import AppKit
+import CollegeCareer
 
 /// Shared detection for UI-test bootstrap (must match `CollegeApp.forceUITestMainUI`).
 enum UITestLaunchFlags {
@@ -55,6 +56,39 @@ enum UITestLaunchFlags {
         return ProcessInfo.processInfo.arguments.contains("--uitest-seed-minimal-planner")
     }
 
+    /// Declares a major on the seeded academic profile (requires `seedMinimalPlannerData` or existing profile).
+    static var seedDeclaredMajorData: Bool {
+        guard forcesMainUI else { return false }
+        if ProcessInfo.processInfo.environment["COLLEGE_UITEST_SEED_DECLARED_MAJOR"] == "1" { return true }
+        return ProcessInfo.processInfo.arguments.contains("--uitest-seed-declared-major")
+    }
+
+    /// Seeds a minimal career resume vault document for apply/attachment UI tests.
+    static var seedCareerResumes: Bool {
+        guard forcesMainUI else { return false }
+        if ProcessInfo.processInfo.environment["COLLEGE_UITEST_SEED_CAREER_RESUMES"] == "1" { return true }
+        return ProcessInfo.processInfo.arguments.contains("--uitest-seed-career-resumes")
+    }
+
+    /// Opens the inline resume builder immediately after career resume seed (UI tests).
+    static var autoOpenResumeBuilder: Bool {
+        guard forcesMainUI, seedCareerResumes else { return false }
+        if ProcessInfo.processInfo.environment["COLLEGE_UITEST_AUTO_OPEN_RESUME_BUILDER"] == "1" { return true }
+        return ProcessInfo.processInfo.arguments.contains("--uitest-auto-open-resume-builder")
+    }
+
+    /// Return canned web search + page-fetch results instead of hitting the network.
+    static var stubWebSearchEnabled: Bool {
+        guard forcesMainUI else { return false }
+        if ProcessInfo.processInfo.environment["COLLEGE_UITEST_STUB_WEB_SEARCH"] == "1" { return true }
+        return ProcessInfo.processInfo.arguments.contains("--uitest-stub-web-search")
+    }
+
+    /// When set, Assistant auto-types and sends scripted prompts (see ``AssistantUITestAutoPromptRunner``).
+    static var assistantAutoPromptsEnabled: Bool {
+        AssistantUITestAutoPromptRunner.isEnabled
+    }
+
     /// Apply `UserDefaults` consumed by `@AppStorage` before SwiftUI reads them (call from `CollegeApp.init`).
     static func applyInjectedUserDefaultsIfNeeded() {
         guard forcesMainUI else { return }
@@ -90,6 +124,19 @@ enum UITestLaunchFlags {
             } else if raw == "1" {
                 UserDefaults.standard.set(true, forKey: "assistant.streaming.enabled")
             }
+        }
+
+        if stubWebSearchEnabled {
+            UserDefaults.standard.set(true, forKey: AssistantWebSearchSettings.webSearchEnabledKey)
+            UserDefaults.standard.set("https://uitest.degoog.local", forKey: AssistantWebSearchSettings.customBaseURLKey)
+        }
+
+        UserDefaults.standard.set(true, forKey: "onboarding.completed.v1")
+        UserDefaults.standard.set(false, forKey: "assistant.runtime.showDiagnostics")
+        UserDefaults.standard.removeObject(forKey: "assistant.messages.v1")
+
+        if seedCareerResumes {
+            UserDefaults.standard.set(CareerSubView.resumes.rawValue, forKey: CareerSubView.selectedViewStorageKey)
         }
     }
 

@@ -25,14 +25,7 @@ private struct DocumentsEntranceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(isVisible ? 1 : 0)
-            .offset(y: isVisible ? 0 : (reduceMotion ? 0 : 10))
-            .animation(
-                reduceMotion
-                    ? .easeOut(duration: DocumentsMotion.reducedRevealDuration)
-                    : .spring(response: DocumentsMotion.revealDuration, dampingFraction: 0.88)
-                        .delay(Double(index) * DocumentsMotion.cardStaggerStep),
-                value: isVisible
-            )
+            .animation(CollegeMotion.standardOrNone(reduced: reduceMotion), value: isVisible)
     }
 }
 
@@ -83,11 +76,10 @@ struct DocumentsView: View {
     @State private var isUploading = false
     @State private var lastUploadError: String?
     @State private var selectedDocumentIDs: Set<UUID> = []
-    @State private var isCreateFolderPromptPresented: Bool = false
     @State private var newFolderName: String = ""
-    @State private var isRenameFolderPromptPresented: Bool = false
     @State private var renameFolderName: String = ""
     @State private var renameFolderID: UUID?
+    @State private var folderNamePrompt: FolderNamePrompt?
     @State private var isDeleteFolderDialogPresented: Bool = false
     @State private var pendingDeleteFolderID: UUID?
     @State private var isDeleteFilesDialogPresented: Bool = false
@@ -98,6 +90,47 @@ struct DocumentsView: View {
         let id: String
         let item: VaultSidebarItem
         let depth: Int
+    }
+
+    private enum FolderNamePrompt: Identifiable {
+        case create
+        case rename(UUID)
+
+        var id: String {
+            switch self {
+            case .create:
+                "create"
+            case .rename(let id):
+                "rename-\(id.uuidString)"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .create:
+                "Create Folder"
+            case .rename:
+                "Rename Folder"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .create:
+                "Create a new folder in the current location."
+            case .rename:
+                "Choose a new folder name."
+            }
+        }
+
+        var actionTitle: String {
+            switch self {
+            case .create:
+                "Create"
+            case .rename:
+                "Rename"
+            }
+        }
     }
 
     private enum VaultSidebarItem: Hashable, Identifiable {
@@ -208,6 +241,10 @@ struct DocumentsView: View {
     @State private var lastVaultMetricsRefresh: Date?
     @State private var canAttachInspector: Bool = false
     @State private var canRenderFinderTable: Bool = false
+
+    private var displayedVaultMetrics: VaultMetricsSnapshot {
+        lastVaultMetricsRefresh == nil ? makeVaultMetricsSnapshot() : vaultMetrics
+    }
 
     private var deferredInspectorPresentation: Binding<Bool> {
         Binding(
@@ -490,6 +527,32 @@ struct DocumentsView: View {
         }
     }
 
+    private var showsHierarchicalVaultBrowser: Bool {
+        switch selectedSidebarItem {
+        case .allFiles, .folder:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Grid rows at the current browser level — includes folders for All Files and folder views.
+    private var visibleVaultGridDocuments: [VaultDocument] {
+        if showsHierarchicalVaultBrowser {
+            return finderRootItems.map(\.entity)
+        }
+        return visibleVaultDocuments
+    }
+
+    private var hasVaultBrowserContent: Bool {
+        switch vaultItemsLayout {
+        case .list:
+            return showsHierarchicalVaultBrowser ? !finderRootItems.isEmpty : !visibleVaultDocuments.isEmpty
+        case .grid:
+            return !visibleVaultGridDocuments.isEmpty
+        }
+    }
+
     private var visibleVaultDocuments: [VaultDocument] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         return vaultDocuments.filter { doc in
@@ -546,6 +609,10 @@ struct DocumentsView: View {
             return String(localized: "documents.empty.filtered_title", defaultValue: "No matching files")
         }
 
+        if case .folder = selectedSidebarItem, selectedFilter == .all {
+            return String(localized: "documents.empty.folder_title", defaultValue: "This folder is empty")
+        }
+
         switch selectedFilter {
         case .all:
             return String(localized: "documents.empty.title")
@@ -568,7 +635,10 @@ struct DocumentsView: View {
             return "Try another file type or switch back to All."
         }
 
-        return String(localized: "documents.empty.message")
+        return String(
+            localized: "documents.empty.message",
+            defaultValue: "Upload files to keep syllabi, assignments, and career documents in one place."
+        )
     }
 
     var body: some View {
@@ -594,6 +664,8 @@ struct DocumentsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
         .background(.windowBackground)
+        .shellDynamicTypeReadable()
+        .accessibilityIdentifier("documents.root")
         .onAppear {
             guard !hasAnimatedIn else { return }
             withAnimation(motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.28, dampingFraction: 0.88)) {
@@ -647,28 +719,17 @@ struct DocumentsView: View {
             vaultRefreshToken &+= 1
             refreshVaultSelectionState()
         }
-        .alert("Create Folder", isPresented: $isCreateFolderPromptPresented) {
-            TextField("Folder name", text: $newFolderName)
-            Button("Cancel", role: .cancel) {
-                newFolderName = ""
-            }
-            Button("Create") {
-                createFolderFromPrompt()
-            }
-        } message: {
-            Text("Create a new folder in the current location.")
-        }
-        .alert("Rename Folder", isPresented: $isRenameFolderPromptPresented) {
-            TextField("Folder name", text: $renameFolderName)
-            Button("Cancel", role: .cancel) {
-                renameFolderID = nil
-                renameFolderName = ""
-            }
-            Button("Rename") {
-                renameFolderFromPrompt()
-            }
-        } message: {
-            Text("Choose a new folder name.")
+        .sheet(item: $folderNamePrompt) { prompt in
+            FolderNameSheet(
+                title: prompt.title,
+                message: prompt.message,
+                actionTitle: prompt.actionTitle,
+                name: folderNameBinding(for: prompt),
+                onCancel: { cancelFolderNamePrompt(prompt) },
+                onSubmit: { submitFolderNamePrompt(prompt) }
+            )
+            .frame(width: 360)
+            .padding(DesignSystem.Spacing.lg)
         }
         .confirmationDialog(
             "Delete Folder",
@@ -715,11 +776,19 @@ struct DocumentsView: View {
         }
     }
 
+    private var visibleBrowserItemCount: Int {
+        if showsHierarchicalVaultBrowser {
+            return vaultItemsLayout == .grid ? visibleVaultGridDocuments.count : finderRootItems.count
+        }
+        return visibleVaultDocuments.count
+    }
+
     private func refreshVaultSelectionState() {
         scheduleRecomputeVaultMetrics()
-        selectedDocumentIDs = selectedDocumentIDs.filter { id in
-            visibleVaultDocuments.contains(where: { $0.id == id })
-        }
+        let visibleIDs = showsHierarchicalVaultBrowser
+            ? visibleVaultGridDocuments.map(\.id)
+            : visibleVaultDocuments.map(\.id)
+        selectedDocumentIDs = selectedDocumentIDs.filter { visibleIDs.contains($0) }
     }
 
     private func recomputeVaultMetrics() {
@@ -727,6 +796,11 @@ struct DocumentsView: View {
         os_signpost(.begin, log: perfLog, name: "recomputeVaultMetrics", signpostID: signpostID)
         defer { os_signpost(.end, log: perfLog, name: "recomputeVaultMetrics", signpostID: signpostID) }
 
+        vaultMetrics = makeVaultMetricsSnapshot()
+        lastVaultMetricsRefresh = Date()
+    }
+
+    private func makeVaultMetricsSnapshot() -> VaultMetricsSnapshot {
         var snapshot = VaultMetricsSnapshot()
         var categories = Set<String>()
         let docs = vaultDocuments.filter { !$0.isFolder }
@@ -746,8 +820,7 @@ struct DocumentsView: View {
             }
         }
         snapshot.totalCategories = categories.count
-        vaultMetrics = snapshot
-        lastVaultMetricsRefresh = Date()
+        return snapshot
     }
     
     @MainActor
@@ -967,18 +1040,43 @@ struct DocumentsView: View {
             .disabled(!hasSelection)
         } label: {
             Image(systemName: "ellipsis.circle")
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .help("Actions")
     }
 
+    private var vaultUploadButton: some View {
+        Button {
+            showUploadPicker = true
+        } label: {
+            ZStack {
+                Label(
+                    String(localized: "documents.toolbar.upload", defaultValue: "Upload"),
+                    systemImage: "plus"
+                )
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                .opacity(isUploading ? 0.0 : 1.0)
+                if isUploading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 20, height: 20)
+                }
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(isUploading)
+        .help(
+            isUploading
+                ? String(localized: "documents.add.uploading")
+                : String(localized: "documents.toolbar.upload_help", defaultValue: "Upload files from your Mac")
+        )
+    }
+
     @ViewBuilder private var vaultImportMenu: some View {
         Menu {
-            Button("Import from Mac…") {
-                showUploadPicker = true
-            }
             Button("Import from Integration…") {
                 pickFilesFromIntegration(provider: nil)
             }
@@ -993,24 +1091,14 @@ struct DocumentsView: View {
                 }
             }
         } label: {
-            ZStack {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 14, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(isUploading ? Color.accentColor : .secondary)
-                    .symbolEffect(.pulse, options: .repeating, isActive: isUploading)
-                    .opacity(isUploading ? 0.0 : 1.0)
-                if isUploading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 20, height: 20)
-                }
-            }
+            Image(systemName: "ellipsis.circle")
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
         .buttonStyle(.plain)
         .disabled(isUploading)
-        .help(isUploading ? String(localized: "documents.add.uploading") : "Import files")
+        .help(String(localized: "documents.toolbar.integration_help", defaultValue: "Import from cloud integrations"))
     }
 
     private var documentsInspectorPanel: some View {
@@ -1019,7 +1107,7 @@ struct DocumentsView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("SMART")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .tracking(0.8)
 
@@ -1032,7 +1120,7 @@ struct DocumentsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         Text("FOLDERS")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                             .foregroundStyle(.tertiary)
                             .tracking(0.8)
 
@@ -1047,7 +1135,7 @@ struct DocumentsView: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis.circle")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                                 .foregroundStyle(.tertiary)
                         }
                         .menuStyle(.borderlessButton)
@@ -1057,7 +1145,7 @@ struct DocumentsView: View {
 
                     if flattenedFolderRows.isEmpty {
                         Text("No folders yet")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                             .foregroundStyle(.tertiary)
                     } else {
                         ForEach(flattenedFolderRows) { row in
@@ -1068,13 +1156,13 @@ struct DocumentsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("INTEGRATIONS")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .tracking(0.8)
 
                     if sidebarIntegrationItems.isEmpty {
                         Text("No integrations")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                             .foregroundStyle(.tertiary)
                     } else {
                         ForEach(sidebarIntegrationItems) { item in
@@ -1085,13 +1173,13 @@ struct DocumentsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("COURSES")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .tracking(0.8)
 
                     if sidebarCourseItems.isEmpty {
                         Text("No linked courses")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                             .foregroundStyle(.tertiary)
                     } else {
                         ForEach(sidebarCourseItems) { item in
@@ -1136,7 +1224,7 @@ struct DocumentsView: View {
                     }
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .frame(width: 12, height: 12)
                         .rotationEffect(.degrees(isCollapsed ? 0 : 90))
@@ -1168,7 +1256,7 @@ struct DocumentsView: View {
                 Button("New Subfolder") {
                     selectedSidebarItem = item
                     newFolderName = ""
-                    isCreateFolderPromptPresented = true
+                    folderNamePrompt = .create
                 }
                 Divider()
                 Button("Rename") {
@@ -1216,7 +1304,7 @@ struct DocumentsView: View {
                 selectedSidebarItem = .allFiles
             } label: {
                 Label("Documents", systemImage: "folder")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -1225,25 +1313,25 @@ struct DocumentsView: View {
                 let breadcrumbItems = folderBreadcrumbItems(for: folderID)
                 ForEach(breadcrumbItems) { crumb in
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                         .foregroundStyle(.tertiary)
 
                     Button {
                         selectedSidebarItem = crumb
                     } label: {
                         Text(crumb.title)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                             .foregroundStyle(crumb == selectedSidebarItem ? .primary : .secondary)
                     }
                     .buttonStyle(.plain)
                 }
             } else {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                     .foregroundStyle(.tertiary)
 
                 Text(selectedSidebarItem.title)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                     .foregroundStyle(.primary)
             }
 
@@ -1251,7 +1339,7 @@ struct DocumentsView: View {
 
             if hasSelection {
                 Text("\(selectedDocuments.count) selected")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -1260,7 +1348,7 @@ struct DocumentsView: View {
     private var inspectorSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Inspector")
-                .font(.system(size: 13, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                 .foregroundStyle(.secondary)
 
             if let document = selectedDocument {
@@ -1276,10 +1364,10 @@ struct DocumentsView: View {
                 if let notes = document.userNotes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Notes")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                             .foregroundStyle(.tertiary)
                         Text(notes)
-                            .font(.system(size: 12, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                             .foregroundStyle(.secondary)
                             .lineLimit(8)
                     }
@@ -1287,7 +1375,7 @@ struct DocumentsView: View {
                 }
             } else {
                 Text("Select a document to view metadata.")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -1297,10 +1385,10 @@ struct DocumentsView: View {
     private func inspectorRow(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
-                .font(.system(size: 11, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                 .foregroundStyle(.tertiary)
             Text(value)
-                .font(.system(size: 12, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
@@ -1346,6 +1434,42 @@ struct DocumentsView: View {
             selectedSidebarItem = .folder(created.id, trimmed)
         }
         newFolderName = ""
+        folderNamePrompt = nil
+    }
+
+    private func folderNameBinding(for prompt: FolderNamePrompt) -> Binding<String> {
+        switch prompt {
+        case .create:
+            Binding(
+                get: { newFolderName },
+                set: { newFolderName = $0 }
+            )
+        case .rename:
+            Binding(
+                get: { renameFolderName },
+                set: { renameFolderName = $0 }
+            )
+        }
+    }
+
+    private func cancelFolderNamePrompt(_ prompt: FolderNamePrompt) {
+        switch prompt {
+        case .create:
+            newFolderName = ""
+        case .rename:
+            renameFolderID = nil
+            renameFolderName = ""
+        }
+        folderNamePrompt = nil
+    }
+
+    private func submitFolderNamePrompt(_ prompt: FolderNamePrompt) {
+        switch prompt {
+        case .create:
+            createFolderFromPrompt()
+        case .rename:
+            renameFolderFromPrompt()
+        }
     }
 
     private func folderEntity(withID id: UUID) -> VaultDocument? {
@@ -1376,7 +1500,7 @@ struct DocumentsView: View {
         guard let folder = folderEntity(withID: folderID) else { return }
         renameFolderID = folderID
         renameFolderName = folder.fileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        isRenameFolderPromptPresented = true
+        folderNamePrompt = .rename(folderID)
     }
 
     private func renameFolderFromPrompt() {
@@ -1395,6 +1519,7 @@ struct DocumentsView: View {
 
         self.renameFolderID = nil
         self.renameFolderName = ""
+        self.folderNamePrompt = nil
     }
 
     private func deletePendingFolder(includeContents: Bool) {
@@ -1440,7 +1565,19 @@ struct DocumentsView: View {
     }
 
     private func selectAllVisibleDocuments() {
-        selectedDocumentIDs = Set(visibleVaultDocuments.map(\.id))
+        let ids = showsHierarchicalVaultBrowser
+            ? visibleVaultGridDocuments.map(\.id)
+            : visibleVaultDocuments.map(\.id)
+        selectedDocumentIDs = Set(ids)
+    }
+
+    private func openVaultBrowserItem(_ doc: VaultDocument) {
+        if doc.isFolder {
+            let name = doc.fileName.trimmingCharacters(in: .whitespacesAndNewlines)
+            selectedSidebarItem = .folder(doc.id, name.isEmpty ? "Folder" : name)
+        } else {
+            openVaultDocument(doc)
+        }
     }
 
     private func moveSelectedDocuments(to folderID: UUID?) {
@@ -1463,31 +1600,50 @@ struct DocumentsView: View {
     }
     
     private var vaultFooterStatusLine: String {
-        let n = visibleVaultDocuments.count
+        let n = visibleBrowserItemCount
         let isSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let usesItemLabel = showsHierarchicalVaultBrowser
         if isSearching {
             if n == 1 {
                 return String(
-                    localized: "documents.footer.filtered_one",
-                    defaultValue: "Showing 1 filtered file"
+                    localized: usesItemLabel ? "documents.footer.filtered_item_one" : "documents.footer.filtered_one",
+                    defaultValue: usesItemLabel ? "Showing 1 filtered item" : "Showing 1 filtered file"
                 )
             }
             return String(
                 format: String(
-                    localized: "documents.footer.filtered_many",
-                    defaultValue: "Showing %d filtered files"
+                    localized: usesItemLabel ? "documents.footer.filtered_item_many" : "documents.footer.filtered_many",
+                    defaultValue: usesItemLabel ? "Showing %d filtered items" : "Showing %d filtered files"
                 ),
                 n
             )
         }
         if n == 1 {
-            return String(localized: "documents.footer.showing_one")
+            return String(
+                localized: usesItemLabel ? "documents.footer.showing_item_one" : "documents.footer.showing_one",
+                defaultValue: usesItemLabel ? "Showing 1 item" : "Showing 1 file"
+            )
         }
-        return String(format: String(localized: "documents.footer.showing_many"), n)
+        return String(
+            format: String(
+                localized: usesItemLabel ? "documents.footer.showing_item_many" : "documents.footer.showing_many",
+                defaultValue: usesItemLabel ? "Showing %d items" : "Showing %d files"
+            ),
+            n
+        )
     }
 
     @ViewBuilder
     private func vaultDocumentContextMenu(for doc: VaultDocument) -> some View {
+        if doc.isFolder {
+            Button("Open Folder") {
+                openVaultBrowserItem(doc)
+            }
+            Divider()
+            Button("Delete Folder", role: .destructive) {
+                VaultDocumentAccess.delete(id: doc.id, collegePersistence: collegePersistence)
+            }
+        } else {
         Button("Open") {
             openVaultDocument(doc)
         }
@@ -1530,6 +1686,7 @@ struct DocumentsView: View {
         Button("Delete File", role: .destructive) {
             VaultDocumentAccess.delete(id: doc.id, collegePersistence: collegePersistence)
         }
+        }
     }
 
     private var vaultDocumentsGrid: some View {
@@ -1538,7 +1695,7 @@ struct DocumentsView: View {
                 columns: [GridItem(.adaptive(minimum: 148, maximum: 188), spacing: 12)],
                 spacing: 12
             ) {
-                ForEach(visibleVaultDocuments, id: \.id) { doc in
+                ForEach(visibleVaultGridDocuments, id: \.id) { doc in
                     VaultDocumentGridCell(doc: doc, isSelected: selectedDocumentIDs.contains(doc.id))
                         .scrollTransition(.animated(.spring(response: 0.34, dampingFraction: 0.88))) { content, phase in
                             content
@@ -1554,11 +1711,11 @@ struct DocumentsView: View {
                         }
                         .draggable(dragPayload(for: doc))
                         .onTapGesture(count: 2) {
-                            openVaultDocument(doc)
+                            openVaultBrowserItem(doc)
                         }
                 }
             }
-            .padding(16)
+            .padding(DesignSystem.Spacing.lg)
             .sensoryFeedback(.selection, trigger: selectedDocumentIDs)
         }
         .scrollBounceBehavior(.basedOnSize)
@@ -1593,7 +1750,7 @@ struct DocumentsView: View {
 
             TableColumn("Date Modified") { item in
                 Text(item.dateModifiedString)
-                    .font(.system(size: 12))
+                    .font(DesignSystem.Fonts.main(size: 12))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -1601,7 +1758,7 @@ struct DocumentsView: View {
 
             TableColumn("Size") { item in
                 Text(item.sizeString)
-                    .font(.system(size: 12))
+                    .font(DesignSystem.Fonts.main(size: 12))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -1609,7 +1766,7 @@ struct DocumentsView: View {
 
             TableColumn("Kind") { item in
                 Text(item.kind)
-                    .font(.system(size: 12))
+                    .font(DesignSystem.Fonts.main(size: 12))
                     .foregroundStyle(.secondary)
             }
             .width(min: 90, ideal: 150, max: 230)
@@ -1630,13 +1787,13 @@ struct DocumentsView: View {
     private func finderNameCell(item: VaultTreeItem) -> some View {
         HStack(spacing: 8) {
             Image(systemName: item.sfSymbol)
-                .font(.system(size: 14, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
                 .foregroundStyle(item.iconColor)
                 .frame(width: 20, alignment: .center)
                 .symbolRenderingMode(.hierarchical)
 
             Text(item.name)
-                .font(.system(size: 13, weight: item.isFolder ? .semibold : .regular))
+                .font(DesignSystem.Fonts.main(size: 13, weight: item.isFolder ? .semibold : .regular))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -1644,7 +1801,7 @@ struct DocumentsView: View {
             if let linked = item.entity.courseCodeLinked?.trimmingCharacters(in: .whitespacesAndNewlines),
                !linked.isEmpty, !item.isFolder {
                 Text(linked)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
@@ -1668,7 +1825,7 @@ struct DocumentsView: View {
 
             VStack(spacing: 0) {
                 ZStack {
-                    if finderRootItems.isEmpty {
+                    if !hasVaultBrowserContent {
                         documentsEmptyStateSection
                             .transition(.asymmetric(
                                 insertion: .opacity.combined(with: .scale(scale: 0.97, anchor: .top)),
@@ -1714,7 +1871,7 @@ struct DocumentsView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
-                .animation(motionReduced ? .easeOut(duration: 0.12) : .spring(response: 0.30, dampingFraction: 0.88), value: visibleVaultDocuments.isEmpty)
+                .animation(motionReduced ? .easeOut(duration: 0.12) : .spring(response: 0.30, dampingFraction: 0.88), value: hasVaultBrowserContent)
                 .animation(motionReduced ? .easeOut(duration: 0.12) : .spring(response: 0.30, dampingFraction: 0.88), value: vaultItemsLayout)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -1722,8 +1879,8 @@ struct DocumentsView: View {
 
                 HStack(spacing: 0) {
                     Text(vaultFooterStatusLine)
-                        .contentTransition(motionReduced ? .opacity : .numericText(value: Double(visibleVaultDocuments.count)))
-                        .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: visibleVaultDocuments.count)
+                        .contentTransition(motionReduced ? .opacity : .numericText(value: Double(visibleBrowserItemCount)))
+                        .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: visibleBrowserItemCount)
                         .foregroundStyle(.secondary)
                     if let last = lastVaultMetricsRefresh {
                         Text(" · Updated \(RelativeDateTimeFormatter().localizedString(for: last, relativeTo: Date()))")
@@ -1731,7 +1888,7 @@ struct DocumentsView: View {
                     }
                     Spacer()
                 }
-                .font(.system(size: 11, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
             }
@@ -1750,64 +1907,90 @@ struct DocumentsView: View {
     }
 
     private var documentsEmptyStateSection: some View {
-        DashboardEmptyHint(
-            title: emptyStateTitle,
-            message: emptyStateMessage,
-            systemImage: "doc.badge.plus"
-        )
-        .frame(maxWidth: 520)
-        .overlay(alignment: .bottom) {
-            HStack(spacing: 10) {
-                Button("Import from Mac…") {
+        VStack(spacing: 18) {
+            Image(systemName: "arrow.up.doc")
+                .font(DesignSystem.Fonts.main(size: 32, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .symbolRenderingMode(.hierarchical)
+
+            VStack(spacing: 8) {
+                Text(emptyStateTitle)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Text(emptyStateMessage)
+                    .font(DesignSystem.Fonts.main(size: 13))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: 10) {
+                Button {
                     showUploadPicker = true
+                } label: {
+                    Label(
+                        String(localized: "documents.empty.upload_action", defaultValue: "Upload File"),
+                        systemImage: "plus"
+                    )
+                    .frame(minWidth: 148)
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 .disabled(isUploading)
 
-                Button("Import from Integration…") {
+                Button {
                     pickFilesFromIntegration(provider: nil)
+                } label: {
+                    Text(String(localized: "documents.empty.integration_action", defaultValue: "Import from Integration…"))
                 }
+                .buttonStyle(.borderless)
                 .disabled(isUploading)
             }
-            .buttonStyle(.borderless)
-            .offset(y: 28)
         }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(maxWidth: 420)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
         .padding(.horizontal, 16)
-        .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var fileTypeCountsRow: some View {
-        HStack(spacing: 14) {
+        let metrics = displayedVaultMetrics
+        return HStack(spacing: 14) {
             HStack(spacing: 4) {
                 Image(systemName: "doc.text.fill")
-                Text("\(vaultMetrics.pdfCount)")
-                    .contentTransition(motionReduced ? .opacity : .numericText(value: Double(vaultMetrics.pdfCount)))
-                    .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: vaultMetrics.pdfCount)
+                Text("\(metrics.pdfCount)")
+                    .contentTransition(motionReduced ? .opacity : .numericText(value: Double(metrics.pdfCount)))
+                    .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: metrics.pdfCount)
                 Text("PDFs")
             }
             .foregroundStyle(.secondary)
 
             HStack(spacing: 4) {
                 Image(systemName: "tablecells.fill")
-                Text("\(vaultMetrics.sheetCount)")
-                    .contentTransition(motionReduced ? .opacity : .numericText(value: Double(vaultMetrics.sheetCount)))
-                    .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: vaultMetrics.sheetCount)
+                Text("\(metrics.sheetCount)")
+                    .contentTransition(motionReduced ? .opacity : .numericText(value: Double(metrics.sheetCount)))
+                    .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: metrics.sheetCount)
                 Text("Sheets")
             }
             .foregroundStyle(.secondary)
 
             HStack(spacing: 4) {
                 Image(systemName: "chevron.left.forwardslash.chevron.right")
-                Text("\(vaultMetrics.scriptCount)")
-                    .contentTransition(motionReduced ? .opacity : .numericText(value: Double(vaultMetrics.scriptCount)))
-                    .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: vaultMetrics.scriptCount)
+                Text("\(metrics.scriptCount)")
+                    .contentTransition(motionReduced ? .opacity : .numericText(value: Double(metrics.scriptCount)))
+                    .animation(motionReduced ? .easeOut(duration: 0.12) : .easeInOut(duration: 0.22), value: metrics.scriptCount)
                 Text("Scripts")
             }
             .foregroundStyle(.secondary)
 
             Spacer(minLength: 0)
         }
-        .font(.system(size: 12, weight: .semibold))
+        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
     }
 
     private var vaultToolbarRow: some View {
@@ -1815,22 +1998,6 @@ struct DocumentsView: View {
             vaultToolbarWide
             vaultToolbarCompact
         }
-    }
-
-    private var vaultSearchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            TextField(String(localized: "documents.search.placeholder", defaultValue: "Search local vault"), text: $searchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .semibold))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.primary.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var vaultFileTypePicker: some View {
@@ -1843,8 +2010,8 @@ struct DocumentsView: View {
     }
 
     private var vaultStorageLabel: some View {
-        Text(ByteCountFormatter.string(fromByteCount: vaultMetrics.totalBytes, countStyle: .file))
-            .font(.system(size: 12, weight: .bold, design: .rounded))
+        Text(ByteCountFormatter.string(fromByteCount: displayedVaultMetrics.totalBytes, countStyle: .file))
+            .font(DesignSystem.Fonts.main(size: 12, weight: .bold, design: .rounded))
             .foregroundStyle(.primary)
             .monospacedDigit()
             .lineLimit(1)
@@ -1859,7 +2026,7 @@ struct DocumentsView: View {
                     }
                 } label: {
                     Image(systemName: mode == .list ? "list.bullet" : "square.grid.2x2")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                         .foregroundStyle(vaultItemsLayout == mode ? Color.accentColor : .secondary)
                         .frame(width: 30, height: 28)
                         .symbolEffect(.bounce, value: vaultItemsLayout)
@@ -1895,7 +2062,7 @@ struct DocumentsView: View {
             }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.system(size: 16, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
         }
         .menuStyle(.borderlessButton)
@@ -1904,9 +2071,6 @@ struct DocumentsView: View {
 
     private var vaultToolbarWide: some View {
         HStack(alignment: .center, spacing: 10) {
-            vaultSearchField
-                .frame(minWidth: 160, idealWidth: 220, maxWidth: 280)
-
             vaultFileTypePicker
                 .frame(minWidth: 180, idealWidth: 260, maxWidth: 320)
 
@@ -1914,6 +2078,7 @@ struct DocumentsView: View {
                 .frame(height: 18)
 
             vaultActionsMenu
+            vaultUploadButton
             vaultImportMenu
 
             Spacer(minLength: 4)
@@ -1929,8 +2094,8 @@ struct DocumentsView: View {
     private var vaultToolbarCompact: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
-                vaultSearchField
                 vaultActionsMenu
+                vaultUploadButton
                 vaultImportMenu
                 vaultLayoutModeControl
                 vaultFilterMenu
@@ -1946,6 +2111,53 @@ struct DocumentsView: View {
 
 // MARK: - Components
 
+private struct FolderNameSheet: View {
+    let title: String
+    let message: String
+    let actionTitle: String
+    @Binding var name: String
+    let onCancel: () -> Void
+    let onSubmit: () -> Void
+
+    @FocusState private var isNameFocused: Bool
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            Text(title)
+                .font(DesignSystem.Fonts.title3())
+            Text(message)
+                .font(DesignSystem.Fonts.body())
+                .foregroundStyle(.secondary)
+
+            TextField("Folder name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .focused($isNameFocused)
+                .onSubmit(submitIfValid)
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel, action: onCancel)
+                Button(actionTitle, action: submitIfValid)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(trimmedName.isEmpty)
+                    .help(trimmedName.isEmpty ? "Enter a folder name first" : actionTitle)
+            }
+        }
+        .onAppear {
+            isNameFocused = true
+        }
+    }
+
+    private func submitIfValid() {
+        guard !trimmedName.isEmpty else { return }
+        onSubmit()
+    }
+}
+
 struct MetricCard: View {
     let title: String
     let count: String
@@ -1960,22 +2172,22 @@ struct MetricCard: View {
                     .fill(iconBg)
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundColor(iconColor)
+                    .foregroundStyle(iconColor)
             }
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .foregroundStyle(.tertiary)
                     .kerning(0.5)
                 Text(count)
-                    .font(.system(size: 28, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 28, weight: .bold))
                     .foregroundStyle(.primary)
             }
         }
-        .padding(24)
+        .padding(DesignSystem.Spacing.xl)
         .frame(width: 140, alignment: .leading)
         .background(metricCardFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
@@ -2009,19 +2221,19 @@ struct StorageHealthCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(String(localized: "documents.storage.title"))
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
 
             Text(formattedUsed)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(DesignSystem.Fonts.main(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
                 .monospacedDigit()
 
             Text(filesInVaultLine)
-                .font(.system(size: 12, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                 .foregroundStyle(.secondary)
         }
-        .padding(24)
+        .padding(DesignSystem.Spacing.xl)
         .frame(width: 280, alignment: .leading)
         .background(storageCardFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
@@ -2145,40 +2357,49 @@ private struct VaultDocumentGridCell: View {
         let p = VaultDocumentPresentation(doc: doc)
         VStack(spacing: 10) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(p.iconBg)
-                    .frame(width: 44, height: 44)
-                if p.iconKind == "pdf" {
-                    Text("PDF")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(p.iconImgColor)
-                } else if p.iconKind == "sheet" {
-                    Image(systemName: "chart.bar.doc.horizontal")
-                        .font(.system(size: 20))
-                        .foregroundStyle(p.iconImgColor)
-                } else if p.iconKind == "script" {
-                    Text(String(p.fileExtension.uppercased().prefix(2)))
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(p.iconImgColor)
+                if doc.isFolder {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.yellow.opacity(0.14))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "folder.fill")
+                        .font(DesignSystem.Fonts.main(size: 24))
+                        .foregroundStyle(.yellow)
                 } else {
-                    Image(systemName: "doc")
-                        .font(.system(size: 20))
-                        .foregroundStyle(p.iconImgColor)
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(p.iconBg)
+                        .frame(width: 44, height: 44)
+                    if p.iconKind == "pdf" {
+                        Text("PDF")
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                            .foregroundStyle(p.iconImgColor)
+                    } else if p.iconKind == "sheet" {
+                        Image(systemName: "chart.bar.doc.horizontal")
+                            .font(DesignSystem.Fonts.main(size: 20))
+                            .foregroundStyle(p.iconImgColor)
+                    } else if p.iconKind == "script" {
+                        Text(String(p.fileExtension.uppercased().prefix(2)))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                            .foregroundStyle(p.iconImgColor)
+                    } else {
+                        Image(systemName: "doc")
+                            .font(DesignSystem.Fonts.main(size: 20))
+                            .foregroundStyle(p.iconImgColor)
+                    }
                 }
             }
 
             Text(p.fileName)
-                .font(.system(size: 12, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
 
-            Text(p.sizeString)
-                .font(.system(size: 10, weight: .semibold))
+            Text(doc.isFolder ? "Folder" : p.sizeString)
+                .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                 .foregroundStyle(.tertiary)
         }
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .top)
         .background(cellBackground)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -2212,24 +2433,24 @@ private struct VaultDocumentFileTableCell: View {
                     .frame(width: 36, height: 36)
                 if p.iconKind == "pdf" {
                     Text("PDF")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                         .foregroundStyle(p.iconImgColor)
                 } else if p.iconKind == "sheet" {
                     Image(systemName: "chart.bar.doc.horizontal")
-                        .font(.system(size: 16))
+                        .font(DesignSystem.Fonts.main(size: 16))
                         .foregroundStyle(p.iconImgColor)
                 } else if p.iconKind == "script" {
                     Text(String(p.fileExtension.uppercased().prefix(2)))
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                         .foregroundStyle(p.iconImgColor)
                 } else {
                     Image(systemName: "doc")
-                        .font(.system(size: 16))
+                        .font(DesignSystem.Fonts.main(size: 16))
                         .foregroundStyle(p.iconImgColor)
                 }
             }
             Text(p.fileName)
-                .font(.system(size: 13, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
@@ -2237,7 +2458,7 @@ private struct VaultDocumentFileTableCell: View {
             if let linked = doc.courseCodeLinked?.trimmingCharacters(in: .whitespacesAndNewlines),
                !linked.isEmpty {
                 Text(linked)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
@@ -2263,18 +2484,18 @@ private struct SidebarRowButtonLabel: View {
         Button(action: onSelect) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .foregroundStyle(isSelected ? .primary : .secondary)
 
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .foregroundStyle(isSelected ? .primary : .secondary)
                     .lineLimit(1)
 
                 Spacer()
 
                 Text("\(count)")
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold, design: .rounded))
                     .foregroundStyle(.tertiary)
                     .monospacedDigit()
                     .contentTransition(motionReduced ? .opacity : .numericText(value: Double(count)))
@@ -2304,7 +2525,7 @@ private struct VaultDocumentCategoryTableCell: View {
     var body: some View {
         let p = VaultDocumentPresentation(doc: doc)
         Text(p.categoryText)
-            .font(.system(size: 10, weight: .bold))
+            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
             .foregroundStyle(p.catText)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)

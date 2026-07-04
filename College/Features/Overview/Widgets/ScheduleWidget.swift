@@ -44,12 +44,12 @@ struct ScheduleWidget: View {
         OverviewCard {
             HStack {
                 Text("Today's Schedule")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .bold, design: .serif))
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
                 Text(dayOfWeekLabel)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.horizontal, 8).padding(.vertical, 4)
                     .background(Color(hex: "F3F4F6"))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -60,9 +60,9 @@ struct ScheduleWidget: View {
             if todaysEvents.isEmpty {
                 HStack(spacing: 10) {
                     Image(systemName: "calendar.badge.checkmark")
-                        .font(.system(size: 20)).foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 20)).foregroundStyle(DesignSystem.Colors.textLight)
                     Text("No classes or events scheduled for today")
-                        .font(.system(size: 12)).foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 12)).foregroundStyle(DesignSystem.Colors.textLight)
                 }
                 .padding(.vertical, 12)
             } else {
@@ -121,10 +121,10 @@ struct ScheduleWidget: View {
 
         return HStack(spacing: 12) {
             VStack(spacing: 1) {
-                Text(timeStr).font(.system(size: 11, weight: .bold))
-                    .foregroundColor(isNow ? Color(hex: "6366F1") : DesignSystem.Colors.textLight)
-                Text(periodStr).font(.system(size: 9))
-                    .foregroundColor(isNow ? Color(hex: "6366F1") : DesignSystem.Colors.textLight)
+                Text(timeStr).font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundStyle(isNow ? Color(hex: "6366F1") : DesignSystem.Colors.textLight)
+                Text(periodStr).font(DesignSystem.Fonts.main(size: 9))
+                    .foregroundStyle(isNow ? Color(hex: "6366F1") : DesignSystem.Colors.textLight)
             }
             .frame(width: 48, height: 48)
             .background(isNow ? Color(hex: "EEF2FF") : Color(hex: "F9FAFB"))
@@ -132,22 +132,22 @@ struct ScheduleWidget: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(event.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textMain).lineLimit(1)
                 if let loc = event.location, !loc.isEmpty {
                     Label(loc, systemImage: "location")
-                        .font(.system(size: 10)).foregroundColor(DesignSystem.Colors.textLight).lineLimit(1)
+                        .font(DesignSystem.Fonts.main(size: 10)).foregroundStyle(DesignSystem.Colors.textLight).lineLimit(1)
                 }
             }
             Spacer()
             if let badge {
-                Text(badge.text).font(.system(size: 10, weight: .bold))
-                    .foregroundColor(badge.textColor)
+                Text(badge.text).font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                    .foregroundStyle(badge.textColor)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(badge.bgColor).clipShape(Capsule())
             }
         }
-        .padding(10)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.bgMain.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
@@ -184,22 +184,22 @@ private struct ScheduleWidgetPreview: View {
     var body: some View {
         OverviewCard {
             Text("Today's Schedule")
-                .font(.system(size: 14, weight: .bold, design: .serif))
-                .foregroundColor(DesignSystem.Colors.textMain).padding(.bottom, 10)
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold, design: .serif))
+                .foregroundStyle(DesignSystem.Colors.textMain).padding(.bottom, 10)
             VStack(spacing: 6) {
                 ForEach(events, id: \.0) { time, period, title in
                     HStack(spacing: 10) {
                         VStack(spacing: 1) {
-                            Text(time).font(.system(size: 10, weight: .bold)).foregroundColor(DesignSystem.Colors.textLight)
-                            Text(period).font(.system(size: 8)).foregroundColor(DesignSystem.Colors.textLight)
+                            Text(time).font(DesignSystem.Fonts.main(size: 10, weight: .bold)).foregroundStyle(DesignSystem.Colors.textLight)
+                            Text(period).font(DesignSystem.Fonts.main(size: 8)).foregroundStyle(DesignSystem.Colors.textLight)
                         }
                         .frame(width: 40, height: 40).background(Color(hex: "F9FAFB"))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Text(title).font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
+                        Text(title).font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textMain).lineLimit(1)
                         Spacer()
                     }
-                    .padding(8).background(DesignSystem.Colors.bgMain.opacity(0.5))
+                    .padding(DesignSystem.Spacing.sm).background(DesignSystem.Colors.bgMain.opacity(0.5))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }

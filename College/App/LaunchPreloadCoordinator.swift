@@ -14,7 +14,7 @@ final class LaunchPreloadCoordinator {
         case storeReady
         case coreSnapshots
         case calendarWarmup
-        case brightspaceWarmup
+        case lmsWarmup
         case integrationsWarmup
         case featureWarmup
     }
@@ -47,7 +47,7 @@ final class LaunchPreloadCoordinator {
     struct FeaturePreloadContext {
         let collegePersistence: CollegePersistence
         let calendarManager: CalendarIntegrationManager
-        let brightspaceCoordinator: BrightspaceWebCoordinator
+        let lmsCoordinator: LMSWebCoordinator
         let cloudIntegration: CloudIntegrationService
     }
 
@@ -69,6 +69,7 @@ final class LaunchPreloadCoordinator {
     private var stepProgress: [StepID: Double] = [:]
     private var activeStepID: StepID?
     private var progressSamples: [(time: Date, progress: Double)] = []
+    private var launchStartedAt: Date?
 
     nonisolated(unsafe) private static var featureRegistry: [String: FeaturePreloadDescriptor] = [:]
     nonisolated(unsafe) private static var didBootstrapBuiltIns: Bool = false
@@ -79,7 +80,7 @@ final class LaunchPreloadCoordinator {
         .storeReady: 0.20,
         .coreSnapshots: 0.18,
         .calendarWarmup: 0.20,
-        .brightspaceWarmup: 0.18,
+        .lmsWarmup: 0.18,
         .integrationsWarmup: 0.12,
         .featureWarmup: 0.12,
     ]
@@ -93,10 +94,11 @@ final class LaunchPreloadCoordinator {
     func startIfNeeded(
         collegePersistence: CollegePersistence,
         calendarManager: CalendarIntegrationManager,
-        brightspaceCoordinator: BrightspaceWebCoordinator,
+        lmsCoordinator: LMSWebCoordinator,
         cloudIntegration: CloudIntegrationService
     ) {
         guard preloadTask == nil, !isCompleted else { return }
+        launchStartedAt = Date()
 
         Self.bootstrapBuiltInFeaturePreloadsIfNeeded()
 
@@ -118,7 +120,7 @@ final class LaunchPreloadCoordinator {
             await self.runPipeline(
                 collegePersistence: collegePersistence,
                 calendarManager: calendarManager,
-                brightspaceCoordinator: brightspaceCoordinator,
+                lmsCoordinator: lmsCoordinator,
                 cloudIntegration: cloudIntegration
             )
         }
@@ -127,7 +129,7 @@ final class LaunchPreloadCoordinator {
     private func runPipeline(
         collegePersistence: CollegePersistence,
         calendarManager: CalendarIntegrationManager,
-        brightspaceCoordinator: BrightspaceWebCoordinator,
+        lmsCoordinator: LMSWebCoordinator,
         cloudIntegration: CloudIntegrationService
     ) async {
         await runRetriableStep(
@@ -172,21 +174,21 @@ final class LaunchPreloadCoordinator {
         }
 
         await runRetriableStep(
-            id: .brightspaceWarmup,
-            title: "Preloading Brightspace",
+            id: .lmsWarmup,
+            title: String(localized: "lms.preload.title", defaultValue: "Preloading Learning Management System"),
             retriesUntilSuccess: true
         ) {
             guard LMSPortalConfiguration.shouldPreloadPortalAtLaunch() else {
-                self.setStepDetail(.brightspaceWarmup, detail: "Skipped — LMS portal opens on first visit")
-                self.setStepProgress(.brightspaceWarmup, progress: 1)
+                self.setStepDetail(.lmsWarmup, detail: "Skipped — LMS portal opens on first visit")
+                self.setStepProgress(.lmsWarmup, progress: 1)
                 return
             }
-            try await brightspaceCoordinator.preloadPortalForLaunch { progress in
-                self.setStepProgress(.brightspaceWarmup, progress: progress)
+            try await lmsCoordinator.preloadPortalForLaunch { progress in
+                self.setStepProgress(.lmsWarmup, progress: progress)
             } detail: { detail in
-                self.setStepDetail(.brightspaceWarmup, detail: detail)
+                self.setStepDetail(.lmsWarmup, detail: detail)
             }
-            self.setStepProgress(.brightspaceWarmup, progress: 1)
+            self.setStepProgress(.lmsWarmup, progress: 1)
         }
 
         await runRetriableStep(
@@ -211,7 +213,7 @@ final class LaunchPreloadCoordinator {
                 context: FeaturePreloadContext(
                     collegePersistence: collegePersistence,
                     calendarManager: calendarManager,
-                    brightspaceCoordinator: brightspaceCoordinator,
+                    lmsCoordinator: lmsCoordinator,
                     cloudIntegration: cloudIntegration
                 )
             )
@@ -228,6 +230,25 @@ final class LaunchPreloadCoordinator {
         overallProgress = 1
         isCompleted = true
         isRunning = false
+        if let launchStartedAt {
+            let ms = Int(Date().timeIntervalSince(launchStartedAt) * 1000)
+            SnowLeopardHealthMetrics.recordColdLaunch(milliseconds: Double(ms))
+            Task {
+                await LoadOperationTrace.recordCompleted(
+                    name: "LaunchPipeline",
+                    category: .launch,
+                    durationMs: ms,
+                    budgetMs: LaunchPerformanceAcceptance.pipelineWallClockWarnThresholdMs,
+                    executionContext: .mainThread,
+                    metadata: [
+                        "features": featureOutcomes
+                            .map { "\($0.key)=\($0.value.rawValue)" }
+                            .sorted()
+                            .joined(separator: ",")
+                    ]
+                )
+            }
+        }
     }
 
     private func runRegisteredFeaturePreloads(context: FeaturePreloadContext) async {
@@ -318,6 +339,7 @@ final class LaunchPreloadCoordinator {
         AcademicsFeaturePreloadRegistration.register()
         CareerFeaturePreloadRegistration.register()
         CalendarFeaturePreloadRegistration.register()
+        LMSFeaturePreloadRegistration.register()
         AIAssistantFeaturePreloadRegistration.register()
         DocumentsFeaturePreloadRegistration.register()
         SettingsFeaturePreloadRegistration.register()
@@ -370,7 +392,14 @@ final class LaunchPreloadCoordinator {
             statusText = attempt == 0 ? "Running..." : "Retry attempt \(attempt)"
 
             do {
-                try await operation()
+                try await LoadOperationTrace.withSpan(
+                    name: "launch.\(id.traceName)",
+                    category: .launch,
+                    executionContext: .mainThread,
+                    metadata: ["step_title": title]
+                ) {
+                    try await operation()
+                }
                 setStepProgress(id, progress: 1)
                 retryAttempt = 0
                 lastErrorText = nil
@@ -493,5 +522,18 @@ final class LaunchPreloadCoordinator {
 
         let minutes = Int((Double(seconds) / 60.0).rounded())
         etaText = "About \(minutes)m remaining"
+    }
+}
+
+private extension LaunchPreloadCoordinator.StepID {
+    var traceName: String {
+        switch self {
+        case .storeReady: return "storeReady"
+        case .coreSnapshots: return "coreSnapshots"
+        case .calendarWarmup: return "calendarWarmup"
+        case .lmsWarmup: return "lmsWarmup"
+        case .integrationsWarmup: return "integrationsWarmup"
+        case .featureWarmup: return "featureWarmup"
+        }
     }
 }

@@ -72,7 +72,7 @@ struct CalToolbarChromeView: View {
     }
 }
 
-struct CalToolbarSidebarToggleView: View {
+struct CalendarToolbarInspectorToggleView: View {
     let dispatcher: ToolbarDispatcher
     let calendarScene: CalendarSceneState
 
@@ -110,54 +110,36 @@ struct CalToolbarSidebarToggleView: View {
                 dispatcher.dispatch(.calendar(.sidebarPanelChange(.tasks)))
             } label: {
                 Label(
-                    "Task List",
+                    "Tasks & Deadlines",
                     systemImage: projection.sidebarPanel == .tasks ? "checkmark" : "checklist"
                 )
             }
+
+            Button {
+                dispatcher.dispatch(.calendar(.sidebarPanelChange(.studyFocus)))
+            } label: {
+                Label(
+                    "Study / Focus",
+                    systemImage: projection.sidebarPanel == .studyFocus ? "checkmark" : "brain.head.profile"
+                )
+            }
         }
-        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
 struct AcademicsToolbarSidebarToggleView: View {
-    let dispatcher: ToolbarDispatcher
-    let academicsScene: AcademicsSceneState
+    @Binding var isInspectorPresented: Bool
 
     var body: some View {
         Button {
-            dispatcher.dispatch(.academics(.statsSidebarToggle))
+            isInspectorPresented.toggle()
         } label: {
-            ToolbarMetrics.glassIconLabel(systemName: "sidebar.left")
+            ToolbarMetrics.glassIconLabel(systemName: "sidebar.trailing")
         }
         .toolbarIconButtonStyle()
-        .help(
-            academicsScene.statsSidebarShown
-                ? "Hide stats sidebar"
-                : "Show stats sidebar"
-        )
-        .accessibilityLabel(
-            academicsScene.statsSidebarShown ? "Hide stats sidebar" : "Show stats sidebar"
-        )
+        .help(isInspectorPresented ? "Hide stats inspector" : "Show stats inspector")
+        .accessibilityLabel(isInspectorPresented ? "Hide stats inspector" : "Show stats inspector")
         .accessibilityIdentifier("toolbar.academics.sidebarToggle")
-    }
-}
-
-struct AcademicsToolbarAddProfileButton: View {
-    let collegePersistence: CollegePersistence
-    let academicsScene: AcademicsSceneState
-
-    var body: some View {
-        Button {
-            AcademicsToolbarProfileActions.addProfile(
-                collegePersistence: collegePersistence,
-                academicsScene: academicsScene
-            )
-        } label: {
-            ToolbarMetrics.glassIconLabel(systemName: "plus")
-        }
-        .toolbarIconButtonStyle()
-        .help(String(localized: "academic.profile.add"))
-        .accessibilityLabel(String(localized: "academic.profile.add"))
     }
 }
 
@@ -172,23 +154,23 @@ struct AcademicsDegreeScopeToolbar: View {
         )
     }
 
-    var body: some View {
+    private var primaryProfile: AcademicProfile? {
         let profiles = AcademicProfileReadBridge.profiles()
+        return profiles.first(where: \.isPrimary) ?? profiles.first
+    }
+
+    var body: some View {
+        let profile = primaryProfile
         GlassEffectContainer(spacing: 8) {
             AcademicDegreeTabBar(
-                profiles: profiles,
+                profiles: profile.map { [$0] } ?? [],
                 selectedID: selectedBinding,
                 showOverviewPill: false,
-                centersContent: profiles.count < 3,
+                centersContent: true,
                 toolbarHosted: true,
                 allowsAdd: false,
                 allowsDelete: false,
-                onAdd: {
-                    AcademicsToolbarProfileActions.addProfile(
-                        collegePersistence: collegePersistence,
-                        academicsScene: academicsScene
-                    )
-                },
+                onAdd: {},
                 onDelete: { _ in },
                 onReorder: { ordered in
                     collegePersistence.reorderAcademicProfiles(ordered)
@@ -196,5 +178,14 @@ struct AcademicsDegreeScopeToolbar: View {
             )
         }
         .frame(maxWidth: 720)
+        .onAppear {
+            if let profile {
+                academicsScene.selectedAcademicProfileID = profile.id
+            }
+        }
+        .onChange(of: profile?.id) { _, newID in
+            guard let newID else { return }
+            academicsScene.selectedAcademicProfileID = newID
+        }
     }
 }

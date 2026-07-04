@@ -23,9 +23,14 @@ enum ModernCampusCatalogDiscoverer {
         discoveredAt: Date = Date()
     ) async throws -> CatalogGraph {
         let normalized = baseURL.absoluteString
-        let catalogs = try await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalized)
-        let posted = ModernCampusCatalogLabels.filterPostedCatalogs(from: catalogs)
-        let catalogsToUse = posted.isEmpty ? catalogs : posted
+        let (_, catoidHint) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(normalized)
+        let catalogsToUse = await ModernCampusCatalogDiscovery.resolveCatalogsForIngestLenient(
+            normalizedBaseURL: normalized,
+            catoidHint: catoidHint
+        )
+        guard !catalogsToUse.isEmpty else {
+            throw ScraperError.invalidURL
+        }
         return try await buildGraph(
             manifest: manifest,
             baseURL: baseURL,
@@ -48,12 +53,22 @@ enum ModernCampusCatalogDiscoverer {
             let html = try await ModernCampusEngine.fetchHTMLPublic(indexURL.absoluteString)
             sidebarByCatoid[catoid] = parseSidebarLinks(html: html, baseURL: baseURL, catoid: catoid)
         }
+
+        var extraPageURLs: [String] = []
+        if ModernCampusHostProfiles.resolve(host: baseURL.host)?.prefersEntityPageProgramDiscovery == true {
+            extraPageURLs = try await discoverEntityLinkedProgramURLs(
+                baseURL: baseURL,
+                catalogs: catalogs,
+                sidebarByCatoid: sidebarByCatoid
+            )
+        }
+
         return buildGraph(
             manifest: manifest,
             baseURL: baseURL,
             catalogs: catalogs,
             sidebarByCatoid: sidebarByCatoid,
-            extraPageURLs: [],
+            extraPageURLs: extraPageURLs,
             discoveredAt: discoveredAt
         )
     }
@@ -116,7 +131,14 @@ enum ModernCampusCatalogDiscoverer {
 
             let sidebar = sidebarByCatoid[catoid] ?? []
             for entry in sidebar {
-                let kind = classifyPageKind(url: entry.url, linkLabel: entry.label)
+                var kind = classifyPageKind(url: entry.url, linkLabel: entry.label)
+                if kind == .unknown {
+                    kind = reclassifyUnknownPageKind(
+                        url: entry.url,
+                        linkLabel: entry.label,
+                        host: baseURL.host
+                    )
+                }
                 appendNode(
                     CatalogPageNode(
                         url: entry.url,
@@ -173,6 +195,9 @@ enum ModernCampusCatalogDiscoverer {
         if lower.contains("preview_program") {
             return .programDetail
         }
+        if lower.contains("preview_entity") {
+            return .programListing
+        }
         if lower.contains("preview_course_nopop") || lower.contains("preview_course.php") || lower.contains("preview_course") {
             return .courseDetail
         }
@@ -196,12 +221,7 @@ enum ModernCampusCatalogDiscoverer {
 
     static func parseSidebarLinks(html: String, baseURL: URL, catoid: String) -> [SidebarEntry] {
         guard let doc = try? SwiftSoup.parse(html, baseURL.absoluteString) else { return [] }
-        let container = (try? doc.select("table.block_n2_links.link_table, table.block_n2_links.links_table").first()) ?? doc
-        let primaryAnchors = (try? container.select("div.n2_links a[href]").array()) ?? []
-        let fallbackAnchors = (try? doc.select(
-            "a[href*='content.php'][href*='navoid='], .block_n2_links a[href*='navoid='], td.block_n2_and_content a[href*='navoid='], a.navbar[href*='navoid=']"
-        ).array()) ?? []
-        let anchors = primaryAnchors.isEmpty ? fallbackAnchors : primaryAnchors
+        let anchors = ModernCampusSidebarParsing.anchors(in: doc)
         if anchors.isEmpty { return [] }
 
         var out: [SidebarEntry] = []
@@ -227,7 +247,7 @@ enum ModernCampusCatalogDiscoverer {
         return out
     }
 
-    private static func indexURL(baseURL: URL, catoid: String) -> URL {
+    static func indexURL(baseURL: URL, catoid: String) -> URL {
         var components = URLComponents(url: baseURL.appendingPathComponent("index.php"), resolvingAgainstBaseURL: false)
         var items = components?.queryItems ?? []
         items.removeAll { $0.name.lowercased() == "catoid" }
@@ -287,6 +307,104 @@ enum ModernCampusCatalogDiscoverer {
             "academic", "undergraduate", "graduate"
         ]
         return containerHints.contains(where: { labelLower.contains($0) })
+    }
+
+    /// Ratio of `preview_program` / `preview_entity` anchors to all anchors (0...1).
+    static func outboundProgramLinkDensity(in html: String) -> Double {
+        guard let doc = try? SwiftSoup.parse(html) else { return 0 }
+        let anchors = (try? doc.select("a[href]").array()) ?? []
+        guard !anchors.isEmpty else { return 0 }
+        var programLinks = 0
+        for anchor in anchors {
+            let href = ((try? anchor.attr("href")) ?? "").lowercased()
+            if href.contains("preview_program") || href.contains("preview_entity") {
+                programLinks += 1
+            }
+        }
+        return Double(programLinks) / Double(anchors.count)
+    }
+
+    static func reclassifyUnknownPageKind(
+        url: String,
+        linkLabel: String,
+        host: String?,
+        listingHTML: String? = nil
+    ) -> CatalogPageKind {
+        let labelLower = linkLabel.lowercased()
+        let synonyms = ModernCampusHostProfiles.navLabelSynonyms(host: host)
+        if synonyms.contains(where: { labelLower.contains($0) }) {
+            return .programListing
+        }
+        let lower = url.lowercased()
+        if let html = listingHTML?.trimmingCharacters(in: .whitespacesAndNewlines), !html.isEmpty {
+            let density = outboundProgramLinkDensity(in: html)
+            if density >= 0.15, lower.contains("content.php"), lower.contains("navoid=") {
+                return .programListing
+            }
+        }
+        let queryItemsCount = URLComponents(string: url)?.queryItems?.count ?? 0
+        let hasProgramHints = lower.contains("content.php") && (lower.contains("navoid=") || lower.contains("preview_entity"))
+        let density = hasProgramHints ? min(1.0, Double(queryItemsCount) / 5.0) : 0
+        return density >= 0.2 ? .programListing : .unknown
+    }
+
+    private static func reclassifyUnknownPageKind(
+        url: String,
+        linkLabel: String,
+        host: String?
+    ) -> CatalogPageKind {
+        reclassifyUnknownPageKind(url: url, linkLabel: linkLabel, host: host, listingHTML: nil)
+    }
+
+    private static func discoverEntityLinkedProgramURLs(
+        baseURL: URL,
+        catalogs: [ModernCampusCatalogDescriptor],
+        sidebarByCatoid: [String: [SidebarEntry]]
+    ) async throws -> [String] {
+        var discovered = Set<String>()
+        let politeness = CatalogFetchPoliteness.catalogSkeleton
+
+        for catalog in catalogs {
+            let catoid = catalog.catoid.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !catoid.isEmpty else { continue }
+            let sidebar = sidebarByCatoid[catoid] ?? []
+            let listingURLs = sidebar
+                .map(\.url)
+                .filter { url in
+                    let kind = classifyPageKind(url: url)
+                    return kind == .programListing || kind == .unknown
+                }
+                .prefix(12)
+
+            for listingURL in listingURLs {
+                let html = try await ModernCampusEngine.fetchHTMLPublic(listingURL, politeness: politeness)
+                let entityURLs = extractAnchors(matching: "preview_entity", from: html, baseURL: baseURL)
+                for entityURL in entityURLs {
+                    discovered.insert(entityURL)
+                    let entityHTML = try await ModernCampusEngine.fetchHTMLPublic(entityURL, politeness: politeness)
+                    let programURLs = extractAnchors(matching: "preview_program", from: entityHTML, baseURL: baseURL)
+                    for programURL in programURLs {
+                        discovered.insert(programURL)
+                    }
+                }
+            }
+        }
+
+        return discovered.sorted()
+    }
+
+    private static func extractAnchors(matching needle: String, from html: String, baseURL: URL) -> [String] {
+        guard let doc = try? SwiftSoup.parse(html, baseURL.absoluteString) else { return [] }
+        let anchors = (try? doc.select("a[href*=\(needle)]").array()) ?? []
+        var out: [String] = []
+        var seen = Set<String>()
+        for anchor in anchors {
+            let href = ((try? anchor.attr("abs:href")) ?? (try? anchor.attr("href")) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !href.isEmpty, href.lowercased().contains(needle), seen.insert(href).inserted else { continue }
+            out.append(href)
+        }
+        return out
     }
 
     private static func computeSignature(from inputs: [String], schoolID: String) -> String {

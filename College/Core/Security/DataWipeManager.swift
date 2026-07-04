@@ -22,6 +22,7 @@ enum DataWipeManager {
 
         GoogleAuthService.shared.signOut()
         KeychainMasterKey.deleteMasterKey()
+        LMSKeychainService.shared.deleteAll()
 
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
@@ -40,29 +41,38 @@ enum DataWipeManager {
         ]
         for name in legacyFilenames {
             let url = appSupport.appendingPathComponent(name)
-            try? fm.removeItem(at: url)
-            try? fm.removeItem(at: url.appendingPathExtension("-wal"))
-            try? fm.removeItem(at: url.appendingPathExtension("-shm"))
+            try removeSQLiteBundleIfPresent(at: url, fileManager: fm)
         }
         let legacyCollegeDir = appSupport.appendingPathComponent("College", isDirectory: true)
         for name in legacyFilenames {
             let url = legacyCollegeDir.appendingPathComponent(name)
-            try? fm.removeItem(at: url)
-            try? fm.removeItem(at: url.appendingPathExtension("-wal"))
-            try? fm.removeItem(at: url.appendingPathExtension("-shm"))
+            try removeSQLiteBundleIfPresent(at: url, fileManager: fm)
         }
 
         let vaultDir = appSupport.appendingPathComponent("College/DocumentVault", isDirectory: true)
-        try? fm.removeItem(at: vaultDir)
+        if fm.fileExists(atPath: vaultDir.path) {
+            try fm.removeItem(at: vaultDir)
+        }
 
-        let bundleID = Bundle.main.bundleIdentifier ?? "College"
-        let logsDir = appSupport.appendingPathComponent(bundleID, isDirectory: true).appendingPathComponent("Logs", isDirectory: true)
-        try? fm.removeItem(at: logsDir)
+        DiagnosticsArtifacts.wipeAllArtifacts()
 
         let tempDec = fm.temporaryDirectory.appendingPathComponent("College-DecryptedVault", isDirectory: true)
-        try? fm.removeItem(at: tempDec)
+        if fm.fileExists(atPath: tempDec.path) {
+            try fm.removeItem(at: tempDec)
+        }
 
         _ = persistence
         NSApplication.shared.terminate(nil)
+    }
+
+    private static func removeSQLiteBundleIfPresent(at url: URL, fileManager fm: FileManager) throws {
+        guard fm.fileExists(atPath: url.path) else { return }
+        try fm.removeItem(at: url)
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = URL(fileURLWithPath: url.path + suffix)
+            if fm.fileExists(atPath: sidecar.path) {
+                try fm.removeItem(at: sidecar)
+            }
+        }
     }
 }

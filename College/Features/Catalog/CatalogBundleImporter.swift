@@ -13,7 +13,7 @@ extension CollegePersistence {
             if accessed { url.stopAccessingSecurityScopedResource() }
         }
 
-        let (bundle, envelope, fingerprint) = try CatalogBundleSecurity.verifyFile(at: url)
+        let (bundle, envelope, fingerprint) = try await CatalogBundleSecurity.verifyFileOffMain(at: url)
 
         switch CatalogBundleValidator.validate(bundle) {
         case .valid:
@@ -85,7 +85,10 @@ extension CollegePersistence {
             let universityID = university.id
             CatalogIngestPipeline.postCatalogDataDidCommit(
                 universityID: universityID,
-                reason: "catalog bundle import committed"
+                reason: "catalog bundle import committed",
+                commitPhase: .profile,
+                programCount: bundle.programs.count,
+                schoolID: schoolName.replacingOccurrences(of: " ", with: "_").lowercased()
             )
         }
 

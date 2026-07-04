@@ -7,22 +7,16 @@ import AppKit
 import Foundation
 import CollegeCalendar
 
-/// Refreshes ICS subscription feeds on macOS (Phase 4). Uses `NSBackgroundActivityScheduler`, not BGTaskScheduler.
+/// Refreshes ICS subscription feeds on macOS (Phase 4).
 @MainActor
 final class ICSSubscriptionRefreshService {
     static let shared = ICSSubscriptionRefreshService()
 
-    private var scheduler: NSBackgroundActivityScheduler?
+    private let backgroundScheduler = BackgroundServiceScheduler(
+        identifier: BackgroundServiceSchedulerIDs.icsSubscriptionRefresh
+    )
+    private let fetcher = ICSFeedFetcher.shared
     private var becameActiveObserver: NSObjectProtocol?
-
-    private static let networkSession: URLSession = {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 30
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.urlCache = nil
-        return URLSession(configuration: config)
-    }()
 
     private init() {}
 
@@ -38,8 +32,7 @@ final class ICSSubscriptionRefreshService {
     }
 
     func stop() {
-        scheduler?.invalidate()
-        scheduler = nil
+        backgroundScheduler.stop()
         if let becameActiveObserver {
             NotificationCenter.default.removeObserver(becameActiveObserver)
         }
@@ -72,35 +65,37 @@ final class ICSSubscriptionRefreshService {
     }
 
     func refresh(subscription: ICSSubscription, reason: RefreshReason) async {
-        guard let url = URL(string: subscription.urlString) else { return }
+        let activityID = BackgroundActivityCenter.icsSubscriptionActivityID(subscriptionID: subscription.id)
         do {
-            let (data, _) = try await Self.networkSession.data(from: url)
-            let events = try ICSCalendarParser.parse(data: data)
+            let events = try await fetcher.fetchEvents(
+                urlString: subscription.urlString,
+                feedKind: subscription.feedKind
+            )
             await ICSSubscriptionUpsertService.upsert(
                 events: events,
                 subscriptionID: UUID(uuidString: subscription.id) ?? UUID(),
                 sourceURL: subscription.urlString
             )
         } catch {
-            #if DEBUG
-            print("[ICSSubscriptionRefresh] \(reason) failed \(subscription.name): \(error)")
-            #endif
+            BackgroundActivityReporter.finish(
+                id: activityID,
+                succeeded: false,
+                summary: "\(subscription.name): \(error.localizedDescription)"
+            )
+            _ = reason
         }
     }
 
     private func registerBackgroundScheduler() {
-        let activity = NSBackgroundActivityScheduler(identifier: "com.college.calendar.ics-refresh")
-        activity.repeats = true
-        activity.interval = 60 * 60
-        activity.qualityOfService = .utility
-        activity.tolerance = 15 * 60
-        activity.schedule { [weak self] completion in
-            Task { @MainActor in
-                await self?.refreshAll(reason: .backgroundScheduler)
-                completion(.finished)
-            }
+        backgroundScheduler.configure(
+            repeats: true,
+            interval: 60 * 60,
+            tolerance: 15 * 60
+        )
+        backgroundScheduler.start { [weak self] completion in
+            await self?.refreshAll(reason: .backgroundScheduler)
+            completion(.finished)
         }
-        scheduler = activity
     }
 
     enum RefreshReason: String {

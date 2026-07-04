@@ -1,62 +1,76 @@
 // AssistantInferenceAvailabilityTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AssistantInferenceAvailabilityTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class AssistantInferenceAvailabilityTests: XCTestCase {
+@Suite("Assistant Inference Availability")
+struct AssistantInferenceAvailabilityTests {
 
-    override func tearDown() {
+    private func resetAvailabilityDefaults() {
         AssistantInferenceAvailability.testSystemLanguageModelAvailable = nil
         UserDefaults.standard.removeObject(forKey: AssistantInferenceSettings.preferFoundationModelsKey)
         UserDefaults.standard.removeObject(forKey: AssistantInferenceSettings.localLLMEnabledKey)
-        super.tearDown()
     }
 
-    func testFoundationModelsWhenSystemLanguageModelAvailable() async {
+    @Test("Foundation models when system language model available")
+    func foundationModelsWhenSystemLanguageModelAvailable() async {
+        defer { resetAvailabilityDefaults() }
         AssistantInferenceAvailability.testSystemLanguageModelAvailable = true
         UserDefaults.standard.set(true, forKey: AssistantInferenceSettings.localLLMEnabledKey)
-
         let availability = await AssistantInferenceAvailability.current()
-        XCTAssertEqual(availability, .foundationModels)
+        #expect(availability == .foundationModels)
     }
 
-    func testJsonWorkerFallbackWhenModelUnavailableButJsonWorkerReady() async throws {
+    @Test("JSON worker fallback when model unavailable but json worker ready")
+    func jsonWorkerFallbackWhenModelUnavailableButJsonWorkerReady() async {
+        defer { resetAvailabilityDefaults() }
         AssistantInferenceAvailability.testSystemLanguageModelAvailable = false
         UserDefaults.standard.set(true, forKey: AssistantInferenceSettings.localLLMEnabledKey)
-
         let installed = await ModelManager.shared.isModelInstalled(.jsonWorker)
-        guard installed else {
-            throw XCTSkip("Qwen JSON worker is not installed on this machine")
-        }
-
+        guard installed else { return }
         let availability = await AssistantInferenceAvailability.current()
-        XCTAssertEqual(availability, .jsonWorkerFallback)
+        #expect(availability == .jsonWorkerFallback)
     }
 
-    func testUnavailableWhenNeitherPathReady() async {
+    @Test("Unavailable when neither path ready")
+    func unavailableWhenNeitherPathReady() async {
+        defer { resetAvailabilityDefaults() }
         AssistantInferenceAvailability.testSystemLanguageModelAvailable = false
         UserDefaults.standard.set(false, forKey: AssistantInferenceSettings.localLLMEnabledKey)
-
         let availability = await AssistantInferenceAvailability.current()
         guard case .unavailable(let reason) = availability else {
-            return XCTFail("expected unavailable, got \(availability)")
+            Issue.record("expected unavailable, got \(availability)")
+            return
         }
-        XCTAssertTrue(reason == .modelNotInstalled || reason == .localLLMDisabled)
+        #expect(reason == .modelNotInstalled || reason == .localLLMDisabled)
     }
 
-    func testFactoryUsesJsonWorkerWhenUserDisablesFoundationModels() async {
+    @Test("Factory uses JSON worker when user disables foundation models")
+    @MainActor
+    func factoryUsesJsonWorkerWhenUserDisablesFoundationModels() async {
+        defer { resetAvailabilityDefaults() }
         AssistantInferenceAvailability.testSystemLanguageModelAvailable = true
         UserDefaults.standard.set(false, forKey: AssistantInferenceSettings.preferFoundationModelsKey)
+        let session = AssistantInferenceSessionFactory.makeSession(
+            availability: .foundationModels,
+            executor: nil
+        )
+        #expect(session is JsonWorkerAssistantSession)
+    }
 
-        let session = await MainActor.run {
-            AssistantInferenceSessionFactory.makeSession(
-                availability: .foundationModels,
-                executor: nil
-            )
-        }
-        XCTAssertTrue(session is JsonWorkerAssistantSession)
+    @Test("Display labels identify AI provider for chrome")
+    func displayLabelsIdentifyProvider() {
+        #expect(AssistantInferenceAvailability.foundationModels.displayLabel == "Apple Intelligence")
+        #expect(AssistantInferenceAvailability.jsonWorkerFallback.displayLabel == "On-device model")
+        #expect(AssistantInferenceAvailability.unavailable(reason: .modelNotInstalled).displayLabel == "AI unavailable")
+    }
+
+    @Test("Chat ready when foundation models available without json worker")
+    func chatReadyWhenFoundationModelsAvailableWithoutJsonWorker() async {
+        defer { resetAvailabilityDefaults() }
+        AssistantInferenceAvailability.testSystemLanguageModelAvailable = true
+        UserDefaults.standard.set(false, forKey: AssistantInferenceSettings.localLLMEnabledKey)
+        let ready = await AssistantInferenceAvailability.isChatReady()
+        #expect(ready)
     }
 }

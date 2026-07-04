@@ -66,7 +66,7 @@ struct UnifiedActionHeader<Accessory: View>: View {
                 if let plusAction {
                     Button(action: plusAction) {
                         Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -79,7 +79,7 @@ struct UnifiedActionHeader<Accessory: View>: View {
                         if let sidebarShortcut {
                             Button(action: sidebarAction) {
                                 Image(systemName: "sidebar.right")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .symbolEffect(.bounce, value: sidebarBounceValue)
                                     .contentTransition(.symbolEffect(.replace.byLayer))
@@ -88,7 +88,7 @@ struct UnifiedActionHeader<Accessory: View>: View {
                         } else {
                             Button(action: sidebarAction) {
                                 Image(systemName: "sidebar.right")
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .symbolEffect(.bounce, value: sidebarBounceValue)
                                     .contentTransition(.symbolEffect(.replace.byLayer))

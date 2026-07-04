@@ -2,6 +2,7 @@
 # Phase 6 automated performance / migration gates (macOS).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 CONFIG="${1:-Debug}"
@@ -14,15 +15,17 @@ echo "== Deletion guards =="
 
 echo "== XCTest ($CONFIG) =="
 if [[ "$CONFIG" == "Release" ]]; then
-  xcodebuild test -scheme College -destination "$DEST" -configuration Release -jobs 1 \
+  "$SCRIPT_DIR/college-xcodebuild-test.sh" -scheme College -destination "$DEST" -configuration Release -jobs 1 \
     -only-testing:CollegeTests/LaunchPerformanceAcceptanceTests \
     -only-testing:CollegeTests/PerformanceBaselineAcceptanceTests \
     -only-testing:CollegeTests/CollegeCoreSwiftRegressionTests \
     -only-testing:CollegeTests/Persistence/SchemaMigrationPlanTests \
-    -only-testing:CollegeTests/Persistence/LaunchSingleCatalogMmapTests
+    -only-testing:CollegeTests/Persistence/LaunchSingleCatalogMmapTests \
+    test
 else
-  xcodebuild test -scheme College -destination "$DEST" -configuration Debug -jobs 1 \
-    -only-testing:CollegeTests
+  "$SCRIPT_DIR/college-xcodebuild-test.sh" -scheme College -destination "$DEST" -configuration Debug -jobs 1 \
+    -only-testing:CollegeTests \
+    test
 fi
 
 echo "ok: performance gates ($CONFIG)"

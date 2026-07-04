@@ -143,12 +143,12 @@ struct CalendarRepository {
         )
     }
 
-    func announcementExists(brightspaceAnnouncementId: String) -> Bool {
-        let id = brightspaceAnnouncementId.trimmingCharacters(in: .whitespacesAndNewlines)
+    func announcementExists(lmsAnnouncementId: String) -> Bool {
+        let id = lmsAnnouncementId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { return false }
         var descriptor = FetchDescriptor<CalendarEvent>(
             predicate: #Predicate { event in
-                event.brightspaceAnnouncementId == id
+                event.lmsAnnouncementId == id
             }
         )
         descriptor.fetchLimit = 1

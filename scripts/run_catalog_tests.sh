@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DERIVED="${DERIVED:-/tmp/CollegeCatalogTestsDD}"
 DEST="${DEST:-platform=macOS}"
 
@@ -41,8 +42,18 @@ else
     -only-testing:CollegeTests/CatalogLayoutProfileGovernanceTests
     -only-testing:CollegeTests/UniversalCatalogScraperIRConsumerTests
     -only-testing:CollegeTests/CatalogManifestCapabilitiesTests
+    -only-testing:CollegeTests/CatalogIngestSignatureTests
+    -only-testing:CollegeTests/CatalogIngestCommitSignalTests
+    -only-testing:CollegeTests/CatalogPipelineEdgeCaseTests
+    -only-testing:CollegeTests/CatalogSyncProgressReporterTests
+    -only-testing:CollegeTests/CatalogScrapedProgramDedupTests
+    -only-testing:CollegeTests/CoursedogEngineFixtureTests
+    -only-testing:CollegeTests/CoursedogRequirementsParserTests
+    -only-testing:CollegeTests/ModernCampusHostProfilesTests
+    -only-testing:CollegeTests/OnboardingHandoffCommitTests
+    -only-testing:CollegeTests/ModernCampusIRGraphPathTests
   )
 fi
 
 cd "$ROOT"
-xcodebuild "${ARGS[@]}"
+"$SCRIPT_DIR/college-xcodebuild-test.sh" "${ARGS[@]}"

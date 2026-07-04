@@ -25,6 +25,10 @@ final class CalendarPersistencePortAdapter: CalendarPersistencePort {
         backend.calendarEventEntity(id: id).map(CalendarStoredEvent.init(event:))
     }
 
+    func calendarEventEntities(ids: [UUID]) -> [CalendarStoredEvent] {
+        backend.calendarEventEntities(ids: ids).map(CalendarStoredEvent.init(event:))
+    }
+
     func semester(id: UUID) -> CalendarSemesterRecord? {
         backend.semester(with: id).map { CalendarSemesterRecord(id: $0.id, name: $0.name) }
     }
@@ -273,6 +277,8 @@ extension CalendarStoredEvent {
             providerSource: event.providerSource,
             customColorHex: event.customColorHex,
             recurrenceRule: event.recurrenceRule,
+            providerEventId: event.providerEventId,
+            attendeesJSON: event.attendeesJSON,
             courseID: event.course?.id,
             courseCode: code.isEmpty ? nil : code,
             semesterID: event.semester?.id
@@ -280,11 +286,21 @@ extension CalendarStoredEvent {
     }
 }
 
+@MainActor
 enum CalendarPersistencePortBootstrap {
-    @MainActor
+    private static var retainedPersistence: CalendarPersistencePortAdapter?
+    private static var retainedWriteRepository: CalendarWriteRepositoryPortAdapter?
+    private static var retainedGoogleAuth: GoogleCalendarAuthPortAdapter?
+
     static func wire(persistence: CollegePersistence = .shared, store: AppDataStore = .shared) {
-        CalendarPersistenceAccess.persistence = CalendarPersistencePortAdapter(backend: persistence)
-        CalendarPersistenceAccess.writeRepository = CalendarWriteRepositoryPortAdapter(store: store)
-        GoogleCalendarAuthAccess.service = GoogleCalendarAuthPortAdapter()
+        let persistenceAdapter = CalendarPersistencePortAdapter(backend: persistence)
+        let writeAdapter = CalendarWriteRepositoryPortAdapter(store: store)
+        let authAdapter = GoogleCalendarAuthPortAdapter()
+        retainedPersistence = persistenceAdapter
+        retainedWriteRepository = writeAdapter
+        retainedGoogleAuth = authAdapter
+        CalendarPersistenceAccess.persistence = persistenceAdapter
+        CalendarPersistenceAccess.writeRepository = writeAdapter
+        GoogleCalendarAuthAccess.service = authAdapter
     }
 }

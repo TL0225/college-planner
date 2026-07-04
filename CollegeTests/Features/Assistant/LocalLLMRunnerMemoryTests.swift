@@ -1,23 +1,24 @@
 // LocalLLMRunnerMemoryTests.swift
-// Feature: Shared
-// Purpose: Shared module — LocalLLMRunnerMemoryTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class LocalLLMRunnerMemoryTests: XCTestCase {
-    func testReleaseModelIdempotent() async {
+@Suite("Local LLM Runner Memory")
+struct LocalLLMRunnerMemoryTests {
+
+    @Test("Release model idempotent")
+    func releaseModelIdempotent() async {
         await LocalLLMRunner.shared.releaseModel()
         let loaded = await LocalLLMRunner.shared.isLoaded
-        XCTAssertFalse(loaded)
+        #expect(!loaded)
         await LocalLLMRunner.shared.releaseModel()
     }
 
-    func testPreWarmIsNoOp() async {
+    @Test("Pre-warm is no-op")
+    func preWarmIsNoOp() async {
         let url = URL(fileURLWithPath: "/tmp/no-model")
         await LocalLLMRunner.shared.preWarm(modelPath: url)
         let loaded = await LocalLLMRunner.shared.isLoaded
-        XCTAssertFalse(loaded)
+        #expect(!loaded)
     }
 }

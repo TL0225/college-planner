@@ -25,46 +25,25 @@ struct DeadlinesWidget: View {
     }
 
     var body: some View {
-        Group {
-        if deadlines.isEmpty {
-            VStack(spacing: 0) {
-                Text("Upcoming Deadlines")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.horizontal, .top], 20)
-                    .padding(.bottom, 16)
-                Spacer()
-                Text("No upcoming deadlines")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(DesignSystem.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 24))
-            .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 4)
-            .overlay(RoundedRectangle(cornerRadius: 24).stroke(Color(hex: "F3F4F6"), lineWidth: 1))
-        } else {
-            OverviewCard {
-                Text("Upcoming Deadlines")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        OverviewCard {
+            OverviewWidgetHeader("Upcoming Deadlines", systemImage: "exclamationmark.circle.fill", accentColor: WidgetCategory.productivity.accentColor)
 
-                Color.clear.frame(height: 16)
+            Color.clear.frame(height: 16)
 
-                VStack(spacing: 0) {
+            if deadlines.isEmpty {
+                OverviewWidgetEmptyState(
+                    title: "No upcoming deadlines",
+                    message: "Tasks with due dates will appear here.",
+                    systemImage: "calendar.badge.checkmark",
+                    accentColor: .green
+                )
+            } else {
+                VStack(spacing: 10) {
                     ForEach(deadlines) { task in
                         deadlineRow(task: task)
-                        if task.id != deadlines.last?.id {
-                            Divider().padding(.leading, 18)
-                        }
                     }
                 }
             }
-        }
         }
         .background {
             OverviewQueryHost { dataRefreshToken += 1 }
@@ -75,64 +54,64 @@ struct DeadlinesWidget: View {
 
     private func deadlineRow(task: OverviewTaskSummary) -> some View {
         let urgency = taskUrgency(task)
-        return HStack(alignment: .top, spacing: 10) {
-            Circle().fill(urgency.dotColor).frame(width: 8, height: 8).padding(.top, 5)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
+        return OverviewWidgetRowSurface(accentColor: urgency.dotColor) {
+            HStack(alignment: .top, spacing: 10) {
+                Circle()
+                    .fill(urgency.dotColor)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 5)
+                VStack(alignment: .leading, spacing: 4) {
                     Text(task.title)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
-                    Spacer()
-                    Text(urgency.label)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(urgency.labelColor)
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(urgency.labelBg)
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
-                }
-                if let code = task.courseCode, !code.isEmpty {
-                    let detail = [code, task.courseName]
-                        .compactMap { value -> String? in
-                            guard let value, !value.isEmpty else { return nil }
-                            return value
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let code = task.courseCode, !code.isEmpty {
+                        let detail = [code, task.courseName]
+                            .compactMap { value -> String? in
+                                guard let value, !value.isEmpty else { return nil }
+                                return value
+                            }
+                            .joined(separator: " • ")
+                        if !detail.isEmpty {
+                            Text(detail)
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
-                        .joined(separator: " • ")
-                    if !detail.isEmpty {
-                        Text(detail)
-                            .font(.system(size: 10)).foregroundColor(DesignSystem.Colors.textLight)
                     }
                 }
+                Spacer()
+                OverviewWidgetBadge(text: urgency.label, color: urgency.labelColor)
             }
         }
-        .padding(.vertical, 10)
     }
 
     // MARK: - Urgency
 
     private struct TaskUrgency {
         let dotColor: Color; let label: String
-        let labelColor: Color; let labelBg: Color
+        let labelColor: Color
     }
 
     private func taskUrgency(_ task: OverviewTaskSummary) -> TaskUrgency {
         let due = task.dueDate
         let days = Calendar.current.dateComponents([.day], from: Date(), to: due).day ?? 0
         if days <= 0 {
-            return TaskUrgency(dotColor: Color(hex: "F87171"), label: "TODAY",
-                               labelColor: Color(hex: "EF4444"), labelBg: Color(hex: "FEF2F2"))
+            return TaskUrgency(dotColor: .red, label: "TODAY",
+                               labelColor: .red)
         } else if days == 1 {
-            return TaskUrgency(dotColor: Color(hex: "F87171"), label: "TOMORROW",
-                               labelColor: Color(hex: "EF4444"), labelBg: Color(hex: "FEF2F2"))
+            return TaskUrgency(dotColor: .red, label: "TOMORROW",
+                               labelColor: .red)
         } else if days <= 3 {
-            return TaskUrgency(dotColor: Color(hex: "FB923C"), label: "\(days) DAYS",
-                               labelColor: Color(hex: "F97316"), labelBg: Color(hex: "FFF7ED"))
+            return TaskUrgency(dotColor: .orange, label: "\(days) DAYS",
+                               labelColor: .orange)
         } else if days <= 7 {
-            return TaskUrgency(dotColor: Color(hex: "818CF8"), label: "NEXT WEEK",
-                               labelColor: Color(hex: "6366F1"), labelBg: Color(hex: "EEF2FF"))
+            return TaskUrgency(dotColor: .blue, label: "NEXT WEEK",
+                               labelColor: .blue)
         } else {
             let f = DateFormatter(); f.dateFormat = "MMM d"
-            return TaskUrgency(dotColor: Color(hex: "34D399"), label: f.string(from: due),
-                               labelColor: Color(hex: "059669"), labelBg: Color(hex: "ECFDF5"))
+            return TaskUrgency(dotColor: .green, label: f.string(from: due),
+                               labelColor: .green)
         }
     }
 
@@ -165,17 +144,17 @@ private struct DeadlinesWidgetPreview: View {
     var body: some View {
         OverviewCard {
             Text("Upcoming Deadlines")
-                .font(.system(size: 14, weight: .bold, design: .serif))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold, design: .serif))
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .padding(.bottom, 10)
             VStack(spacing: 0) {
                 ForEach(items.indices, id: \.self) { i in
                     let item = items[i]
                     HStack {
                         Circle().fill(item.2).frame(width: 7, height: 7)
-                        Text(item.0).font(.system(size: 11)).foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
+                        Text(item.0).font(DesignSystem.Fonts.main(size: 11)).foregroundStyle(DesignSystem.Colors.textMain).lineLimit(1)
                         Spacer()
-                        Text(item.1).font(.system(size: 9, weight: .bold)).foregroundColor(item.2)
+                        Text(item.1).font(DesignSystem.Fonts.main(size: 9, weight: .bold)).foregroundStyle(item.2)
                             .padding(.horizontal, 5).padding(.vertical, 2).background(item.3)
                             .clipShape(RoundedRectangle(cornerRadius: 4))
                     }

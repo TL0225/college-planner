@@ -44,12 +44,15 @@ final class WidgetRegistry {
     /// Registers all built-in widgets in their default display order.
     /// Called from `CollegeApp.init()` and idempotently from `OverviewView.onAppear`.
     func bootstrapBuiltIns() {
-        register(WeatherWidget.descriptor)
         register(AcademicsWidget.descriptor)
+        register(AcademicCalendarWidget.descriptor)
         register(DeadlinesWidget.descriptor)
         register(ScheduleWidget.descriptor)
         register(DocumentsWidget.descriptor)
         register(EventsWidget.descriptor)
         register(TasksWidget.descriptor)
+        register(CareerPipelineWidget.descriptor)
+        register(CareerFollowUpsWidget.descriptor)
+        register(CareerSummaryWidget.descriptor)
     }
 }

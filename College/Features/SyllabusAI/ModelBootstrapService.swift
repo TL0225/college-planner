@@ -15,13 +15,22 @@ import Foundation
 enum ModelBootstrapService {
 
     static func ensureModelReady() async {
-        guard AppleSiliconPlatform.isSupported else { return }
+        guard AppleSiliconPlatform.isMLXCompatible else { return }
 
         let spec = ModelSpec.jsonWorker
 
         if await ModelManager.shared.isModelInstalled(spec) {
             DebugLogger.shared.log(
                 "ModelBootstrapService: \(spec.displayName) already installed — skipping download",
+                category: .system,
+                level: .info
+            )
+            return
+        }
+
+        if await ModelManager.shared.isAutoInstallSuppressed(spec) {
+            DebugLogger.shared.log(
+                "ModelBootstrapService: \(spec.displayName) was deleted by the user — skipping automatic download",
                 category: .system,
                 level: .info
             )
@@ -44,6 +53,18 @@ enum ModelBootstrapService {
         }
 
         do {
+            let activityID = BackgroundActivityCenter.aiModelActivityID(modelName: spec.displayName)
+            await MainActor.run {
+                BackgroundActivityReporter.running(
+                    id: activityID,
+                    domain: .aiModel,
+                    title: spec.displayName,
+                    detail: String(localized: "ai_model.background.downloading", defaultValue: "Downloading on-device model…"),
+                    fraction: 0,
+                    indeterminate: true
+                )
+            }
+
             _ = try await ModelManager.shared.ensureModelInstalled(spec) { prog in
                 let pct = Int((prog.fractionCompleted * 100).rounded())
                 let detail: String
@@ -56,6 +77,14 @@ enum ModelBootstrapService {
                 }
 
                 Task { @MainActor in
+                    BackgroundActivityReporter.running(
+                        id: activityID,
+                        domain: .aiModel,
+                        title: spec.displayName,
+                        detail: detail,
+                        fraction: prog.fractionCompleted,
+                        indeterminate: false
+                    )
                     AppNotificationCenter.shared.update(
                         id: notifID,
                         message: detail,
@@ -65,6 +94,11 @@ enum ModelBootstrapService {
             }
 
             await MainActor.run {
+                BackgroundActivityReporter.finish(
+                    id: activityID,
+                    succeeded: true,
+                    summary: String(localized: "ai_model.background.ready", defaultValue: "Model ready")
+                )
                 AppNotificationCenter.shared.complete(
                     id: notifID,
                     kind: .success,
@@ -81,7 +115,13 @@ enum ModelBootstrapService {
             )
 
         } catch {
+            let activityID = BackgroundActivityCenter.aiModelActivityID(modelName: spec.displayName)
             await MainActor.run {
+                BackgroundActivityReporter.finish(
+                    id: activityID,
+                    succeeded: false,
+                    summary: error.localizedDescription
+                )
                 AppNotificationCenter.shared.complete(
                     id: notifID,
                     kind: .error,

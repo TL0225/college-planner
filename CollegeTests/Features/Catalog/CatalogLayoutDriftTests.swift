@@ -6,8 +6,25 @@ import XCTest
 @testable import College
 
 final class CatalogLayoutDriftTests: XCTestCase {
+    func testFingerprintDecode_defaultsToV1WhenMissingVersion() throws {
+        let payload = """
+        {
+          "schoolID":"fordham_university",
+          "catalogVersionID":"fordham|undergrad",
+          "layoutProfileID":"profileB",
+          "featureSignature":"abc",
+          "recordedAt":"2026-07-01T00:00:00Z"
+        }
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode(CatalogLayoutFingerprint.self, from: Data(payload.utf8))
+        XCTAssertEqual(decoded.signatureVersion, 1)
+    }
+
     func testDrift_detectsProfileChange() {
         let previous = CatalogLayoutFingerprint(
+            signatureVersion: 2,
             schoolID: "fordham_university",
             catalogVersionID: "fordham|undergrad",
             layoutProfileID: "profileB",
@@ -15,6 +32,7 @@ final class CatalogLayoutDriftTests: XCTestCase {
             recordedAt: Date()
         )
         let current = CatalogLayoutFingerprint(
+            signatureVersion: 2,
             schoolID: "fordham_university",
             catalogVersionID: "fordham|undergrad",
             layoutProfileID: "profileDefault",
@@ -86,6 +104,8 @@ final class CatalogLayoutDriftTests: XCTestCase {
             opeID: nil,
             profileURL: "https://example.edu/profile.json",
             catalogURL: "https://bulletin.example.edu/",
+            academicCalendarURL: nil,
+            timeZoneID: nil,
             countryCode: "US",
             stateCode: "NY",
             officialWebsiteURL: nil,

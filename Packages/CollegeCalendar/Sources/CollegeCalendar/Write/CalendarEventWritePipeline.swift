@@ -17,7 +17,7 @@ public struct CalendarEventWriteInput: Sendable {
     public var customColorHex: String?
     public var recurrenceRule: String?
     public var guestsJSON: String?
-    public var brightspaceAnnouncementId: String?
+    public var lmsAnnouncementId: String?
 
     public init(
         title: String,
@@ -31,7 +31,7 @@ public struct CalendarEventWriteInput: Sendable {
         customColorHex: String? = nil,
         recurrenceRule: String? = nil,
         guestsJSON: String? = nil,
-        brightspaceAnnouncementId: String? = nil
+        lmsAnnouncementId: String? = nil
     ) {
         self.title = title
         self.startDate = startDate
@@ -44,7 +44,7 @@ public struct CalendarEventWriteInput: Sendable {
         self.customColorHex = customColorHex
         self.recurrenceRule = recurrenceRule
         self.guestsJSON = guestsJSON
-        self.brightspaceAnnouncementId = brightspaceAnnouncementId
+        self.lmsAnnouncementId = lmsAnnouncementId
     }
 }
 
@@ -93,7 +93,7 @@ public final class CalendarEventWritePipeline {
         let event = try createStoreCalendarEvent(input: input)
 
         if !options.skipExport {
-            exportAfterWrite(eventID: event.id, options: options)
+            await exportAfterWrite(eventID: event.id, options: options)
         }
 
         if !options.skipReminders {
@@ -117,7 +117,7 @@ public final class CalendarEventWritePipeline {
         try updateStoreCalendarEvent(id: eventID, input: input)
 
         if !options.skipExport {
-            exportAfterWrite(eventID: eventID, options: options)
+            await exportAfterWrite(eventID: eventID, options: options)
         }
 
         if !options.skipReminders {
@@ -206,30 +206,65 @@ public final class CalendarEventWritePipeline {
         if manager.outlookStatus == .connected {
             try? await CalendarSyncCoordinator.outlook.deleteRemoteEvent(localEventID: eventUUID)
         }
+        if manager.iCloudStatus == .connected {
+            try? await CalendarSyncCoordinator.iCloud.deleteRemoteEvent(localEventID: eventUUID)
+        }
     }
 
+    public func exportAfterWriteAndReport(
+        eventID: UUID,
+        options: CalendarEventWriteOptions = .init()
+    ) async -> CalendarExportAfterWriteResult {
+        await exportAfterWrite(eventID: eventID, options: options)
+    }
+
+    @discardableResult
     private func exportAfterWrite(
         eventID: UUID,
         options: CalendarEventWriteOptions
-    ) {
-        Task {
-            guard let manager = CalendarIntegrationBridge.manager else {
-                healthStore.report(.google, .exportFailure("Calendar integration unavailable"))
-                healthStore.report(.apple, .exportFailure("Calendar integration unavailable"))
-                return
-            }
-            await CalendarSyncCoordinator.exportAfterWrite(
-                eventID: eventID,
-                options: options,
-                manager: manager
+    ) async -> CalendarExportAfterWriteResult {
+        guard let manager = CalendarIntegrationBridge.manager else {
+            healthStore.report(.google, .exportFailure("Calendar integration unavailable"))
+            healthStore.report(.apple, .exportFailure("Calendar integration unavailable"))
+            return CalendarExportAfterWriteResult(
+                google: false,
+                apple: false,
+                attemptedGuestInvites: false
             )
-            if manager.googleStatus == .connected {
-                healthStore.report(.google, .success)
-            }
-            if manager.appleStatus == .connected {
-                healthStore.report(.apple, .success)
-            }
         }
+
+        let result = await CalendarSyncCoordinator.exportAfterWrite(
+            eventID: eventID,
+            options: options,
+            manager: manager
+        )
+
+        if let google = result.google {
+            healthStore.report(
+                .google,
+                google ? .success : .exportFailure("Google calendar export failed")
+            )
+        }
+        if let apple = result.apple {
+            healthStore.report(
+                .apple,
+                apple ? .success : .exportFailure("Apple calendar export failed")
+            )
+        }
+        if let outlook = result.outlook {
+            healthStore.report(
+                .outlook,
+                outlook ? .success : .exportFailure("Outlook calendar export failed")
+            )
+        }
+        if let iCloud = result.iCloud {
+            healthStore.report(
+                .icloud,
+                iCloud ? .success : .exportFailure("iCloud calendar export failed")
+            )
+        }
+
+        return result
     }
 
     private func scheduleReminder(
@@ -263,12 +298,4 @@ public final class CalendarEventWritePipeline {
         changePublisher.bump()
         CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
     }
-}
-
-public extension CalendarChangePublisher {
-    @MainActor static let shared = CalendarChangePublisher()
-}
-
-public extension IntegrationHealthStore {
-    @MainActor static let shared = IntegrationHealthStore()
 }

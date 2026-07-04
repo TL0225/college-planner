@@ -1,0 +1,10 @@
+{
+  "fixture": "lever_contact",
+  "attemptedPayloadKeys": [
+    "personal.fullName",
+    "personal.email",
+    "personal.phone",
+    "personal.linkedInURL"
+  ],
+  "minWriteAttemptCount": 4
+}

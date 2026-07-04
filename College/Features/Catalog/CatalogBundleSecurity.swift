@@ -92,6 +92,13 @@ enum CatalogBundleSecurity {
         return (bundle, envelope, fingerprint)
     }
 
+    /// CPU + IO heavy bundle verification off the main actor (large JSON decode + signature check).
+    static func verifyFileOffMain(at url: URL) async throws -> (bundle: CatalogBundle, envelope: CatalogBundleEnvelope, fingerprint: String) {
+        try await Task.detached(priority: .userInitiated) {
+            try verifyFile(at: url)
+        }.value
+    }
+
     static func encodeEnvelope(_ envelope: CatalogBundleEnvelope) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]

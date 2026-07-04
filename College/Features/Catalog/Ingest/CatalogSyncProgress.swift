@@ -9,12 +9,15 @@ import Foundation
 struct CatalogSyncProgress: Sendable, Equatable {
     enum Phase: String, Sendable {
         case idle
+        case verifyingPlatform
         case discovering
         case downloading
         case importing
+        case evaluatingQuality
         case indexing
         case archiving
         case succeeded
+        case skipped
         case failed
     }
 
@@ -62,15 +65,32 @@ struct CatalogSyncProgress: Sendable, Equatable {
     }
 
     static func fromNotificationUserInfo(_ userInfo: [AnyHashable: Any]) -> CatalogSyncProgress? {
+        if let rawPhase = userInfo["phase"] as? String,
+           let phase = Phase(rawValue: rawPhase) {
+            return CatalogSyncProgress(
+                phase: phase,
+                completed: userInfo["completed"] as? Int ?? 0,
+                total: userInfo["total"] as? Int ?? 0,
+                unit: Unit(rawValue: (userInfo["unit"] as? String) ?? Unit.none.rawValue) ?? .none,
+                detail: (userInfo["detail"] as? String) ?? (userInfo["title"] as? String) ?? ""
+            )
+        }
+
         let finished = (userInfo["finished"] as? Bool) == true
         if finished {
             let failed = (userInfo["failed"] as? Bool) == true
+            let skipped = (userInfo["skipped"] as? Bool) == true
+            let phase: Phase = {
+                if failed { return .failed }
+                if skipped { return .skipped }
+                return .succeeded
+            }()
             return CatalogSyncProgress(
-                phase: failed ? .failed : .succeeded,
+                phase: phase,
                 completed: 0,
                 total: 0,
                 unit: .none,
-                detail: (userInfo["title"] as? String) ?? ""
+                detail: (userInfo["title"] as? String) ?? (userInfo["summary"] as? String) ?? ""
             )
         }
 
@@ -84,6 +104,7 @@ struct CatalogSyncProgress: Sendable, Equatable {
             case "programs", "program": return .programs
             case "requirements", "requirement": return .requirements
             case "archive": return .pages
+            case "pages": return .pages
             case "search index", "search": return .chunks
             case "catalogs", "catalog": return .catalogs
             case "download": return .bytes
@@ -91,6 +112,16 @@ struct CatalogSyncProgress: Sendable, Equatable {
             }
         }()
         let phase: Phase = {
+            switch stage.lowercased() {
+            case "verifying platform", "platform": return .verifyingPlatform
+            case "discovering", "discovering catalogs": return .discovering
+            case "downloading", "downloading courses": return .downloading
+            case "importing", "importing courses", "saving programs": return .importing
+            case "indexing", "search index": return .indexing
+            case "archiving", "archive": return .archiving
+            case "validating", "quality", "gate": return .evaluatingQuality
+            default: break
+            }
             switch unit {
             case .pages: return .archiving
             case .chunks: return .indexing

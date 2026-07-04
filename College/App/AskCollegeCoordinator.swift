@@ -20,11 +20,7 @@ enum AskCollegeCoordinator {
 
     @MainActor
     static func navigateToPage(_ page: AppPage) -> Bool {
-        NotificationCenter.default.post(
-            name: .plannerOpenPage,
-            object: nil,
-            userInfo: ["pageRaw": page.rawValue]
-        )
+        AppTypedNavigationRouter.openPage(page)
         return true
     }
 

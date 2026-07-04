@@ -298,15 +298,15 @@ struct DashboardMetricValue: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(valueText)
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .font(DesignSystem.Fonts.main(size: 34, weight: .bold, design: .rounded))
                 .foregroundStyle(.primary)
                 .monospacedDigit()
             Text(caption)
-                .font(.system(size: 13, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                 .foregroundStyle(.secondary)
             if let footnote, !footnote.isEmpty {
                 Text(footnote)
-                    .font(.system(size: 12))
+                    .font(DesignSystem.Fonts.main(size: 12))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -356,50 +356,119 @@ extension Profile {
     }
 }
 
-struct AddProjectSheet: View {
+struct AddEditProjectSheet: View {
     @Environment(\.dismiss) private var dismiss
     let profile: Profile
+    var existingProject: PortfolioProject?
 
     @State private var title: String = ""
     @State private var role: String = ""
     @State private var technologies: String = ""
     @State private var summary: String = ""
     @State private var projectURL: String = ""
+    @State private var githubURL: String = ""
+    @State private var startDateString: String = ""
+    @State private var endDateString: String = ""
+    @State private var bulletsText: String = ""
+
+    private var isEditMode: Bool { existingProject != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Add Project")
+            Text(isEditMode ? "Edit Project" : "Add Project")
                 .font(.title3.weight(.semibold))
 
             TextField("Project title", text: $title)
             TextField("Role", text: $role)
             TextField("Technologies", text: $technologies)
+            HStack(spacing: 12) {
+                TextField(String(localized: "profile.portfolio.field.start_date"), text: $startDateString)
+                TextField(String(localized: "profile.portfolio.field.end_date"), text: $endDateString)
+            }
             TextField("Summary", text: $summary, axis: .vertical)
-                .lineLimit(3...6)
+                .lineLimit(2...4)
             TextField("Project URL", text: $projectURL)
+            TextField("GitHub URL", text: $githubURL)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Bullet points")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $bulletsText)
+                    .font(.body)
+                    .frame(height: 100)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                    )
+            }
 
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Save") {
-                    var list = profile.portfolioProjectsList
-                    list.append(
-                        PortfolioProject(
-                            title: title,
-                            role: role,
-                            technologies: technologies,
-                            summary: summary,
-                            projectURL: projectURL
-                        )
-                    )
-                    profile.portfolioProjectsList = list
-                    dismiss()
-                }
-                .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Save") { saveProject() }
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.top, 6)
         }
-        .padding(20)
-        .frame(width: 480)
+        .padding(DesignSystem.Spacing.lg)
+        .frame(width: 520)
+        .onAppear(perform: populateFromExisting)
+    }
+
+    private func populateFromExisting() {
+        guard let existingProject else { return }
+        title = existingProject.title
+        role = existingProject.role
+        technologies = existingProject.technologies
+        summary = existingProject.summary
+        projectURL = existingProject.projectURL
+        githubURL = existingProject.githubURL ?? ""
+        startDateString = existingProject.startDateString ?? ""
+        endDateString = existingProject.endDateString ?? ""
+        bulletsText = existingProject.bullets.joined(separator: "\n")
+    }
+
+    private func saveProject() {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else { return }
+
+        let bullets = bulletsText
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let project = PortfolioProject(
+            id: existingProject?.id ?? UUID(),
+            title: trimmedTitle,
+            role: role.trimmingCharacters(in: .whitespacesAndNewlines),
+            technologies: technologies.trimmingCharacters(in: .whitespacesAndNewlines),
+            summary: summary.trimmingCharacters(in: .whitespacesAndNewlines),
+            projectURL: projectURL.trimmingCharacters(in: .whitespacesAndNewlines),
+            startDateString: startDateString.nilIfEmpty,
+            endDateString: endDateString.nilIfEmpty,
+            githubURL: githubURL.nilIfEmpty,
+            bullets: bullets
+        )
+
+        var list = profile.portfolioProjectsList
+        if let existingProject,
+           let index = list.firstIndex(where: { $0.id == existingProject.id }) {
+            list[index] = project
+        } else {
+            list.append(project)
+        }
+        profile.portfolioProjectsList = list
+        dismiss()
     }
 }
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Backward-compatible alias for add-only entry points.
+typealias AddProjectSheet = AddEditProjectSheet

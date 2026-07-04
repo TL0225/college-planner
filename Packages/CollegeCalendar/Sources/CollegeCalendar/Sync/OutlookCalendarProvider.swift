@@ -33,8 +33,7 @@ public actor OutlookCalendarProvider: CalendarSyncProvider {
     }
 
     public func deleteRemoteEvent(localEventID: UUID) async throws {
-        await MainActor.run {
-            CalendarIntegrationBridge.manager?.deleteEventFromOutlook(localEventID: localEventID)
-        }
+        guard let manager = await MainActor.run(body: { CalendarIntegrationBridge.manager }) else { return }
+        await manager.deleteEventFromOutlook(localEventID: localEventID)
     }
 }

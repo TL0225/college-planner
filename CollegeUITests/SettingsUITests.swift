@@ -8,17 +8,21 @@ final class SettingsUITests: CollegeUITestCase {
         launchAppEnsuringAccessibility()
         app.typeKey(",", modifierFlags: .command)
 
-        let connectedApps = app.staticTexts["Connected Apps"].firstMatch
-        XCTAssertTrue(connectedApps.waitForExistence(timeout: 15))
+        let profileSection = app.descendants(matching: .any)
+            .matching(identifier: "settings.section.profile")
+            .firstMatch
+        XCTAssertTrue(profileSection.waitForExistence(timeout: 15))
     }
 
-    func testSettingsSidebarShowsConnectedAppsLabel() throws {
+    func testSettingsSidebarShowsProfileSection() throws {
         launchAppEnsuringAccessibility()
         app.typeKey(",", modifierFlags: .command)
 
-        let connectedApps = app.staticTexts["Connected Apps"].firstMatch
-        XCTAssertTrue(connectedApps.waitForExistence(timeout: 15))
-        XCTAssertFalse(connectedApps.label.contains("…"))
+        let profileSection = app.descendants(matching: .any)
+            .matching(identifier: "settings.section.profile")
+            .firstMatch
+        XCTAssertTrue(profileSection.waitForExistence(timeout: 15))
+        XCTAssertFalse(profileSection.label.contains("…"))
     }
 
 }

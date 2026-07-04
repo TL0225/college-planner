@@ -1,19 +1,22 @@
 // AssistantSettingsKeyTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AssistantSettingsKeyTests.
-// Data: CollegePersistence / repositories when applicable.
+// Assistant settings keys (Swift Testing).
 
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class AssistantSettingsKeyTests: XCTestCase {
-    func testWritableKeys() {
-        XCTAssertTrue(AssistantSettingsKey.isWritable(key: AssistantSettingsKey.streamingEnabled.rawValue))
-        XCTAssertFalse(AssistantSettingsKey.isWritable(key: AssistantWebSearchSettings.searxBaseURLKey))
-        XCTAssertFalse(AssistantSettingsKey.isWritable(key: AssistantPlannerIndexingSettings.indexingEnabledKey))
+@Suite("Assistant Settings Keys")
+struct AssistantSettingsKeyTests {
+
+    @Test("Writable keys")
+    func writableKeys() {
+        #expect(AssistantSettingsKey.isWritable(key: AssistantSettingsKey.streamingEnabled.rawValue))
+        #expect(!AssistantSettingsKey.isWritable(key: AssistantWebSearchSettings.customBaseURLKey))
+        #expect(!AssistantSettingsKey.isWritable(key: AssistantPlannerIndexingSettings.indexingEnabledKey))
     }
 
-    func testRejectedWriteReason() {
-        XCTAssertNotNil(AssistantSettingsKey.rejectedWriteReason(for: AssistantWebSearchSettings.searxBaseURLKey))
+    @Test("Rejected write reason")
+    func rejectedWriteReason() {
+        #expect(AssistantSettingsKey.rejectedWriteReason(for: AssistantWebSearchSettings.customBaseURLKey) != nil)
     }
 }

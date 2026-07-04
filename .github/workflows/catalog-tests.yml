@@ -6,6 +6,7 @@ on:
       - "College/**"
       - "CollegeTests/**"
       - "scripts/run_catalog_tests.sh"
+      - "scripts/verify-catalog-manifest-urls.sh"
       - "College.xcodeproj/**"
       - ".github/workflows/catalog-tests.yml"
   pull_request:
@@ -13,6 +14,7 @@ on:
       - "College/**"
       - "CollegeTests/**"
       - "scripts/run_catalog_tests.sh"
+      - "scripts/verify-catalog-manifest-urls.sh"
       - "College.xcodeproj/**"
       - ".github/workflows/catalog-tests.yml"
 
@@ -21,10 +23,13 @@ permissions:
 
 jobs:
   catalog-unit-tests:
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Run catalog XCTest suite
         run: bash scripts/run_catalog_tests.sh
+
+      - name: Verify catalog manifest URL/format
+        run: bash scripts/verify-catalog-manifest-urls.sh

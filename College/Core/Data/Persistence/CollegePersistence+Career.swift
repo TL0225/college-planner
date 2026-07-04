@@ -14,10 +14,6 @@ extension CollegePersistence {
 
     private var careerRepo: CareerRepository { careerRepository }
 
-    static func careerApplicationsFetchRequest() -> Never {
-        fatalError("local store fetch requests removed — use CareerRepository.fetchApplications")
-    }
-
     @discardableResult
     func addCareerApplication(
         title: String,
@@ -32,8 +28,8 @@ extension CollegePersistence {
         extractedKeywordsJSON: String? = nil,
         locationText: String? = nil,
         baseSalaryText: String? = nil
-    ) -> JobApplication {
-        (try? careerRepo.addApplication(
+    ) throws -> JobApplication {
+        try careerRepo.addApplication(
             title: title,
             company: company,
             postingURLString: postingURLString,
@@ -46,7 +42,7 @@ extension CollegePersistence {
             extractedKeywordsJSON: extractedKeywordsJSON,
             locationText: locationText,
             baseSalaryText: baseSalaryText
-        )) ?? JobApplication(statusRaw: status.rawValue)
+        )
     }
 
     func moveCareerApplication(id: UUID, to status: CareerApplicationStatus) {
@@ -124,43 +120,109 @@ extension CollegePersistence {
     }
 
     func importJobBoardListings(
-        company: WorkdayCompanyConfigEntry,
+        company: JobBoardCompany,
         listings: [ScrapedJobListing]
-    ) async -> Int {
-        (try? careerRepo.applyJobBoardListings(company: company, listings: listings)) ?? 0
+    ) throws -> Int {
+        try careerRepo.applyJobBoardListings(company: company, listings: listings)
+    }
+
+    func beginJobBoardListImport(company: JobBoardCompany) {
+        let slug = company.normalizedSlug
+        jobBoardListImportSessionStates[slug] = JobBoardListImportSessionState(company: company)
+    }
+
+    func mergeJobBoardListImportPage(companySlug: String, listings: [ScrapedJobListing]) async throws {
+        guard var state = jobBoardListImportSessionStates[companySlug], !state.finalized else { return }
+        let company = state.company
+        let container = appDataStore.profileContainer
+        let seenPaths = state.seenPaths
+        let updatedPaths = try await BackgroundServiceExecutor.persistOffMain(container: container) { ctx in
+            var paths = seenPaths
+            _ = try JobBoardListImportWriter.mergePage(
+                context: ctx,
+                company: company,
+                listings: listings,
+                seenPaths: &paths
+            )
+            try ctx.save()
+            return paths
+        }
+        state.seenPaths = updatedPaths
+        jobBoardListImportSessionStates[companySlug] = state
+    }
+
+    func discardJobBoardListImport(companySlug: String) {
+        jobBoardListImportSessionStates.removeValue(forKey: companySlug)
+    }
+
+    func jobBoardListImportHasMergedPages(companySlug: String) -> Bool {
+        guard let state = jobBoardListImportSessionStates[companySlug] else { return false }
+        return !state.seenPaths.isEmpty
+    }
+
+    func finalizeJobBoardListImport(companySlug: String) async throws -> Int {
+        guard let state = jobBoardListImportSessionStates.removeValue(forKey: companySlug),
+              !state.finalized else { return 0 }
+        let company = state.company
+        let container = appDataStore.profileContainer
+        let count = try await BackgroundServiceExecutor.persistOffMain(container: container) { ctx in
+            let n = try JobBoardListImportWriter.finalizeRemovals(
+                context: ctx,
+                company: company,
+                seenPaths: state.seenPaths
+            )
+            try ctx.save()
+            return n
+        }
+        bumpCareerRevision()
+        return count
+    }
+
+    func touchActiveJobBoardPostings(companySlug: String) {
+        try? careerRepo.touchActiveJobBoardPostings(companySlug: companySlug)
     }
 
     func countNewOpeningsSince(_ date: Date?) -> Int {
         (try? careerRepo.countNewOpeningsSince(date)) ?? 0
     }
 
-    func newOpeningsCount(companySlug: String) -> Int {
-        WorkdayOpeningsState.newCountForCompany(slug: companySlug)
+    /// Removes all mirrored job-board postings for a company slug.
+    /// Returns the number of rows removed.
+    @discardableResult
+    func clearJobBoardPostings(companySlug: String) -> Int {
+        (try? careerRepo.deleteJobBoardPostings(companySlug: companySlug)) ?? 0
     }
 
-    func isPostingTracked(_ posting: WorkdayJobPosting) -> Bool {
+    func newOpeningsCount(companySlug: String) -> Int {
+        JobBoardOpeningsState.newCountForCompany(slug: companySlug)
+    }
+
+    func isPostingTracked(_ posting: JobBoardPosting) -> Bool {
         careerRepo.isPostingTracked(posting)
     }
 
-    func isPostingNew(_ posting: WorkdayJobPosting) -> Bool {
+    func isPostingNew(_ posting: JobBoardPosting) -> Bool {
         careerRepo.isPostingNew(posting)
     }
 
-    func boardStatus(for posting: WorkdayJobPosting) -> CareerApplicationStatus? {
+    func boardStatus(for posting: JobBoardPosting) -> CareerApplicationStatus? {
         careerRepo.boardStatus(for: posting)
     }
 
-    func shouldFetchWorkdayDetail(for posting: WorkdayJobPosting, force: Bool) -> Bool {
-        careerRepo.shouldFetchWorkdayDetail(for: posting, force: force)
+    func shouldFetchJobBoardDetail(for posting: JobBoardPosting, force: Bool) -> Bool {
+        careerRepo.shouldFetchJobBoardDetail(for: posting, force: force)
     }
 
     @discardableResult
-    func promoteWorkdayPostingToTracker(_ posting: WorkdayJobPosting) -> JobApplication {
-        (try? careerRepo.promoteWorkdayPostingToTracker(posting))
+    func promoteJobBoardPostingToTracker(
+        _ posting: JobBoardPosting,
+        recommendedResumeID: UUID? = nil
+    ) -> JobApplication {
+        (try? careerRepo.promoteJobBoardPostingToTracker(posting, recommendedResumeID: recommendedResumeID))
             ?? JobApplication(statusRaw: CareerApplicationStatus.interested.rawValue)
     }
 
-    func applyJobBoardDetail(posting: WorkdayJobPosting, detail: ScrapedJobDetail) {
+    func applyJobBoardDetail(posting: JobBoardPosting, detail: ScrapedJobDetail) {
         try? careerRepo.applyJobBoardDetail(posting: posting, detail: detail)
     }
 
@@ -168,9 +230,10 @@ extension CollegePersistence {
         careerRepo.careerResumeMetadata(for: document)
     }
 
-    func setCareerResumeMetadata(_ meta: CareerResumeMetadataV1, for document: VaultDocument) {
-        try? careerRepo.setCareerResumeMetadata(meta, for: document)
+    func setCareerResumeMetadata(_ meta: CareerResumeMetadataV1, for document: VaultDocument) throws {
+        try careerRepo.setCareerResumeMetadata(meta, for: document)
         bumpVaultRevision()
+        bumpCareerRevision()
     }
 
     func setCareerResumeFavorite(_ favorite: Bool, for document: VaultDocument) {
@@ -182,8 +245,8 @@ extension CollegePersistence {
         careerRepo.careerResumeLibraryStats(for: documents)
     }
 
-    func scoreCareerResumeHeuristic(for document: VaultDocument) -> Int {
-        careerRepo.scoreCareerResumeHeuristic(for: document, vaultRepository: vaultRepository)
+    func scoreCareerResumeHeuristic(for document: VaultDocument) async -> Int {
+        await careerRepo.scoreCareerResumeHeuristic(for: document, vaultRepository: vaultRepository)
     }
 
     func persistCareerResumeATSScore(_ score: Int, for document: VaultDocument) {
@@ -201,11 +264,26 @@ extension CollegePersistence {
     }
 
     @discardableResult
-    func importCareerResume(from url: URL) throws -> VaultDocument? {
-        let doc = try careerRepo.importCareerResume(from: url, vaultRepository: vaultRepository)
+    func importCareerResume(from url: URL, initialMetadata: CareerResumeMetadataV1? = nil) async throws -> VaultDocument? {
+        let doc = try await careerRepo.importCareerResume(from: url, vaultRepository: vaultRepository)
         fetchVaultDocuments()
         bumpVaultRevision()
+        if let doc {
+            if let initialMetadata {
+                try setCareerResumeMetadata(initialMetadata, for: doc)
+            }
+            let documentID = doc.id
+            Task {
+                await CareerResumeIngestService.shared.ingest(documentID: documentID)
+            }
+        }
         return doc
+    }
+
+    func scheduleCareerResumeIngest(documentID: UUID) {
+        Task {
+            await CareerResumeIngestService.shared.ingest(documentID: documentID)
+        }
     }
 
     func careerResumeBaselineText() -> String {

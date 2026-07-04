@@ -53,16 +53,16 @@ struct AcademicsWidget: View {
         OverviewCard {
             HStack {
                 Text("Academic Journey")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .bold, design: .serif))
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
                 Button("View Full Planner") {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
                         activePage.wrappedValue = .academics
                     }
                 }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(Color(hex: "6366f1"))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.primary)
                 .buttonStyle(.plain)
             }
 
@@ -72,8 +72,8 @@ struct AcademicsWidget: View {
             let minors = displayMinors
             if majors.isEmpty && minors.isEmpty {
                 Text("No degree configured. Add your major in Profile.")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding()
             } else {
@@ -86,15 +86,15 @@ struct AcademicsWidget: View {
                                     creditRing(fraction: item.progress.fraction,
                                                completed: item.progress.completedRoundedInt,
                                                required: item.progress.requiredRoundedInt,
-                                               color: idx == 0 ? Color(hex: "6366f1") : Color(hex: "10b981"))
+                                               color: idx == 0 ? DesignSystem.Colors.primary : DesignSystem.Colors.success)
                                     VStack(spacing: 3) {
                                         Text(item.label)
-                                            .font(.system(size: 13, weight: .bold))
-                                            .foregroundColor(DesignSystem.Colors.textMain)
+                                            .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                                            .foregroundStyle(DesignSystem.Colors.textMain)
                                             .multilineTextAlignment(.center)
                                         Text("\(item.progress.completedRoundedInt)/\(item.progress.requiredRoundedInt) Credits")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(DesignSystem.Colors.textLight)
+                                            .font(DesignSystem.Fonts.main(size: 11))
+                                            .foregroundStyle(DesignSystem.Colors.textLight)
                                     }
                                 }
                                 .frame(maxWidth: .infinity)
@@ -120,20 +120,20 @@ struct AcademicsWidget: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Cumulative GPA")
                             .font(DesignSystem.Fonts.main(size: 10))
-                            .foregroundColor(Color(hex: "9ca3af"))
+                            .foregroundStyle(Color(hex: "9ca3af"))
                         Text(String(format: "%.2f", collegePersistence.primaryGPA()))
                             .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                            .foregroundColor(collegePersistence.primaryGPA() >= 3.5 ? Color(hex: "22c55e") : collegePersistence.primaryGPA() >= 2.0 ? Color(hex: "6366f1") : Color(hex: "ef4444"))
+                            .foregroundStyle(collegePersistence.primaryGPA() >= 3.5 ? Color(hex: "22c55e") : collegePersistence.primaryGPA() >= 2.0 ? DesignSystem.Colors.primary : DesignSystem.Colors.error)
                     }
                     Spacer()
                     if collegePersistence.primaryCreditsEarned() > 0 {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("Credits Earned")
                                 .font(DesignSystem.Fonts.main(size: 10))
-                                .foregroundColor(Color(hex: "9ca3af"))
+                                .foregroundStyle(Color(hex: "9ca3af"))
                             Text("\(collegePersistence.primaryCreditsEarned())")
                                 .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                                .foregroundColor(Color(hex: "374151"))
+                                .foregroundStyle(Color(hex: "374151"))
                         }
                     }
                 }
@@ -146,21 +146,21 @@ struct AcademicsWidget: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Suggested Next")
                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                        .foregroundColor(Color(hex: "6366f1"))
+                        .foregroundStyle(DesignSystem.Colors.primary)
                         .padding(.horizontal, 16)
 
                     ForEach(suggestedCourses, id: \.code) { course in
                         HStack(spacing: 8) {
                             Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(Color(hex: "6366f1"))
+                                .font(DesignSystem.Fonts.main(size: 12))
+                                .foregroundStyle(DesignSystem.Colors.primary)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(course.code)
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                    .foregroundColor(Color(hex: "374151"))
+                                    .foregroundStyle(Color(hex: "374151"))
                                 Text(course.title)
                                     .font(DesignSystem.Fonts.main(size: 11))
-                                    .foregroundColor(Color(hex: "6b7280"))
+                                    .foregroundStyle(Color(hex: "6b7280"))
                                     .lineLimit(1)
                             }
                         }
@@ -233,8 +233,8 @@ struct AcademicsWidget: View {
                 .frame(width: 100, height: 100)
                 .rotationEffect(.degrees(-90))
             Text("\(Int((f * 100).rounded()))%")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
+                .foregroundStyle(DesignSystem.Colors.textMain)
         }
     }
 
@@ -243,18 +243,18 @@ struct AcademicsWidget: View {
             VStack(alignment: .leading, spacing: 5) {
                 HStack {
                     Text("MINOR")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(Color(hex: "F97316"))
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                        .foregroundStyle(Color(hex: "F97316"))
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(Color(hex: "FFF7ED"))
                         .clipShape(RoundedRectangle(cornerRadius: 4))
                     Text(label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .lineLimit(1)
                     Spacer()
                     Text("\(progress.completedRoundedInt)/\(progress.requiredRoundedInt) cr")
-                        .font(.system(size: 11)).foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 11)).foregroundStyle(DesignSystem.Colors.textLight)
                 }
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
@@ -316,21 +316,21 @@ private struct AcademicsWidgetPreview: View {
     var body: some View {
         OverviewCard {
             Text("Academic Journey")
-                .font(.system(size: 14, weight: .bold, design: .serif))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold, design: .serif))
+                .foregroundStyle(DesignSystem.Colors.textMain)
             Color.clear.frame(height: 12)
             HStack(spacing: 0) {
-                ForEach([(Color(hex: "6366f1"), "CS Major", "78%"),
-                         (Color(hex: "10b981"), "Math Minor", "55%")], id: \.2) { color, label, pct in
+                ForEach([(DesignSystem.Colors.primary, "CS Major", "78%"),
+                         (DesignSystem.Colors.success, "Math Minor", "55%")], id: \.2) { color, label, pct in
                     VStack(spacing: 8) {
                         ZStack {
                             Circle().stroke(Color(hex: "F3F4F6"), lineWidth: 6).frame(width: 70, height: 70)
                             Circle().trim(from: 0, to: label == "CS Major" ? 0.78 : 0.55)
                                 .stroke(color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                                 .frame(width: 70, height: 70).rotationEffect(.degrees(-90))
-                            Text(pct).font(.system(size: 14, weight: .bold)).foregroundColor(DesignSystem.Colors.textMain)
+                            Text(pct).font(DesignSystem.Fonts.main(size: 14, weight: .bold)).foregroundStyle(DesignSystem.Colors.textMain)
                         }
-                        Text(label).font(.system(size: 11, weight: .medium)).foregroundColor(DesignSystem.Colors.textMain)
+                        Text(label).font(DesignSystem.Fonts.main(size: 11, weight: .medium)).foregroundStyle(DesignSystem.Colors.textMain)
                     }.frame(maxWidth: .infinity)
                 }
             }

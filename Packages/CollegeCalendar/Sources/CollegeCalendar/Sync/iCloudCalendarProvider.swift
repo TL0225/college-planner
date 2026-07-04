@@ -22,10 +22,18 @@ public actor iCloudCalendarProvider: CalendarSyncProvider {
     }
 
     public func exportEvent(eventID: UUID) async throws {
-        // Phase 2b: CalDAV export.
+        try await MainActor.run {
+            guard let manager = CalendarIntegrationBridge.manager,
+                  let event = CalendarSyncEventResolver.calendarEvent(for: eventID)
+            else {
+                throw CalendarSyncProviderError.missingEvent
+            }
+            Task { await manager.exportEventToiCloudAsync(event) }
+        }
     }
 
     public func deleteRemoteEvent(localEventID: UUID) async throws {
-        // CalDAV delete — Phase 2b.
+        guard let manager = await MainActor.run(body: { CalendarIntegrationBridge.manager }) else { return }
+        await manager.deleteEventFromiCloud(localEventID: localEventID)
     }
 }

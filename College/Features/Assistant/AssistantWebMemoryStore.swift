@@ -455,6 +455,22 @@ actor AssistantWebMemoryStore {
         )
     }
 
+    func deleteAcceptedWebAnswer(cacheKey: String) async throws {
+        try await ensureOpen()
+        let trimmedKey = cacheKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return }
+        let sql = "DELETE FROM assistant_web_answer_cache WHERE cache_key = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw Self.dbError(db, "prepare accepted delete")
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, trimmedKey, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw Self.dbError(db, "step accepted delete")
+        }
+    }
+
     // MARK: - Internals
 
     private func loadEntryPreferences() -> [String: EntryPreference] {

@@ -76,6 +76,19 @@ enum CatalogPDFBlockClassifier {
             negative.append(contentsOf: rejectHits.map { "reject:\($0)" })
         }
 
+        let programScore = scoreProgramBlock(text: text, lower: lower, sectionKind: sectionKind, profile: profile, positive: &positive, negative: &negative, matchedRules: &matchedRules)
+
+        let threshold = profile.blockRules?.programMinConfidence ?? defaultProgramThreshold
+
+        if programScore >= threshold, sectionKind == .programs || sectionKind == nil {
+            if !rejectHits.isEmpty && programScore < threshold + 0.15 {
+                matchedRules.append("program_rejected_negative_lexicon")
+                return make(block, .unknown, 0.35, sectionKind, headingPath, matchedRules, positive, negative)
+            }
+            matchedRules.append("program_block")
+            return make(block, .program, programScore, sectionKind, headingPath, matchedRules, positive, negative)
+        }
+
         if sectionKind == .policies {
             matchedRules.append("section:policies")
             return make(block, .policy, 0.85, sectionKind, headingPath, matchedRules, positive, negative)
@@ -91,19 +104,6 @@ enum CatalogPDFBlockClassifier {
         if isLikelyHeadingBlock(block) {
             matchedRules.append("heading_shape")
             return make(block, .heading, 0.9, sectionKind, headingPath, matchedRules, positive, negative)
-        }
-
-        let programScore = scoreProgramBlock(text: text, lower: lower, sectionKind: sectionKind, profile: profile, positive: &positive, negative: &negative, matchedRules: &matchedRules)
-
-        let threshold = profile.blockRules?.programMinConfidence ?? defaultProgramThreshold
-
-        if programScore >= threshold, sectionKind == .programs || sectionKind == nil {
-            if !rejectHits.isEmpty && programScore < threshold + 0.15 {
-                matchedRules.append("program_rejected_negative_lexicon")
-                return make(block, .unknown, 0.35, sectionKind, headingPath, matchedRules, positive, negative)
-            }
-            matchedRules.append("program_block")
-            return make(block, .program, programScore, sectionKind, headingPath, matchedRules, positive, negative)
         }
 
         if sectionKind == .degreeRequirements {
@@ -245,7 +245,10 @@ enum CatalogPDFBlockClassifier {
             evidence: ClassificationEvidence(
                 matchedRules: matchedRules,
                 positiveSignals: positive,
-                negativeSignals: negative
+                negativeSignals: negative,
+                sourcePage: block.primaryPage,
+                sourceSection: sectionKind?.rawValue,
+                sourceText: String(block.text.prefix(500))
             )
         )
     }

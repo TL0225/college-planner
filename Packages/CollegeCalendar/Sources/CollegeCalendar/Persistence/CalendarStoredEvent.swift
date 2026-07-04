@@ -12,6 +12,8 @@ public struct CalendarStoredEvent: Identifiable, Equatable, Sendable {
     public let providerSource: String?
     public let customColorHex: String?
     public let recurrenceRule: String?
+    public let providerEventId: String?
+    public let attendeesJSON: String?
     public let courseID: UUID?
     public let courseCode: String?
     public let semesterID: UUID?
@@ -27,6 +29,8 @@ public struct CalendarStoredEvent: Identifiable, Equatable, Sendable {
         providerSource: String? = nil,
         customColorHex: String? = nil,
         recurrenceRule: String? = nil,
+        providerEventId: String? = nil,
+        attendeesJSON: String? = nil,
         courseID: UUID? = nil,
         courseCode: String? = nil,
         semesterID: UUID? = nil
@@ -41,6 +45,8 @@ public struct CalendarStoredEvent: Identifiable, Equatable, Sendable {
         self.providerSource = providerSource
         self.customColorHex = customColorHex
         self.recurrenceRule = recurrenceRule
+        self.providerEventId = providerEventId
+        self.attendeesJSON = attendeesJSON
         self.courseID = courseID
         self.courseCode = courseCode
         self.semesterID = semesterID

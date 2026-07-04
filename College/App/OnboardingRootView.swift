@@ -52,7 +52,6 @@ private enum OnboardingStep: Int, CaseIterable, Identifiable {
 private enum OnboardingLMSProvider: String, CaseIterable, Identifiable {
     case brightspace = "Brightspace"
     case canvas = "Canvas"
-    case blackboard = "Blackboard"
     case moodle = "Moodle"
 
     var id: String { rawValue }
@@ -61,7 +60,6 @@ private enum OnboardingLMSProvider: String, CaseIterable, Identifiable {
         switch self {
         case .brightspace: return "network"
         case .canvas: return "square.grid.3x3"
-        case .blackboard: return "book.closed"
         case .moodle: return "graduationcap"
         }
     }
@@ -197,7 +195,7 @@ private final class OnboardingCoordinator {
 
 struct OnboardingRootView: View {
     @Environment(AppContainer.self) private var container
-    private var brightspaceCoordinator: BrightspaceWebCoordinator { container.brightspaceCoordinator }
+    private var lmsCoordinator: LMSWebCoordinator { container.lmsCoordinator }
     private var appNotifications: AppNotificationCenter { container.appNotifications }
     private var notifications: AppNotificationCenter { container.appNotifications }
     private var persistence: CollegePersistence { container.persistence }
@@ -231,7 +229,6 @@ struct OnboardingRootView: View {
     @State private var handoffReady = false
     @State private var catalogSyncStartDate: Date?
     @State private var catalogSyncTask: Task<Void, Never>?
-    @State private var handoffThresholdTask: Task<Void, Never>?
     @State private var catalogScrapeProgress: [OnboardingCatalogScrapeProgressItem] = []
     @State private var reloadContextOptionsTask: Task<Void, Never>?
     @State private var reloadContextOptionsToken = UUID()
@@ -251,31 +248,45 @@ struct OnboardingRootView: View {
                 actionBar
             }
         }
-        .frame(minWidth: 980, minHeight: 640)
+        .frame(minWidth: 800, minHeight: 580)
         .background(.regularMaterial)
+        .shellDynamicTypeReadable()
+        .accessibilityIdentifier("onboarding.root")
         .onAppear {
             scheduleReloadContextOptions()
             draft.reconcileCounts()
             bootstrapUniversityOptionsIfNeeded()
             refreshCatalogTypeOptionsForSelectedSchool()
+            ProductAnalytics.track(
+                .ftueStepCompleted,
+                properties: ["step": "\(onboardingCoordinator.currentStep.rawValue)"]
+            )
+        }
+        .onChange(of: onboardingCoordinator.currentStep) { _, step in
+            ProductAnalytics.track(.ftueStepCompleted, properties: ["step": "\(step.rawValue)"])
         }
         .onDisappear {
             reloadContextOptionsTask?.cancel()
             reloadContextOptionsTask = nil
             catalogSyncTask?.cancel()
             catalogSyncTask = nil
-            handoffThresholdTask?.cancel()
-            handoffThresholdTask = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .catalogSyncPhaseACommitted)) { note in
+            guard catalogSyncPhase == .inProgress else { return }
+            let programCount = note.userInfo?["programCount"] as? Int ?? 0
+            if programCount > 0 {
+                handoffReady = true
+            }
         }
     }
 
     private var stepRail: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Welcome to College")
-                .font(.system(size: 26, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 26, weight: .bold))
 
             Text("Set up your workspace once. You can refine everything later in Profile and Settings.")
-                .font(.system(size: 13, weight: .regular))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .regular))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -285,7 +296,7 @@ struct OnboardingRootView: View {
                 let isActive = onboardingCoordinator.currentStep == step
                 HStack(alignment: .top, spacing: 10) {
                     Text("\(step.rawValue + 1)")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold, design: .rounded))
                         .frame(width: 22, height: 22)
                         .background(isActive ? Color.accentColor : Color.secondary.opacity(0.2))
                         .foregroundStyle(isActive ? Color.white : Color.primary)
@@ -293,18 +304,22 @@ struct OnboardingRootView: View {
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(step.title)
-                            .font(.system(size: 13, weight: isActive ? .bold : .semibold))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: isActive ? .bold : .semibold))
                         Text(step.subtitle)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                     }
                 }
                 .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(step.title). \(step.subtitle)")
+                .accessibilityAddTraits(isActive ? .isSelected : [])
+                .accessibilityIdentifier("onboarding.step.\(step.rawValue)")
             }
 
             Spacer(minLength: 0)
         }
-        .padding(22)
+        .padding(DesignSystem.Spacing.xl)
         .frame(width: 320, alignment: .topLeading)
         .background(Color(nsColor: .underPageBackgroundColor))
     }
@@ -329,9 +344,10 @@ struct OnboardingRootView: View {
                     finishStep
                 }
             }
-            .padding(24)
+            .padding(DesignSystem.Spacing.xl)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .accessibilityIdentifier("onboarding.content")
     }
 
     private var actionBar: some View {
@@ -339,13 +355,14 @@ struct OnboardingRootView: View {
             Button("Back") {
                 onboardingCoordinator.goBack()
             }
+            .accessibilityIdentifier("onboarding.back")
             .disabled(!onboardingCoordinator.canGoBack || onboardingCoordinator.isCommitting || catalogSyncPhase == .inProgress)
 
             Spacer()
 
             if let message = onboardingCoordinator.validationMessage, !message.isEmpty {
                 Text(message)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .foregroundStyle(.orange)
                     .lineLimit(2)
             }
@@ -356,6 +373,7 @@ struct OnboardingRootView: View {
                 handleContinue()
             }
             .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("onboarding.continue")
             .disabled(onboardingCoordinator.isCommitting || isForwardNavigationBlockedByCatalogSync || (onboardingCoordinator.isLastStep && catalogSyncPhase == .inProgress && !handoffReady))
         }
         .padding(.horizontal, 24)
@@ -378,7 +396,7 @@ struct OnboardingRootView: View {
                 switch catalogSyncPhase {
                 case .idle:
                     Text("Waiting to start catalog sync for your selected school.")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                         .foregroundStyle(.secondary)
                     Button("Start Catalog Sync") {
                         startCatalogSyncTask()
@@ -390,14 +408,14 @@ struct OnboardingRootView: View {
                     ProgressView(value: catalogSyncProgress, total: 1)
                         .progressViewStyle(.linear)
                     Text(catalogSyncMessage)
-                        .font(.system(size: 12, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                         .foregroundStyle(.secondary)
                     Text("Please wait. You can continue once catalog sync is complete.")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                         .foregroundStyle(.orange)
                 case .failed:
                     Text("Catalog sync failed. Retry to continue onboarding.")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                         .foregroundStyle(.orange)
                     Button("Retry Catalog Sync") {
                         startCatalogSyncTask()
@@ -407,7 +425,7 @@ struct OnboardingRootView: View {
                     .help("Retry scraper and import")
                 case .succeeded:
                     Label("Catalog synced. You can continue onboarding.", systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                         .foregroundStyle(.green)
                 }
             }
@@ -470,7 +488,7 @@ struct OnboardingRootView: View {
                                 .controlSize(.small)
                         } else {
                             Text(universityOptionsLoadError ?? "No schools loaded yet.")
-                                .font(.system(size: 11, weight: .regular))
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                                 .foregroundStyle(.secondary)
 
                             Button("Load School List") {
@@ -487,18 +505,18 @@ struct OnboardingRootView: View {
                     Divider()
 
                     Text("Catalogs at this school")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
 
                     if isLoadingCatalogTypeOptions {
                         ProgressView("Discovering catalogs…")
                             .controlSize(.small)
                     } else if catalogTypeOptions.isEmpty {
                         Text("No catalogs discovered yet. Continue to import your school catalog, or pick another school.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                     } else {
                         Text("Names match your school's catalog site. Continue to run a fast program index for each.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
 
                         catalogDiscoveryOrScrapeList
@@ -522,11 +540,11 @@ struct OnboardingRootView: View {
                                 catalogDiscoveryOrScrapeList
                             }
                             Text(catalogSyncMessage)
-                                .font(.system(size: 11, weight: .regular))
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                                 .foregroundStyle(.secondary)
                         case .failed:
                             Text("Catalog sync failed. Retry to load majors/minors for dropdown selection.")
-                                .font(.system(size: 11, weight: .regular))
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                                 .foregroundStyle(.orange)
                             Button("Retry Catalog Sync") {
                                 startCatalogSyncTask()
@@ -538,10 +556,10 @@ struct OnboardingRootView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 if courseLeafCatalogNeedsRefresh {
                                     Label("Program list needs a full refresh", systemImage: "exclamationmark.triangle.fill")
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                         .foregroundStyle(.orange)
                                     Text("A quick sync reused old cached programs. Refresh re-indexes the full bulletin (a few minutes).")
-                                        .font(.system(size: 11, weight: .regular))
+                                        .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                                         .foregroundStyle(.secondary)
                                     Button("Refresh program list") {
                                         refreshCourseLeafProgramIndex()
@@ -550,7 +568,7 @@ struct OnboardingRootView: View {
                                     .foregroundStyle(.tint)
                                 } else {
                                     Label("Catalog sync completed", systemImage: "checkmark.circle.fill")
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                         .foregroundStyle(.green)
                                     ProgressView(value: 1, total: 1)
                                         .progressViewStyle(.linear)
@@ -562,7 +580,7 @@ struct OnboardingRootView: View {
                 } else if courseLeafCatalogNeedsRefresh {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Your program list looks incomplete. Refresh to index the full school bulletin.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.orange)
                         Button("Refresh program list") {
                             refreshCourseLeafProgramIndex()
@@ -573,7 +591,7 @@ struct OnboardingRootView: View {
                 }
 
                 Text("How many degrees, majors, and minors do you want to track?")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
 
                 HStack(spacing: 14) {
                     countControl(title: "Degrees", value: Binding(
@@ -604,7 +622,7 @@ struct OnboardingRootView: View {
                 Divider()
 
                 Text("Degree Level")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                 ForEach(draft.selectedDegreeLevels.indices, id: \.self) { index in
                     Picker("Degree Level \(index + 1)", selection: Binding(
                         get: { draft.selectedDegreeLevels[index] },
@@ -636,17 +654,17 @@ struct OnboardingRootView: View {
                 }
 
                 Text("Majors")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                 ForEach(draft.selectedMajors.indices, id: \.self) { index in
                     if catalogSyncRequired && catalogSyncPhase != .succeeded && majorOptions.isEmpty && majorOptionsBySection.isEmpty {
                         Text("Majors will appear after catalog sync completes.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
                     } else if catalogSyncPhase == .succeeded && majorOptions.isEmpty && majorOptionsBySection.isEmpty {
                         Text("No majors found for this Degree Level in the selected catalog.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
@@ -681,17 +699,17 @@ struct OnboardingRootView: View {
                 }
 
                 Text("Minors")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                 ForEach(draft.selectedMinors.indices, id: \.self) { index in
                     if catalogSyncRequired && catalogSyncPhase != .succeeded && minorOptions.isEmpty && minorOptionsBySection.isEmpty {
                         Text("Minors/certificates will appear after catalog sync completes.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
                     } else if catalogSyncPhase == .succeeded && minorOptions.isEmpty && minorOptionsBySection.isEmpty {
                         Text("No minors or certificates found for this Degree Level in the selected catalog.")
-                            .font(.system(size: 11, weight: .regular))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 6)
@@ -733,7 +751,7 @@ struct OnboardingRootView: View {
         GroupBox("Academic History (Optional)") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Share transfer context now, or skip and add transcript details later.")
-                    .font(.system(size: 13, weight: .regular))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .regular))
                     .foregroundStyle(.secondary)
 
                 TextField("Transfer notes (optional)", text: $draft.transferNotes, axis: .vertical)
@@ -749,7 +767,7 @@ struct OnboardingRootView: View {
             GroupBox("Choose LMS Integrations") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Select the platforms you want to connect first. You can connect others later.")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                         .foregroundStyle(.secondary)
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 10)], spacing: 10) {
@@ -768,7 +786,7 @@ struct OnboardingRootView: View {
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
                                 }
-                                .padding(10)
+                                .padding(DesignSystem.Spacing.md)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(selected ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.12))
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -784,7 +802,7 @@ struct OnboardingRootView: View {
             GroupBox("Choose Dashboard Widgets") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Recommended widgets are pre-selected. Adjust now or later in settings.")
-                        .font(.system(size: 12, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                         .foregroundStyle(.secondary)
 
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
@@ -803,7 +821,7 @@ struct OnboardingRootView: View {
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
                                 }
-                                .padding(10)
+                                .padding(DesignSystem.Spacing.md)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(selected ? Color.accentColor.opacity(0.2) : Color.secondary.opacity(0.12))
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -838,12 +856,12 @@ struct OnboardingRootView: View {
             GroupBox("Catalog Sync") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(catalogSyncDetailText)
-                        .font(.system(size: 12, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                         .foregroundStyle(.secondary)
 
                     if catalogSyncRequired {
                         Text(catalogSyncPhaseLabel)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                             .foregroundStyle(.secondary)
 
                         if showsDeterminateSync {
@@ -857,16 +875,16 @@ struct OnboardingRootView: View {
 
                         if let eta = catalogSyncETA, catalogSyncPhase == .inProgress {
                             Text(eta)
-                                .font(.system(size: 11, weight: .medium))
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
 
                         Text(catalogSyncMessage)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                             .foregroundStyle(catalogSyncPhase == .failed ? .orange : (catalogSyncPhase == .succeeded ? .green : .primary))
                     } else {
                         Label("Catalog already available for your selected school.", systemImage: "checkmark.circle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                             .foregroundStyle(.green)
                     }
                 }
@@ -876,7 +894,7 @@ struct OnboardingRootView: View {
             GroupBox("Ready to Enter Workspace") {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Your profile draft is ready. Enter Workspace will commit your onboarding identity and preferences.")
-                        .font(.system(size: 13, weight: .regular))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .regular))
 
                     keyValueRow(label: "Name", value: draft.name)
                     keyValueRow(label: "School", value: draft.schoolName)
@@ -914,11 +932,11 @@ struct OnboardingRootView: View {
                 catalogScrapeStatusIcon(item.status)
                     .frame(width: 18, height: 18)
                 Text(item.title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                 Spacer()
                 if catalogSyncPhase == .inProgress, item.status == .scraping {
                     Text("Indexing…")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -1015,10 +1033,10 @@ struct OnboardingRootView: View {
     private func keyValueRow(label: String, value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
-                .font(.system(size: 12, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                 .frame(width: 90, alignment: .leading)
             Text(value.isEmpty ? "Not set" : value)
-                .font(.system(size: 12, weight: .regular))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                 .foregroundStyle(value.isEmpty ? .secondary : .primary)
         }
     }
@@ -1026,7 +1044,7 @@ struct OnboardingRootView: View {
     private func countControl(title: String, value: Binding<Int>, minimum: Int) -> some View {
         HStack(spacing: 8) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
             Button {
                 value.wrappedValue = max(minimum, value.wrappedValue - 1)
             } label: {
@@ -1036,7 +1054,7 @@ struct OnboardingRootView: View {
             .help("Decrease \(title)")
 
             Text("\(value.wrappedValue)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .bold, design: .rounded))
                 .frame(minWidth: 22)
                 .monospacedDigit()
 
@@ -1112,6 +1130,10 @@ struct OnboardingRootView: View {
         let school = draft.schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
         let degreeLevel = draft.selectedDegreeLevels.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
+        if !school.isEmpty {
+            _ = collegePersistence.setActiveUniversity(named: school)
+        }
+
         let catalogSelectedFromDegree = catalogTypeOptions.first(where: { option in
             option.label.compare(degreeLevel, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame ||
             option.catoid.compare(degreeLevel, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
@@ -1123,7 +1145,8 @@ struct OnboardingRootView: View {
             }
             return draft.selectedCatalogCatoid.trimmingCharacters(in: .whitespacesAndNewlines)
         }()
-        let useLegacyCatoidFallback = catalogTypeOptions.isEmpty
+        // Retry without catoid when imported rows lack source provenance, even after catalog discovery.
+        let useLegacyCatoidFallback = true
 
         guard !school.isEmpty, !degreeLevel.isEmpty else {
             majorOptions = []
@@ -1139,10 +1162,14 @@ struct OnboardingRootView: View {
         }
 
         let availableLevelsFromCatalog = catalogTypeOptions
-            .map { DegreeConfiguration.canonicalLevel($0.label) }
+            .map {
+                DegreeConfiguration.canonicalLevel(
+                    ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: $0.rawTitle, catoid: $0.catoid)
+                )
+            }
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         let levelsToQuery = DegreeConfiguration.queryLevels(
-            for: degreeLevel,
+            for: DegreeConfiguration.canonicalLevel(degreeLevel),
             availableLevels: availableLevelsFromCatalog
         )
 
@@ -1491,12 +1518,12 @@ struct OnboardingRootView: View {
                     descriptors = CourseLeafCatalogSegmentDiscoverer.catalogDescriptors(from: catalogs)
                 } else {
                     let (normalizedCatalogURL, catoidHint) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
-                    let discovered = (try? await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalizedCatalogURL)) ?? []
-
-                    if !discovered.isEmpty {
-                        descriptors = discovered
-                    } else if let catoidHint, !catoidHint.isEmpty {
-                        descriptors = [ModernCampusCatalogDescriptor(catoid: catoidHint, title: "Catalog")]
+                    let resolved = await ModernCampusCatalogDiscovery.resolveCatalogsForIngestLenient(
+                        normalizedBaseURL: normalizedCatalogURL,
+                        catoidHint: catoidHint
+                    )
+                    if !resolved.isEmpty {
+                        descriptors = resolved
                     } else {
                         let current = try await ModernCampusEngine.discoverCurrentCatalogID(baseURL: normalizedCatalogURL)
                         descriptors = [ModernCampusCatalogDescriptor(catoid: current, title: "Catalog")]
@@ -1624,7 +1651,6 @@ struct OnboardingRootView: View {
 
     private func resetCatalogSyncState() {
         catalogSyncTask?.cancel()
-        handoffThresholdTask?.cancel()
         catalogSyncPhase = .idle
         catalogSyncProgress = 0
         catalogSyncMessage = "Catalog sync has not started yet."
@@ -1676,16 +1702,6 @@ struct OnboardingRootView: View {
         }
     }
 
-    private func scheduleAutoHandoffThreshold() {
-        handoffThresholdTask?.cancel()
-        handoffThresholdTask = Task {
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard !Task.isCancelled else { return }
-            guard catalogSyncPhase == .inProgress else { return }
-            handoffReady = true
-        }
-    }
-
     private func handleFinishContinue() {
         guard !onboardingCoordinator.isCommitting else { return }
 
@@ -1695,6 +1711,10 @@ struct OnboardingRootView: View {
                 startCatalogSyncTask()
                 return
             case .inProgress:
+                if handoffReady {
+                    commitAndFinish()
+                    return
+                }
                 onboardingCoordinator.validationMessage = "Catalog sync is still in progress. Please wait for completion before entering your workspace."
                 return
             case .succeeded:
@@ -1708,8 +1728,6 @@ struct OnboardingRootView: View {
     private func runCatalogSyncForSelectedSchool() async {
         defer {
             catalogSyncTask = nil
-            handoffThresholdTask?.cancel()
-            handoffThresholdTask = nil
         }
 
         let schoolName = draft.schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1723,7 +1741,6 @@ struct OnboardingRootView: View {
         handoffReady = false
         catalogSyncStartDate = Date()
         lockedCourseDenominator = 0
-        scheduleAutoHandoffThreshold()
 
         let toastID = notifications.post(
             kind: .progress,
@@ -1753,7 +1770,7 @@ struct OnboardingRootView: View {
 
             if shouldUseCatalogIngestCoordinator {
                 catalogSyncVisualPhase = .downloading
-                _ = try await CatalogIngestCoordinator.runCatalogSync(
+                let syncOutcome = try await CatalogIngestCoordinator.runCatalogSync(
                     manifest: manifest,
                     toastID: toastID,
                     collegePersistence: collegePersistence,
@@ -1776,9 +1793,55 @@ struct OnboardingRootView: View {
                         },
                         onCatalogIndexFinished: { catoid, succeeded in
                             markCatalogScrapeStatus(catoid: catoid, status: succeeded ? .completed : .failed)
+                        },
+                        onSyncTerminal: { terminal in
+                            switch terminal {
+                            case .failed(let message):
+                                catalogSyncPhase = .failed
+                                catalogSyncMessage = "Sync failed: \(message)"
+                                onboardingCoordinator.validationMessage = "Catalog sync failed. Retry to continue."
+                            case .skipped(let reason):
+                                let programCount = collegePersistence.catalogProgramCount(
+                                    for: canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName
+                                )
+                                if programCount > 0 {
+                                    handoffReady = true
+                                    catalogSyncPhase = .succeeded
+                                    catalogSyncProgress = 1
+                                    catalogSyncMessage = reason
+                                } else {
+                                    catalogSyncPhase = .failed
+                                    catalogSyncMessage = reason
+                                    onboardingCoordinator.validationMessage = "Catalog sync was skipped and no programs are available. Retry sync."
+                                }
+                            case .succeeded:
+                                break
+                            }
                         }
                     )
                 )
+
+                switch syncOutcome {
+                case .skipped(let message):
+                    let programCount = collegePersistence.catalogProgramCount(
+                        for: canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName
+                    )
+                    if programCount > 0 {
+                        handoffReady = true
+                        catalogSyncPhase = .succeeded
+                        catalogSyncProgress = 1
+                        catalogSyncMessage = message
+                    } else if catalogSyncPhase != .failed {
+                        catalogSyncPhase = .failed
+                        catalogSyncMessage = message
+                        onboardingCoordinator.validationMessage = "Catalog sync was skipped and no programs are available. Retry sync."
+                    }
+                case .completed:
+                    if handoffReady {
+                        catalogSyncPhase = .succeeded
+                        catalogSyncProgress = 1
+                    }
+                }
             } else {
                 notifications.update(id: toastID, message: "Discovering catalog profile…", progress: 0.2)
                 catalogSyncProgress = 0.2
@@ -1802,32 +1865,46 @@ struct OnboardingRootView: View {
                 if let uni = collegePersistence.getActiveUniversity() {
                     CatalogIngestPipeline.postCatalogDataDidCommit(
                         universityID: uni.id,
-                        reason: "catalog onboarding profile committed"
+                        reason: "catalog onboarding profile committed",
+                        commitPhase: .profile,
+                        programCount: profile.degreeRequirements.count,
+                        schoolID: manifest.id
                     )
                 }
+                handoffReady = collegePersistence.catalogProgramCount(
+                    for: canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName
+                ) > 0 || !profile.courses.isEmpty
             }
             UserDefaults.standard.set(false, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
 
-            notifications.complete(
-                id: toastID,
-                kind: .success,
-                title: "Catalog Ready",
-                message: "\(canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName) is synced and ready.",
-                autoDismissAfter: 4
-            )
+            if catalogSyncPhase != .failed, catalogSyncPhase == .succeeded || handoffReady {
+                let isSkipped = catalogSyncMessage.localizedCaseInsensitiveContains("skipped")
+                    || catalogSyncMessage.localizedCaseInsensitiveContains("unchanged")
+                notifications.complete(
+                    id: toastID,
+                    kind: isSkipped ? .info : .success,
+                    title: isSkipped ? "Catalog Up to Date" : "Catalog Ready",
+                    message: isSkipped
+                        ? catalogSyncMessage
+                        : "\(canonicalSchoolName.isEmpty ? schoolName : canonicalSchoolName) is synced and ready.",
+                    autoDismissAfter: 4
+                )
 
-            if !catalogSyncMessage.localizedCaseInsensitiveContains("skipped")
-                && !catalogSyncMessage.localizedCaseInsensitiveContains("unchanged") {
-                catalogSyncMessage = "Catalog sync completed."
-            }
-            catalogSyncPhase = .succeeded
-            catalogSyncProgress = 1
-            reloadContextOptionsImmediately()
-
-            if onboardingCoordinator.currentStep == .identity {
-                onboardingCoordinator.validationMessage = nil
-                onboardingCoordinator.goNext()
+                if catalogSyncPhase != .succeeded {
+                    if !catalogSyncMessage.localizedCaseInsensitiveContains("skipped")
+                        && !catalogSyncMessage.localizedCaseInsensitiveContains("unchanged") {
+                        catalogSyncMessage = "Catalog sync completed."
+                    }
+                    catalogSyncPhase = .succeeded
+                    catalogSyncProgress = 1
+                }
                 reloadContextOptionsImmediately()
+
+                if onboardingCoordinator.currentStep == .identity {
+                    onboardingCoordinator.validationMessage = nil
+                    onboardingCoordinator.goNext()
+                    reloadContextOptionsImmediately()
+                }
             }
         } catch {
             notifications.dismiss(id: toastID)
@@ -1940,12 +2017,13 @@ struct OnboardingRootView: View {
     private func commitAndFinish() {
         onboardingCoordinator.isCommitting = true
 
-        if collegePersistence.profile == nil {
-            collegePersistence.fetchProfile()
-        }
-
-        guard let profile = collegePersistence.profile else {
-            onboardingCoordinator.validationMessage = "Could not load your profile. Please try again."
+        guard let profile = collegePersistence.ensurePrimaryProfile() else {
+            if let storeError = collegePersistence.appDataStore.storeOpenError {
+                onboardingCoordinator.validationMessage =
+                    "Could not open your data store. \(storeError)"
+            } else {
+                onboardingCoordinator.validationMessage = "Could not load your profile. Please try again."
+            }
             onboardingCoordinator.isCommitting = false
             return
         }
@@ -1984,6 +2062,7 @@ struct OnboardingRootView: View {
             primary.department = departmentBucket
         }
         collegePersistence.reconcileDeclaredProgramDegreeMetadata()
+        collegePersistence.pruneDuplicateEmptyAcademicProfiles()
 
         if !trimmedSchool.isEmpty {
             _ = collegePersistence.setActiveUniversity(named: trimmedSchool)
@@ -1996,10 +2075,14 @@ struct OnboardingRootView: View {
         UserDefaults.standard.set(lmsRaw, forKey: OnboardingPreferenceBridge.selectedLMSKey)
         UserDefaults.standard.set(widgetsRaw, forKey: OnboardingPreferenceBridge.selectedWidgetsKey)
         UserDefaults.standard.set(widgetsRaw, forKey: OnboardingPreferenceBridge.dashboardWidgetsKey)
-        UserDefaults.standard.set(lmsRaw, forKey: OnboardingPreferenceBridge.pendingLMSConnectKey)
-
-        if OnboardingPreferenceBridge.shouldOpenBrightspace(from: lmsRaw) {
-            UserDefaults.standard.set(true, forKey: BrightspaceWebCoordinator.pendingLoadPortalKey)
+        LMSPortalConfiguration.applyOnboardingLMSSelection(lmsRaw)
+        if lmsRaw.isEmpty {
+            UserDefaults.standard.removeObject(forKey: OnboardingPreferenceBridge.pendingLMSConnectKey)
+        } else {
+            UserDefaults.standard.set(lmsRaw, forKey: OnboardingPreferenceBridge.pendingLMSConnectKey)
+            if OnboardingPreferenceBridge.shouldOpenBrightspace(from: lmsRaw) {
+                UserDefaults.standard.set(true, forKey: LMSWebCoordinator.pendingLoadPortalKey)
+            }
         }
 
         let academicDraft = OnboardingAcademicDraft(
@@ -2024,8 +2107,6 @@ struct OnboardingRootView: View {
         // Prevent late async onboarding updates from racing the root-view handoff.
         catalogSyncTask?.cancel()
         catalogSyncTask = nil
-        handoffThresholdTask?.cancel()
-        handoffThresholdTask = nil
 
         onboardingCompleted = true
         onboardingCoordinator.isCommitting = false
@@ -2071,9 +2152,9 @@ private struct OnboardingSyncMotionCard: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Catalog Handoff")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                 Text(statusMessage)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -2082,12 +2163,12 @@ private struct OnboardingSyncMotionCard: View {
 
             if phase == .inProgress {
                 Text("\(Int((progress * 100).rounded()))%")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
         .background(backgroundStyle, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -2130,7 +2211,7 @@ private struct OnboardingSyncMotionCard: View {
 
     private var syncIcon: some View {
         Image(systemName: symbolName)
-            .font(.system(size: 16, weight: .semibold))
+            .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
             .foregroundStyle(tint)
             .keyframeAnimator(initialValue: 1.0, repeating: phase == .inProgress && !reduceMotion) { icon, scale in
                 icon.scaleEffect(scale)
@@ -2152,17 +2233,17 @@ private struct OnboardingDecisionCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: "checkmark.seal.fill")
-                .font(.system(size: 13, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                 .foregroundStyle(.green)
             Text(message)
-                .font(.system(size: 12, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                 .foregroundStyle(.primary)
             Text(status)
-                .font(.system(size: 11, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
         .background(Color.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)

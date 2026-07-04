@@ -5,6 +5,7 @@
 
 import Foundation
 import os
+import SwiftData
 
 /// local store-only school catalog import (Phase 7f — no local store).
 @MainActor
@@ -16,7 +17,78 @@ enum CatalogSchoolImportService {
         static let preserveExistingCourses = ImportPolicy(archiveMissingCourses: false)
     }
 
+    private struct StreamingImportSession: Sendable {
+        let universityID: UUID
+        let departmentIDByKey: [String: UUID]
+    }
+
+    @MainActor private static var streamingSessions: [String: StreamingImportSession] = [:]
+
     static func importSchoolCatalog(
+        _ schoolProfile: SchoolProfile,
+        policy: ImportPolicy = .fullSnapshot,
+        appDataStore: AppDataStore = .shared
+    ) async throws {
+        try await BackgroundServiceOnDemand.runThrowing(id: "catalog_school_import") {
+            try await LoadOperationTrace.withSpan(
+                name: "ImportSchoolCatalog",
+                category: .catalog,
+                executionContext: .background,
+                metadata: [
+                    "school": schoolProfile.schoolName,
+                    "courses": "\(schoolProfile.courses.count)"
+                ]
+            ) {
+                try await importSchoolCatalogImpl(schoolProfile, policy: policy, appDataStore: appDataStore)
+            }
+        }
+    }
+
+    /// Upserts one scraped course chunk during ModernCampus streaming without revision bumps.
+    static func upsertCourseChunk(
+        courses: [CatalogCourse],
+        schoolID: String,
+        schoolName: String,
+        catalogURL: String,
+        appDataStore: AppDataStore = .shared
+    ) async throws {
+        guard !courses.isEmpty else { return }
+        let session = try streamingSession(
+            schoolID: schoolID,
+            schoolName: schoolName,
+            catalogURL: catalogURL,
+            appDataStore: appDataStore
+        )
+        let inputs = await Task.detached(priority: .utility) {
+            CatalogImportTransforms.buildCourseImportInputs(
+                from: courses,
+                departmentIDByKey: session.departmentIDByKey
+            )
+        }.value
+        guard !inputs.isEmpty else { return }
+
+        try await LoadOperationTrace.withSpan(
+            name: "CatalogUpsertChunk",
+            category: .catalog,
+            executionContext: .background,
+            metadata: [
+                "school": schoolID,
+                "courses": "\(inputs.count)"
+            ]
+        ) {
+            try await persistCourseInputs(
+                universityID: session.universityID,
+                inputs: inputs,
+                appDataStore: appDataStore
+            )
+        }
+    }
+
+    static func clearStreamingImportSession(schoolID: String) {
+        streamingSessions.removeValue(forKey: schoolID)
+    }
+
+    private static func importSchoolCatalogImpl(
         _ schoolProfile: SchoolProfile,
         policy: ImportPolicy = .fullSnapshot,
         appDataStore: AppDataStore = .shared
@@ -58,74 +130,108 @@ enum CatalogSchoolImportService {
             name: schoolProfile.schoolName,
             catalogURL: schoolProfile.catalogURL
         )
+        let departmentIDByKey = try repo.departmentLookup(universityID: university.id).mapValues(\.id)
 
-        let departmentLookup = try repo.departmentLookup(universityID: university.id)
         let dedupedCourses = CatalogImportTransforms.deduplicatedCourses(schoolProfile.courses)
         let scrapedCodes = Set(dedupedCourses.map { CatalogImportTransforms.normalizeCourseCode($0.courseCode) })
-
-        let chunkSize = 500
-        var chunk: [CatalogRepository.CourseImportInput] = []
-        chunk.reserveCapacity(chunkSize)
-
-        for catalogCourse in dedupedCourses {
-            let courseKey = CatalogImportTransforms.normalizeCourseCode(catalogCourse.courseCode)
-            let extracted = CatalogImportTransforms.extractCreditsFromTitleAndClean(catalogCourse.title)
-            let incomingTitle = CatalogImportTransforms.normalize(extracted.cleanTitle)
-            let incomingDescriptionRaw = CatalogImportTransforms.normalize(catalogCourse.description)
-            let incomingDescription = CatalogImportTransforms.sanitizeCatalogDescription(
-                incomingDescriptionRaw,
-                courseCode: catalogCourse.courseCode,
-                title: catalogCourse.title
+        let courseInputs = await Task.detached(priority: .utility) {
+            CatalogImportTransforms.buildCourseImportInputs(
+                from: dedupedCourses,
+                departmentIDByKey: departmentIDByKey
             )
-            let incomingDepartment = CatalogImportTransforms.normalize(catalogCourse.department)
-            let incomingCredits = catalogCourse.credits
-            let finalTitle: String = {
-                if !incomingTitle.isEmpty, incomingTitle.caseInsensitiveCompare(courseKey) != .orderedSame {
-                    return incomingTitle
-                }
-                return courseKey
-            }()
-            let descriptionIsInvalid = CatalogImportTransforms.isInvalidCatalogDescription(incomingDescription)
-            let finalDescription = descriptionIsInvalid ? nil : incomingDescription
-            let finalDepartment = incomingDepartment.isEmpty ? nil : incomingDepartment
-            let finalCredits = Int16(max(0, incomingCredits))
+        }.value
+        let requirementInputs = buildRequirementInputs(from: schoolProfile.degreeRequirements)
 
-            var departmentID: UUID?
-            if let finalDepartment {
-                let key = finalDepartment.lowercased()
-                departmentID = departmentLookup[key]?.id
-            }
+        let prepared = CatalogSchoolImportWriter.PreparedImport(
+            universityID: university.id,
+            universityName: schoolProfile.schoolName,
+            courseChunks: CatalogSchoolImportWriter.chunk(courseInputs),
+            requirementInputs: requirementInputs,
+            scrapedCodes: scrapedCodes,
+            archiveMissingCourses: policy.archiveMissingCourses
+        )
 
-            chunk.append(
-                CatalogRepository.CourseImportInput(
-                    courseCode: courseKey,
-                    title: finalTitle,
-                    credits: finalCredits > 0 ? finalCredits : 3,
-                    descriptionText: finalDescription,
-                    department: finalDepartment,
-                    departmentID: departmentID,
-                    isArchived: false,
-                    catalogStableID: nil,
-                    provenanceJSON: nil,
-                    prerequisiteRulesJSON: {
-                        guard let rule = catalogCourse.prerequisites,
-                              let data = try? JSONEncoder().encode(rule) else { return nil }
-                        return String(data: data, encoding: .utf8)
-                    }()
-                )
-            )
+        try await persistPreparedImport(prepared, appDataStore: appDataStore)
 
-            if chunk.count >= chunkSize {
-                try repo.upsertImportedCourses(universityID: university.id, inputs: chunk)
-                chunk.removeAll(keepingCapacity: true)
-            }
+        CatalogStoreCoordinator.shared.upsertRegistryRecord(
+            schoolID: schoolID,
+            universityID: university.id,
+            universityName: schoolProfile.schoolName
+        )
+        ModelMergeCoalescer.flushNow()
+
+        if let profile = try appDataStore.profileRepository.fetchPrimaryProfile() {
+            profile.collegeName = schoolProfile.schoolName
+            try appDataStore.profileSave()
         }
 
-        if !chunk.isEmpty {
-            try repo.upsertImportedCourses(universityID: university.id, inputs: chunk)
+        AppDataStoreBridge.syncActiveCatalogSchool(universityName: schoolProfile.schoolName)
+        appDataStore.bumpCatalogDataRevision()
+
+        CatalogIngestPipeline.postCatalogDataDidCommit(
+            universityID: university.id,
+            reason: "local store catalog import committed",
+            commitPhase: .profile,
+            programCount: requirementInputs.count,
+            schoolID: schoolID
+        )
+    }
+
+    private static func streamingSession(
+        schoolID: String,
+        schoolName: String,
+        catalogURL: String,
+        appDataStore: AppDataStore
+    ) throws -> StreamingImportSession {
+        if let cached = streamingSessions[schoolID] {
+            return cached
         }
 
-        let requirementInputs = schoolProfile.degreeRequirements.enumerated().map { index, degreeReq in
+        try appDataStore.setActiveCatalogSchoolID(schoolID)
+        guard let repo = appDataStore.catalogRepository else {
+            throw NSError(
+                domain: "CatalogImport",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Catalog local store container is not available."]
+            )
+        }
+
+        let profile = SchoolProfile(
+            schoolID: schoolID,
+            schoolName: schoolName,
+            catalogURL: catalogURL,
+            version: "streaming",
+            lastUpdated: Date(),
+            courses: [],
+            degreeRequirements: [],
+            policies: SchoolPolicies(
+                transferCreditLimit: nil,
+                minorTransferLimit: nil,
+                maxCreditsPerSemester: nil,
+                minCreditsForFullTime: nil,
+                gradeForCredit: nil,
+                repeatCoursePolicy: nil
+            )
+        )
+        let universityID = stableUniversityID(for: profile)
+        let university = try repo.ensureUniversityForImport(
+            id: universityID,
+            name: schoolName,
+            catalogURL: catalogURL
+        )
+        let departmentIDByKey = try repo.departmentLookup(universityID: university.id).mapValues(\.id)
+        let session = StreamingImportSession(
+            universityID: university.id,
+            departmentIDByKey: departmentIDByKey
+        )
+        streamingSessions[schoolID] = session
+        return session
+    }
+
+    private static func buildRequirementInputs(
+        from degreeRequirements: [DegreeRequirement]
+    ) -> [CatalogRepository.DegreeRequirementImportInput] {
+        CatalogRequirementAST.attachAST(to: degreeRequirements).enumerated().map { index, degreeReq in
             let requiredCSV = degreeReq.requiredCourses?.joined(separator: ", ")
             let requiredDetailedJSON = degreeReq.requiredCoursesDetailed.flatMap {
                 AcademicProgramHelpers.encodeDetailedCourseList($0)
@@ -154,36 +260,15 @@ enum CatalogSchoolImportService {
                 trackVariant: nil,
                 requirementsHash: nil,
                 catalogStableID: nil,
-                provenanceJSON: nil
+                provenanceJSON: nil,
+                extractionConfidence: nil,
+                signalSource: nil,
+                parserVersion: CatalogParserCapability.version,
+                programAttachmentConfidence: nil,
+                requirementPredicateJSON: CatalogRequirementAST.encode(degreeReq.requirementPredicate),
+                catalogEditionID: nil
             )
         }
-        try repo.upsertDegreeRequirements(universityID: university.id, inputs: requirementInputs)
-
-        if policy.archiveMissingCourses {
-            try repo.archiveCoursesNotInCodes(universityID: university.id, scrapedCodes: scrapedCodes)
-        }
-
-        try repo.activateUniversity(id: university.id, name: schoolProfile.schoolName)
-        CatalogStoreCoordinator.shared.upsertRegistryRecord(
-            schoolID: schoolID,
-            universityID: university.id,
-            universityName: schoolProfile.schoolName
-        )
-        try appDataStore.catalogSave()
-        ModelMergeCoalescer.flushNow()
-
-        if let profile = try appDataStore.profileRepository.fetchPrimaryProfile() {
-            profile.collegeName = schoolProfile.schoolName
-            try appDataStore.profileSave()
-        }
-
-        AppDataStoreBridge.syncActiveCatalogSchool(universityName: schoolProfile.schoolName)
-        appDataStore.bumpCatalogDataRevision()
-
-        CatalogIngestPipeline.postCatalogDataDidCommit(
-            universityID: university.id,
-            reason: "local store catalog import committed"
-        )
     }
 
     private static func stableUniversityID(for profile: SchoolProfile) -> UUID {
@@ -219,5 +304,50 @@ enum CatalogSchoolImportService {
             dataByKey[key] = encoded
         }
         UserDefaults.standard.set(dataByKey, forKey: defaultsKey)
+    }
+
+    private static func persistPreparedImport(
+        _ prepared: CatalogSchoolImportWriter.PreparedImport,
+        appDataStore: AppDataStore
+    ) async throws {
+        if CollegeTestRuntime.isUnitTestProcess {
+            try CatalogSchoolImportWriter.persistPreparedImport(
+                prepared,
+                context: appDataStore.profileContext
+            )
+            ModelMergeCoalescer.scheduleSave(appDataStore.profileContext)
+            return
+        }
+        let container = appDataStore.profileContainer
+        try await BackgroundServiceExecutor.persistOffMain(container: container) { context in
+            try CatalogSchoolImportWriter.persistPreparedImport(prepared, context: context)
+        }
+    }
+
+    private static func persistCourseInputs(
+        universityID: UUID,
+        inputs: [CatalogRepository.CourseImportInput],
+        appDataStore: AppDataStore
+    ) async throws {
+        if CollegeTestRuntime.isUnitTestProcess {
+            try CatalogSchoolImportWriter.upsertCourses(
+                universityID: universityID,
+                inputs: inputs,
+                context: appDataStore.profileContext
+            )
+            ModelMergeCoalescer.scheduleSave(appDataStore.profileContext)
+            return
+        }
+        let container = appDataStore.profileContainer
+        try await BackgroundServiceExecutor.persistOffMain(container: container) { context in
+            try CatalogSchoolImportWriter.upsertCourses(
+                universityID: universityID,
+                inputs: inputs,
+                context: context
+            )
+            if context.hasChanges {
+                try context.save()
+            }
+        }
     }
 }

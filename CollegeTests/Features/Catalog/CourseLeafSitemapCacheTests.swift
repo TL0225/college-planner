@@ -73,4 +73,43 @@ final class CourseLeafSitemapCacheTests: XCTestCase {
 
         XCTAssertEqual(fetchCounter.count, 2)
     }
+
+    func testOrderPageURLsForIngest_programPagesBeforeCoursePages() {
+        let urls = [
+            URL(string: "https://bulletin.fordham.edu/courses/accounting/")!,
+            URL(string: "https://bulletin.fordham.edu/about/")!,
+            URL(string: "https://bulletin.fordham.edu/undergraduate/liberal-studies/programs/accounting-bs/")!,
+        ]
+
+        let ordered = CourseLeafEngine.orderPageURLsForIngest(urls, schoolID: "fordham_university")
+
+        XCTAssertEqual(ordered.map { $0.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }, [
+            "undergraduate/liberal-studies/programs/accounting-bs",
+            "about",
+            "courses/accounting",
+        ])
+    }
+
+    func testOrderPageURLsForIngest_isStableWithinPriorityTiers() {
+        let urls = [
+            URL(string: "https://bulletins.nyu.edu/courses/zoology/")!,
+            URL(string: "https://bulletins.nyu.edu/courses/anthropology/")!,
+            URL(string: "https://bulletins.nyu.edu/undergraduate/arts-science/programs/anthropology-ba/")!,
+        ]
+
+        let ordered = CourseLeafEngine.orderPageURLsForIngest(urls, schoolID: "new_york_university")
+
+        XCTAssertEqual(
+            ordered.first?.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+            "undergraduate/arts-science/programs/anthropology-ba"
+        )
+        XCTAssertEqual(
+            ordered.last?.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+            "courses/zoology"
+        )
+        XCTAssertEqual(
+            ordered[1].path.trimmingCharacters(in: CharacterSet(charactersIn: "/")),
+            "courses/anthropology"
+        )
+    }
 }

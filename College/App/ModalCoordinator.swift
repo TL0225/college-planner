@@ -6,8 +6,7 @@
 import SwiftUI
 import Observation
 
-/// Simple app-wide modal coordinator so overlays can be presented above page content
-/// (like AddCourseView) without being clipped by nested cards.
+/// Coordinates sheet presentation for flows that still route through a shared modal enum.
 @Observable
 @MainActor
 final class ModalCoordinator {

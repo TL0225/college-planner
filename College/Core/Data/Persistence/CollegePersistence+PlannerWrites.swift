@@ -78,6 +78,52 @@ extension CollegePersistence {
         return course
     }
 
+    /// Adds (or relocates) a course onto a target semester when the user drags a row from the
+    /// Requirements Breakdown onto a semester block. If the course is already planned elsewhere it
+    /// is moved into the target semester (a course lives in exactly one semester); otherwise a new
+    /// planned course is created using the dragged title/credits, backfilled from the catalog when
+    /// those fields are missing. Returns `true` when a change was committed.
+    @discardableResult
+    func addRequirementCourse(
+        toSemesterID semesterID: UUID,
+        code rawCode: String,
+        title rawTitle: String,
+        credits rawCredits: Int
+    ) -> Bool {
+        let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !code.isEmpty else { return false }
+        guard let semester = try? profileRepository.fetchSemester(id: semesterID) else { return false }
+
+        let title = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let existing = plannedCourse(matchingCode: code) {
+            if existing.semester?.id == semester.id { return false }
+            existing.semester = semester
+            existing.sortOrder = Int32((semester.courses ?? []).count)
+            if existing.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !title.isEmpty {
+                existing.name = title
+            }
+            if existing.credits == 0, rawCredits > 0 {
+                existing.credits = Int16(rawCredits)
+            }
+            _ = try? appDataStore.profileSave()
+            fetchSemesters()
+            bumpProfileRevision()
+            return true
+        }
+
+        addCourse(
+            to: semester,
+            code: code,
+            name: title,
+            credits: max(0, rawCredits),
+            status: "Planned",
+            gradingType: "Letter Grade",
+            professor: nil
+        )
+        return true
+    }
+
     func activeUniversityHasCatalogCourses() -> Bool {
         guard let university = getActiveUniversity(),
               let repo = catalogRepository else { return false }

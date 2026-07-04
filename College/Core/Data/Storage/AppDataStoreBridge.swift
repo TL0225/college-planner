@@ -7,6 +7,8 @@ import Foundation
 
 /// Keeps `AppDataStore` catalog partition aligned with the active local store university / catalog school.
 enum AppDataStoreBridge {
+    static let activeCatalogSchoolIDKey = "catalog.activeSchoolID"
+    static let legacyActiveCatalogUniversityIDKey = "catalog.activeUniversityID"
     nonisolated static func syncActiveCatalogSchool(universityName: String?) {
         if Thread.isMainThread {
             MainActor.assumeIsolated {
@@ -23,13 +25,13 @@ enum AppDataStoreBridge {
     private static func syncActiveCatalogSchoolOnMain(universityName: String?) {
         let trimmed = universityName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: "catalog.activeSchoolID")
+            UserDefaults.standard.removeObject(forKey: activeCatalogSchoolIDKey)
             try? AppDataStore.shared.setActiveCatalogSchoolID(nil)
             return
         }
 
         let schoolID = CatalogStoreCoordinator.shared.schoolID(for: trimmed)
-        UserDefaults.standard.set(schoolID, forKey: "catalog.activeSchoolID")
+        UserDefaults.standard.set(schoolID, forKey: activeCatalogSchoolIDKey)
         do {
             try AppDataStore.shared.setActiveCatalogSchoolID(schoolID)
         } catch {

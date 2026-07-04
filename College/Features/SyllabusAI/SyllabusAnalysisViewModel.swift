@@ -95,7 +95,7 @@ final class SyllabusAnalysisViewModel: ObservableObject {
             defer { os_signpost(.end, log: perfLog, name: "SyllabusExtract", signpostID: extractID) }
 #endif
             ingest = try await Task.detached(priority: .userInitiated) {
-                try SyllabusPDFIngestService().extractText(from: pdfURL)
+                try await SyllabusPDFIngestService().extractText(from: pdfURL)
             }.value
         } catch {
             phase = .failed(error.localizedDescription)
@@ -112,7 +112,7 @@ final class SyllabusAnalysisViewModel: ObservableObject {
         }()
 
         // --- Cache hit: apply cached result and skip all model work ---
-        if let cached = Self.cachedResult(for: contentHash) {
+        if let cached = await Self.cachedResult(for: contentHash) {
             applyDecoded(cached, calendar: calendar, timeZone: timeZone, sourceText: ingest.cleanedText, semesterText: semesterText)
             // Refresh per-course key so future quick-cache hits stay warm.
             Self.persistResult(cached, hash: contentHash, courseCode: courseCode)
@@ -389,7 +389,7 @@ final class SyllabusAnalysisViewModel: ObservableObject {
     // MARK: - Cache helpers
 
     /// Returns `~/Library/Application Support/<bundleID>/SyllabusCache/`, creating it if needed.
-    private static func cacheDirectory() -> URL? {
+    private nonisolated static func cacheDirectory() -> URL? {
         guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
@@ -404,11 +404,13 @@ final class SyllabusAnalysisViewModel: ObservableObject {
         return dir
     }
 
-    private static func cachedResult(for hash: String) -> SyllabusData? {
-        guard let dir = cacheDirectory() else { return nil }
-        let file = dir.appendingPathComponent("\(hash).json")
-        guard let data = try? Data(contentsOf: file) else { return nil }
-        return try? JSONDecoder().decode(SyllabusData.self, from: data)
+    private nonisolated static func cachedResult(for hash: String) async -> SyllabusData? {
+        await Task.detached(priority: .utility) {
+            guard let dir = cacheDirectory() else { return nil }
+            let file = dir.appendingPathComponent("\(hash).json")
+            guard let data = try? Data(contentsOf: file) else { return nil }
+            return try? JSONDecoder().decode(SyllabusData.self, from: data)
+        }.value
     }
 
     private static func persistResult(_ data: SyllabusData, hash: String, courseCode: String? = nil) {
@@ -438,10 +440,10 @@ final class SyllabusAnalysisViewModel: ObservableObject {
         semesterText: String?,
         calendar: Calendar,
         timeZone: TimeZone
-    ) -> Bool {
+    ) async -> Bool {
         let key = Self.courseHashKey(for: courseCode)
         guard let hash = UserDefaults.standard.string(forKey: key),
-              let cached = Self.cachedResult(for: hash) else { return false }
+              let cached = await Self.cachedResult(for: hash) else { return false }
         applyDecoded(cached, calendar: calendar, timeZone: timeZone, sourceText: nil, semesterText: semesterText)
         phase = .ready
         return true

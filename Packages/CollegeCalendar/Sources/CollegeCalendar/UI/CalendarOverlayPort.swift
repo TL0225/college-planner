@@ -3,6 +3,7 @@ import SwiftUI
 public enum CalendarOverlayPresentationStyle {
     case anchoredPanel
     case fullScreenOverlay
+    case inspectorSidebar
 }
 
 @MainActor

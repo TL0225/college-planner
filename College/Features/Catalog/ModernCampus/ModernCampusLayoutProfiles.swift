@@ -20,8 +20,7 @@ struct ModernCampusProfileConfig: Sendable, Equatable {
     static let `default` = ModernCampusProfileConfig(prefersEntityPageProgramDiscovery: false)
 
     static func forHost(_ host: String?) -> ModernCampusProfileConfig {
-        let lower = (host ?? "").lowercased()
-        if lower.contains("buffalo.edu") {
+        if ModernCampusHostProfiles.resolve(host: host)?.prefersEntityPageProgramDiscovery == true {
             return ModernCampusProfileConfig(prefersEntityPageProgramDiscovery: true)
         }
         return .default

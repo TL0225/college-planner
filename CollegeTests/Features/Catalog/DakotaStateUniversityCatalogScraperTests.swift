@@ -27,6 +27,7 @@ final class DakotaStateUniversityCatalogScraperTests: XCTestCase {
     }
 
     func testDiscoverActiveCatalogs_findsUndergraduateAndGraduate() async throws {
+        try CollegeTestsSupport.skipUnlessLiveNetworkTests()
         let (normalized, _) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
         let discovered = try await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalized)
         let reduced = ModernCampusCatalogLabels.latestCatalogsPerNormalizedLabel(from: discovered)
@@ -37,6 +38,7 @@ final class DakotaStateUniversityCatalogScraperTests: XCTestCase {
     }
 
     func testScrapePrograms_topologyOnly_returnsPrograms() async throws {
+        try CollegeTestsSupport.skipUnlessLiveNetworkTests()
         let (normalized, _) = ModernCampusEngine.normalizeCatalogEntryPointForCaller(catalogURL)
         guard let baseURL = URL(string: normalized) else {
             XCTFail("Invalid normalized catalog URL")

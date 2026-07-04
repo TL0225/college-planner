@@ -57,14 +57,22 @@ struct SettingsCatalogSelectedProgramsBlock: View {
     @State private var isHydrated: Bool = false
     @State private var status: ScrapeStatus = .idle
 
+    private struct ProgramsRefreshTrigger: Equatable {
+        var catalogDataRevision: Int
+        var profileRevision: Int
+        var universityNamesKey: String
+    }
+
+    private var programsRefreshTrigger: ProgramsRefreshTrigger {
+        ProgramsRefreshTrigger(
+            catalogDataRevision: collegePersistence.catalogDataRevision,
+            profileRevision: collegePersistence.profileRevision,
+            universityNamesKey: universityNames.joined(separator: "|")
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(String(
-                localized: "settings.general.catalog_selected_title",
-                defaultValue: "Selected programs only"
-            ))
-            .font(.subheadline.weight(.medium))
-
             Text(String(
                 localized: "settings.general.catalog_selected_help",
                 defaultValue: "Pick the specific programs you care about. Only those get a deep scrape of their requirement pages — much faster than the Full catalog button, and you can come back later to add more. Your picks are saved on this Mac."
@@ -125,17 +133,17 @@ struct SettingsCatalogSelectedProgramsBlock: View {
         }
         .padding(.vertical, 2)
         .opacity(isOtherSyncRunning ? 0.65 : 1)
-        .task(id: universityNames.joined(separator: "|")) {
+        .task(id: programsRefreshTrigger) {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled else { return }
+            await Task.yield()
             await refreshPrograms()
         }
-        .onChange(of: collegePersistence.profileRevision) { _, _ in
-            Task { await refreshPrograms() }
-        }
-        .onChange(of: collegePersistence.catalogDataRevision) { _, _ in
-            Task { await refreshPrograms() }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .collegeCatalogScrapePurgeFinished)) { _ in
-            Task { await refreshPrograms() }
+            Task {
+                await Task.yield()
+                await refreshPrograms()
+            }
         }
     }
 
@@ -261,7 +269,7 @@ struct SettingsCatalogSelectedProgramsBlock: View {
                     }
                 }
             }
-            .padding(8)
+            .padding(DesignSystem.Spacing.sm)
         }
         .frame(maxHeight: 320)
         .background(Color.primary.opacity(0.04))
@@ -502,7 +510,10 @@ struct SettingsCatalogSelectedProgramsBlock: View {
 
         DebugLogger.shared.scraper("📚 Selected scrape: launching items=\(items.count) force=\(forceRefresh)")
         status = .starting(count: items.count)
-        onSyncStateChange(true)
+        Task { @MainActor in
+            await Task.yield()
+            onSyncStateChange(true)
+        }
         let force = forceRefresh
         let toScrape = items
         let persistence = collegePersistence
@@ -522,6 +533,7 @@ struct SettingsCatalogSelectedProgramsBlock: View {
                 "📚 Selected scrape: hydrator finished saved=\(summary.savedCategories) covered=\(summary.coveredPrograms) failed=\(summary.failedPrograms) skipped=\(summary.skippedPrograms)"
             )
             status = bannerStatus(from: summary, requested: toScrape.count, force: force, errors: results.compactMap(\.errorMessage))
+            await Task.yield()
             onSyncStateChange(false)
         }
     }

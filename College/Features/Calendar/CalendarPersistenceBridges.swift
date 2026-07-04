@@ -19,6 +19,8 @@ extension CalendarEvent {
             providerSource: providerSource,
             customColorHex: customColorHex,
             recurrenceRule: recurrenceRule,
+            providerEventId: providerEventId,
+            attendeesJSON: attendeesJSON,
             courseID: course?.id,
             courseCode: course?.code,
             semesterID: semester?.id

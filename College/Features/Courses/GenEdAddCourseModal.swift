@@ -211,6 +211,7 @@ struct GenEdAddCourseModal: View {
             targetSemesterID: targetSemesterID,
             tagAsGenEd: tagAsGenEd
         )
+        ProductAnalytics.track(.courseAdded, properties: ["code": course.courseCode])
         collegePersistence.refreshAll()
         collegePersistence.bumpProfileRevision()
         closeSheet()
@@ -443,7 +444,7 @@ struct GenEdAddCourseModal: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .tint(creditFilter == filter ? .accentColor : nil)
+                    .tint(creditFilter == filter ? Color.accentColor : nil)
                 }
 
                 Menu {
@@ -557,8 +558,8 @@ private struct GenEdCatalogRow: View {
             if isHovered || isSelected {
                 Button(action: onAdd) {
                     Image(systemName: groupSelectionEnabled ? (isSelected ? "checkmark.circle.fill" : "plus.circle.fill") : "plus.app.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.accentColor)
+                        .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
                 .help(groupSelectionEnabled ? (isSelected ? "Remove from group" : "Add to group") : "Add course")

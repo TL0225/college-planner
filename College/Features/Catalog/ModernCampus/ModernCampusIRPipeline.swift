@@ -41,7 +41,7 @@ enum ModernCampusIRPipeline {
         schoolID: String,
         catalogVersionID: String
     ) async -> PageParseResult {
-        let (profileID, confidenceScore, analysis, versionID, host) = analyzePage(
+        let (_, _, analysis, versionID, host) = analyzePage(
             html: html,
             pageURL: pageURL,
             schoolID: schoolID,

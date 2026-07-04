@@ -89,24 +89,24 @@ struct UnlockView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 44, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.primary)
+                .font(DesignSystem.Fonts.main(size: 44, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.primary)
 
             VStack(spacing: 6) {
                 Text("Locked")
                     .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
 
                 Text("Biometric authentication is temporarily disabled. Use Unlock to continue.")
                     .font(DesignSystem.Fonts.main(size: 13))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .multilineTextAlignment(.center)
 
             if let err = securityManager.lastUnlockError, !err.isEmpty {
                 Text(err)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.warning)
+                    .foregroundStyle(DesignSystem.Colors.warning)
                     .multilineTextAlignment(.center)
             }
 
@@ -134,8 +134,8 @@ struct UnlockView: View {
                 .padding(.vertical, 10)
                 .frame(minWidth: 140)
                 .background(DesignSystem.Colors.primary)
-                .foregroundColor(.white)
-                .cornerRadius(14)
+                .foregroundStyle(.white)
+                .clipShape(.rect(cornerRadius: 14))
             }
             .buttonStyle(.plain)
             .controlSize(.large)
@@ -162,8 +162,8 @@ struct UnlockView: View {
                 .padding(.vertical, 10)
                 .frame(minWidth: 140)
                 .background(DesignSystem.Colors.primary)
-                .foregroundColor(.white)
-                .cornerRadius(14)
+                .foregroundStyle(.white)
+                .clipShape(.rect(cornerRadius: 14))
                 .simultaneousGesture(TapGesture().onEnded {
                     beginAuthenticationAttempt()
                 })
@@ -172,7 +172,7 @@ struct UnlockView: View {
             .disabled(isWorking || isAuthenticating)
             */
         }
-        .padding(28)
+        .padding(DesignSystem.Spacing.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignSystem.Colors.bgMain)
         .onAppear {

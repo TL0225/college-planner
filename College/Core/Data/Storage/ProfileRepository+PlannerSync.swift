@@ -55,4 +55,8 @@ extension ProfileRepository {
         return try context.fetch(descriptor)
     }
 
+    func totalPlannerCourseCount() throws -> Int {
+        try context.fetchCount(FetchDescriptor<PlannerCourse>())
+    }
+
 }

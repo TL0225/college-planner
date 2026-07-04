@@ -59,7 +59,10 @@ enum CatalogProgramWriteBridge {
                 id: UUID(),
                 name: dept.name,
                 code: dept.code,
-                school: dept.school
+                school: dept.school,
+                extractionConfidence: nil,
+                signalSource: nil,
+                parserVersion: CatalogParserCapability.version
             )
         }
         try repo.upsertDepartments(universityID: universityID, inputs: inputs)
@@ -129,7 +132,12 @@ enum CatalogProgramWriteBridge {
                 catalogStableID: major.catalogStableID,
                 provenanceJSON: major.provenanceJSON,
                 mappingConfidence: major.mappingConfidence,
-                mappingSource: major.mappingSource
+                mappingSource: major.mappingSource,
+                parserVersion: CatalogParserCapability.version,
+                programKind: major.parentProgramKey == nil ? "program" : (major.trackVariant != nil ? "track" : "concentration"),
+                parentProgramKey: major.parentProgramKey,
+                trackVariant: major.trackVariant,
+                catalogEditionID: nil
             )
         }
         try repo.upsertMajors(universityID: universityID, inputs: inputs)
@@ -151,13 +159,10 @@ enum CatalogProgramWriteBridge {
         universityName: String,
         appDataStore: AppDataStore
     ) -> (CatalogRepository, UUID)? {
-        guard let repo = appDataStore.catalogRepository else { return nil }
-        let trimmed = universityName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard let active = try? repo.fetchActiveUniversity(),
-              active.name.caseInsensitiveCompare(trimmed) == .orderedSame else {
-            return nil
-        }
-        return (repo, active.id)
+        CatalogStoreSnapshotBridge.attachUniversity(
+            named: universityName,
+            appDataStore: appDataStore,
+            activate: true
+        )
     }
 }

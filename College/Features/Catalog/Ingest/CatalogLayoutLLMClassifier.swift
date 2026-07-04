@@ -95,7 +95,7 @@ enum CatalogLayoutLLMClassifier {
         domFeatures: CatalogDOMFeatures,
         scorecard: CourseLeafScorecard
     ) async -> (profileID: String, confidence: Double)? {
-        guard AppleSiliconPlatform.isSupported else { return nil }
+        guard AppleSiliconPlatform.isMLXCompatible else { return nil }
         let spec = ModelSpec.jsonWorker
         guard let modelPath = try? await ModelManager.shared.ensureModelInstalled(spec, progress: { _ in }) else {
             return nil
@@ -120,7 +120,7 @@ Deterministic guess: \(scorecard.profileID) @ \(String(format: "%.2f", scorecard
         host: String?,
         scorecard: ModernCampusScorecard
     ) async -> (profileID: String, confidence: Double)? {
-        guard AppleSiliconPlatform.isSupported else { return nil }
+        guard AppleSiliconPlatform.isMLXCompatible else { return nil }
         let spec = ModelSpec.jsonWorker
         guard let modelPath = try? await ModelManager.shared.ensureModelInstalled(spec, progress: { _ in }) else {
             return nil

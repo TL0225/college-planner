@@ -15,6 +15,17 @@ extension CalendarRepository {
         return try context.fetch(descriptor).first
     }
 
+    func fetchCalendarEvents(ids: [UUID]) throws -> [CalendarEvent] {
+        let targetIDs = ids
+        guard !targetIDs.isEmpty else { return [] }
+        let descriptor = FetchDescriptor<CalendarEvent>(
+            predicate: #Predicate<CalendarEvent> { event in
+                targetIDs.contains(event.id)
+            }
+        )
+        return try context.fetch(descriptor)
+    }
+
     func fetchPlannerTask(id: UUID) throws -> PlannerTask? {
         var descriptor = FetchDescriptor<PlannerTask>(predicate: #Predicate { $0.id == id })
         descriptor.fetchLimit = 1
@@ -35,7 +46,7 @@ extension CalendarRepository {
         customColorHex: String? = nil,
         recurrenceRule: String? = nil,
         attendeesJSON: String? = nil,
-        brightspaceAnnouncementId: String? = nil,
+        lmsAnnouncementId: String? = nil,
         semester: PlannerSemester? = nil,
         course: PlannerCourse? = nil,
         createdAt: Date = .now,
@@ -69,7 +80,7 @@ extension CalendarRepository {
         event.customColorHex = customColorHex
         event.recurrenceRule = recurrenceRule
         event.attendeesJSON = attendeesJSON
-        event.brightspaceAnnouncementId = brightspaceAnnouncementId
+        event.lmsAnnouncementId = lmsAnnouncementId
         event.semester = semester
         event.course = course
         ModelMergeCoalescer.scheduleSave(context)
@@ -95,7 +106,7 @@ extension CalendarRepository {
         categoryWeightPercent: Double? = nil,
         weightPercent: Double? = nil,
         estimatedEffortMinutes: Int32? = nil,
-        brightspaceItemId: String? = nil,
+        lmsItemId: String? = nil,
         semester: PlannerSemester? = nil,
         course: PlannerCourse? = nil,
         gradingCategory: CourseGradingCategory? = nil,
@@ -131,7 +142,7 @@ extension CalendarRepository {
         task.categoryWeightPercent = categoryWeightPercent
         task.weightPercent = weightPercent
         task.estimatedEffortMinutes = estimatedEffortMinutes
-        task.brightspaceItemId = brightspaceItemId
+        task.lmsItemId = lmsItemId
         task.gradingCategory = gradingCategory
         ModelMergeCoalescer.scheduleSave(context)
         return task

@@ -10,7 +10,7 @@ enum SettingsMetrics {
     static let sidebarWidth: CGFloat = 220
     static let sidebarColumnMinWidth: CGFloat = sidebarWidth
     static let sidebarColumnMaxWidth: CGFloat = sidebarWidth
-    static let detailMaxWidth: CGFloat = 720
+    static let detailMaxWidth: CGFloat = 900
     static let detailMinWidth: CGFloat = 440
     static let minWindowWidth: CGFloat = 820
     /// Preferred width for the standalone Settings window (sidebar + detail).

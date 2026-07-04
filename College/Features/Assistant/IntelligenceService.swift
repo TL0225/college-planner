@@ -96,7 +96,7 @@ final class IntelligenceService {
         _ batch: [(text: String, courseCode: String, courseURI: URL)],
         progressCallback: (@Sendable (Int, Int) -> Void)? = nil
     ) async -> [URL: PrerequisiteRule] {
-        guard AppleSiliconPlatform.isSupported else { return [:] }
+        guard AppleSiliconPlatform.isMLXCompatible else { return [:] }
 
         let spec = ModelSpec.jsonWorker
 

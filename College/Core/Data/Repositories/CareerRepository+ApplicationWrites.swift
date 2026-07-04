@@ -79,12 +79,12 @@ extension CareerRepository {
             posting.trackedApplication = nil
         }
         context.delete(application)
-        try cleanupWorkdayRelationshipOrphans()
+        try cleanupJobBoardRelationshipOrphans()
         try saveAndBump()
     }
 
-    func cleanupWorkdayRelationshipOrphans() throws {
-        var postingDescriptor = FetchDescriptor<WorkdayJobPosting>()
+    func cleanupJobBoardRelationshipOrphans() throws {
+        var postingDescriptor = FetchDescriptor<JobBoardPosting>()
         postingDescriptor.fetchLimit = 5000
         for posting in try context.fetch(postingDescriptor) {
             guard let app = posting.trackedApplication else { continue }

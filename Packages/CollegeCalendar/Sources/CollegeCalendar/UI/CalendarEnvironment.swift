@@ -12,6 +12,10 @@ private struct CalendarSceneStateEnvironmentKey: EnvironmentKey {
     static var defaultValue: CalendarSceneState? { nil }
 }
 
+private struct CalendarEventDetailSelectionEnvironmentKey: EnvironmentKey {
+    static var defaultValue: Binding<CalendarStoredEvent?> { .constant(nil) }
+}
+
 public extension EnvironmentValues {
     var calendarPersistence: (any CalendarPersistencePort)? {
         get { self[CalendarPersistenceEnvironmentKey.self] }
@@ -26,6 +30,11 @@ public extension EnvironmentValues {
     var calendarSceneState: CalendarSceneState? {
         get { self[CalendarSceneStateEnvironmentKey.self] }
         set { self[CalendarSceneStateEnvironmentKey.self] = newValue }
+    }
+
+    var calendarEventDetailSelection: Binding<CalendarStoredEvent?> {
+        get { self[CalendarEventDetailSelectionEnvironmentKey.self] }
+        set { self[CalendarEventDetailSelectionEnvironmentKey.self] = newValue }
     }
 }
 

@@ -7,10 +7,6 @@ import Foundation
 import AppKit
 
 extension Notification.Name {
-    /// Triggers the same portal backup export flow as the main-window toolbar.
-    static let plannerExportPortalBackup = Notification.Name("com.timothy.college.plannerExportPortalBackup")
-    /// Opens the encrypted backup import panel from the menu bar.
-    static let plannerImportPortalBackupMenu = Notification.Name("com.timothy.college.plannerImportPortalBackupMenu")
     /// Import a `.portal` file passed from Finder or `NSApplicationDelegate` (`userInfo["url"]` as `URL`).
     static let plannerImportPortalBackupFileURL = Notification.Name("com.timothy.college.plannerImportPortalBackupFileURL")
     /// Fired by the Profile toolbar button to open the Advisor Meeting Prep sheet.
@@ -22,8 +18,23 @@ extension Notification.Name {
 }
 
 enum MacPreferencesWindow {
-    @MainActor
-    static func show() {
-        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+    static func show(section: SettingsNavSection? = nil) {
+        DispatchQueue.main.async {
+            if NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) {
+                postSection(section)
+                return
+            }
+            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            postSection(section)
+        }
+    }
+
+    private static func postSection(_ section: SettingsNavSection?) {
+        guard let section else { return }
+        NotificationCenter.default.post(
+            name: .plannerOpenSettingsSection,
+            object: nil,
+            userInfo: ["sectionRaw": section.rawValue]
+        )
     }
 }

@@ -1,28 +1,29 @@
 // QwenJsonWorkerGoldenTests.swift
-// Feature: Shared
-// Purpose: Shared module — QwenJsonWorkerGoldenTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class QwenJsonWorkerGoldenTests: XCTestCase {
+@Suite("Qwen JSON Worker Golden")
+struct QwenJsonWorkerGoldenTests {
 
-    func testJsonWorkerModelSpec() {
+    @Test("JSON worker model spec")
+    func jsonWorkerModelSpec() {
         let spec = ModelSpec.jsonWorker
-        XCTAssertEqual(spec.variant, .jsonWorker_4bit)
-        XCTAssertEqual(spec.repoID, "mlx-community/Qwen3.5-2B-4bit")
-        XCTAssertEqual(spec.displayName, "Qwen 3.5 2B (4-bit)")
+        #expect(spec.variant == .jsonWorker_4bit)
+        #expect(spec.repoID == "mlx-community/Qwen3.5-2B-4bit")
+        #expect(spec.displayName == "Qwen 3.5 2B (4-bit)")
     }
 
-    func testJsonWorkerVariantDirectoryName() async throws {
+    @Test("JSON worker variant directory name")
+    func jsonWorkerVariantDirectoryName() async throws {
         let url = try await ModelManager.shared.modelDirectoryURL(for: .jsonWorker)
-        XCTAssertTrue(url.path.hasSuffix("jsonWorker_4bit"))
+        #expect(url.path.hasSuffix("jsonWorker_4bit"))
     }
 
-    func testPreferredAssistantSpecsUseJsonWorker() async throws {
+    @Test("Preferred assistant specs use json worker when installed")
+    func preferredAssistantSpecsUseJsonWorker() async throws {
         let installed = await ModelManager.shared.isModelInstalled(.jsonWorker)
-        try XCTSkipUnless(installed, "Qwen JSON worker not installed")
-        XCTAssertTrue(installed)
+        guard installed else { return }
+        #expect(installed)
     }
 }

@@ -7,11 +7,10 @@ import SwiftUI
 struct MainWindowToolbar: ToolbarContent {
     let activePage: AppPage
     @Binding var academicsInspectorPresented: Bool
+    @Binding var documentsSearchText: String
     @Environment(AppContainer.self) private var appContainer
 
     var body: some ToolbarContent {
-        DefaultToolbarItem(kind: .sidebarToggle, placement: .automatic)
-            .sharedBackgroundVisibility(.hidden)
         ToolbarProviderRegistry.pageToolbarContent(
             for: activePage,
             context: ToolbarProviderContext(
@@ -19,6 +18,7 @@ struct MainWindowToolbar: ToolbarContent {
                 dispatcher: appContainer.toolbarDispatcher,
                 calendarScene: appContainer.calendarScene,
                 academicsScene: appContainer.academicsScene,
+                assistantScene: appContainer.assistantScene,
                 collegePersistence: appContainer.persistence,
                 activePage: activePage,
                 academicsInspectorPresented: $academicsInspectorPresented

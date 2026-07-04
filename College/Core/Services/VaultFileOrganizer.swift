@@ -25,6 +25,15 @@ enum VaultFileOrganizer {
         fileURL: URL,
         result: DocumentClassifierService.ClassificationResult
     ) async throws -> URL {
+        try await BackgroundServiceOnDemand.runThrowing(id: "vault_file_organize") {
+            try await organizeImpl(fileURL: fileURL, result: result)
+        }
+    }
+
+    private static func organizeImpl(
+        fileURL: URL,
+        result: DocumentClassifierService.ClassificationResult
+    ) async throws -> URL {
         let semester   = currentSemesterLabel()
         let courseCode = result.courseCode ?? "General"
         let typeName   = result.documentType.rawValue.capitalized
@@ -83,8 +92,10 @@ enum VaultFileOrganizer {
 
     /// Returns the current semester label stored in UserDefaults,
     /// falling back to "Current Semester".
+    static let currentSemesterLabelStorageKey = "currentSemesterLabel"
+
     static func currentSemesterLabel() -> String {
-        UserDefaults.standard.string(forKey: "currentSemesterLabel") ?? "Current Semester"
+        UserDefaults.standard.string(forKey: currentSemesterLabelStorageKey) ?? "Current Semester"
     }
 
     // MARK: - Weekly Folders

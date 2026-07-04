@@ -21,8 +21,7 @@ final class CatalogStoreCoordinator {
     private init() {}
 
     var storesRootDirectory: URL {
-        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let url = appSupport.appendingPathComponent("College/catalog-stores", isDirectory: true)
+        let url = CollegeModelContainerFactory.catalogStoresRootURL()
         try? fm.createDirectory(at: url, withIntermediateDirectories: true)
         return url
     }
@@ -32,17 +31,16 @@ final class CatalogStoreCoordinator {
     }
 
     func storeDirectory(for schoolID: String) -> URL {
-        storesRootDirectory.appendingPathComponent(schoolID, isDirectory: true)
+        CollegeModelContainerFactory.catalogStoreDirectory(for: schoolID)
     }
 
-    /// Legacy local store per-school snapshot path (deprecated).
+    /// Active SwiftData catalog store for a school.
     func storeURL(for schoolID: String) -> URL {
-        storeDirectory(for: schoolID).appendingPathComponent("catalog.sqlite")
+        CollegeModelContainerFactory.catalogStoreURL(for: schoolID)
     }
 
-    /// Active local store catalog store for a school.
     func localStoreStoreURL(for schoolID: String) -> URL {
-        CollegeModelContainerFactory.catalogStoreURL(for: schoolID)
+        storeURL(for: schoolID)
     }
 
     func ensureStoreDirectory(for schoolID: String) throws {
@@ -58,6 +56,7 @@ final class CatalogStoreCoordinator {
     }
 
     func upsertRegistryRecord(schoolID: String, universityID: UUID, universityName: String) {
+        try? ensureStoreDirectory(for: schoolID)
         var records = loadRegistry().filter { $0.schoolID != schoolID }
         records.append(
             SchoolStoreRecord(
@@ -77,6 +76,7 @@ final class CatalogStoreCoordinator {
 
     func removeRegistryRecord(schoolID: String) {
         let records = loadRegistry().filter { $0.schoolID != schoolID }
+        guard !records.isEmpty || fm.fileExists(atPath: registryURL.path) else { return }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         if let data = try? encoder.encode(records) {
@@ -126,7 +126,7 @@ final class CatalogStoreCoordinator {
     }
 
     func diagnostics(for schoolID: String) -> StoreDiagnostics {
-        let url = storeURL(for: schoolID)
+        let url = CollegeModelContainerFactory.unifiedStoreURL()
         let exists = fm.fileExists(atPath: url.path)
         let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
         return StoreDiagnostics(

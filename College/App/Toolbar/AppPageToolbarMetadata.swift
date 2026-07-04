@@ -26,6 +26,12 @@ enum AppPageToolbarMetadata {
                 toolbarProviderTypeName: "AcademicsToolbarProvider",
                 hasDedicatedToolbarChrome: true
             )
+        case .transferDatabase:
+            return Entry(
+                toolbarContentTypeName: "TransferToolbarContent",
+                toolbarProviderTypeName: "TransferToolbarProvider",
+                hasDedicatedToolbarChrome: true
+            )
         case .career:
             return Entry(
                 toolbarContentTypeName: "CareerToolbarContent",
@@ -38,11 +44,11 @@ enum AppPageToolbarMetadata {
                 toolbarProviderTypeName: "WebToolbarProvider",
                 hasDedicatedToolbarChrome: true
             )
-        case .brightspace:
+        case .lms:
             return Entry(
-                toolbarContentTypeName: "None",
-                toolbarProviderTypeName: "None",
-                hasDedicatedToolbarChrome: false
+                toolbarContentTypeName: "WebToolbarContent",
+                toolbarProviderTypeName: "WebToolbarProvider",
+                hasDedicatedToolbarChrome: true
             )
         case .degree, .assistant, .profile, .settings, .documents:
             return Entry(
@@ -63,8 +69,8 @@ enum AppPageToolbarMetadata {
 
     static var allPages: [AppPage] {
         var pages: [AppPage] = [
-            .degree, .academics, .calendar, .career, .assistant, .profile,
-            .settings, .brightspace, .documents,
+            .degree, .academics, .transferDatabase, .calendar, .career, .assistant, .profile,
+            .settings, .lms, .documents,
             .webShortcut(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!),
         ]
         #if DEBUG

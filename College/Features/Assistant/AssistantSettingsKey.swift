@@ -50,7 +50,8 @@ enum AssistantSettingsKey: String, CaseIterable, Sendable {
         let blocked: [String: String] = [
             AssistantPlannerIndexingSettings.indexingEnabledKey: "Planner indexing is controlled in AI & Privacy with consent.",
             AssistantPlannerIndexingSettings.documentsIndexingKey: "Document indexing is controlled in AI & Privacy.",
-            AssistantWebSearchSettings.searxBaseURLKey: "SearXNG URL cannot be changed via the assistant.",
+            AssistantWebSearchSettings.customBaseURLKey: "Web search URL cannot be changed via the assistant.",
+            AssistantWebSearchSettings.webSearchEnabledKey: "Web search cannot be changed via the assistant.",
             AssistantWebSearchSettings.extraFetchHostsKey: "Fetch hosts cannot be changed via the assistant.",
             "assistant.localLLM.enabled": "Local model settings must be changed in Settings.",
             "security.encryptionEnabled": "Security settings cannot be changed via the assistant.",

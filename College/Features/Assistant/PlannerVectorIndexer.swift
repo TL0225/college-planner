@@ -20,6 +20,12 @@ actor PlannerVectorIndexer {
     func stopObservingSaves() {}
 
     func runFullRebuild(reason: String) async {
+        await BackgroundServiceOnDemand.run(id: "planner_vector_rebuild") {
+            await PlannerVectorIndexer.shared.runFullRebuildImpl(reason: reason)
+        }
+    }
+
+    private func runFullRebuildImpl(reason: String) async {
         guard AssistantPlannerIndexingSettings.isIndexingEnabled else { return }
         guard !isIndexing else { return }
         isIndexing = true
@@ -56,6 +62,12 @@ actor PlannerVectorIndexer {
     }
 
     func indexVaultBackfill() async {
+        await BackgroundServiceOnDemand.run(id: "planner_vector_rebuild") {
+            await PlannerVectorIndexer.shared.indexVaultBackfillImpl()
+        }
+    }
+
+    private func indexVaultBackfillImpl() async {
         guard AssistantPlannerIndexingSettings.isIndexingEnabled,
               AssistantPlannerIndexingSettings.isDocumentsIndexingEnabled else { return }
         let ids = await MainActor.run {

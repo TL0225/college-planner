@@ -5,9 +5,9 @@
 
 import Foundation
 import SwiftData
+import CollegeCalendar
 
 /// Apple/Google/Outlook/iCloud calendar sync ingest into local store (Phase 7f).
-@MainActor
 enum CalendarSyncIngestService {
     struct AppleEventSnapshot: Sendable {
         let externalID: String
@@ -20,6 +20,7 @@ enum CalendarSyncIngestService {
         let urlString: String?
         let calendarIdentifier: String?
         let localUUIDFromURL: UUID?
+        let recurrenceRule: String?
     }
 
     struct GoogleEventSnapshot: Sendable {
@@ -65,6 +66,7 @@ enum CalendarSyncIngestService {
         let isAllDay: Bool
         let location: String?
         let notes: String?
+        let localUUIDFromICal: UUID?
     }
 
     static func isCollegeAppManagedEvent(providerSource: String?) -> Bool {
@@ -82,14 +84,39 @@ enum CalendarSyncIngestService {
         return url
     }
 
+    static func normalizedAttendeesJSON(_ raw: String?) -> String? {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let guests = CalendarEventGuestsCodec.decodeFlexible(raw)
+        return CalendarEventGuestsCodec.encode(records: guests)
+    }
+
+    private static func plannerLinkFromNotes(
+        notes: String?,
+        existingCourse: PlannerCourse?,
+        context: ModelContext
+    ) -> (PlannerCourse?, PlannerSemester?) {
+        if let existingCourse {
+            return (existingCourse, existingCourse.semester)
+        }
+        guard let courseID = CalendarSyncNotesMetadata.courseUUID(from: notes) else {
+            return (nil, nil)
+        }
+        guard let course = try? CalendarSyncIngestWriter.fetchCourse(id: courseID, context: context) else {
+            return (nil, nil)
+        }
+        return (course, course.semester)
+    }
+
     static func ingestAppleSnapshots(
         snapshots: [AppleEventSnapshot],
         currentMap: [String: String],
         mappedLocalIDsLower: Set<String>,
-        store: AppDataStore = .shared
-    ) throws -> [String: String] {
-        let repo = CalendarRepository(context: store.profileContext)
-        let ctx = store.profileContext
+        store: AppDataStore? = nil
+    ) async throws -> [String: String] {
+        let container = await MainActor.run {
+            (store ?? AppDataStore.shared).profileContainer
+        }
+        return try await BackgroundServiceExecutor.persistOffMain(container: container) { ctx in
         var updates: [String: String] = [:]
 
         let preFetchUUIDs: [UUID] = snapshots.compactMap { snap in
@@ -98,14 +125,14 @@ enum CalendarSyncIngestService {
         }
         var preFetched: [UUID: CalendarEvent] = [:]
         for uuid in preFetchUUIDs {
-            if let event = try? repo.fetchCalendarEvent(id: uuid) {
+            if let event = try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx) {
                 preFetched[uuid] = event
             }
         }
 
         func fetchLocalEvent(uuid: UUID) -> CalendarEvent? {
             if let cached = preFetched[uuid] { return cached }
-            return try? repo.fetchCalendarEvent(id: uuid)
+            return try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx)
         }
 
         for snap in snapshots {
@@ -116,6 +143,7 @@ enum CalendarSyncIngestService {
             let isAllDay = snap.isAllDay
             let location = snap.location
             let notes = snap.notes
+            let recurrenceRule = snap.recurrenceRule
 
             var localUUID: UUID?
             if let extracted = snap.localUUIDFromURL {
@@ -125,10 +153,16 @@ enum CalendarSyncIngestService {
             }
 
             if let localUUID, let local = fetchLocalEvent(uuid: localUUID) {
+                let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                    notes: notes,
+                    existingCourse: local.course,
+                    context: ctx
+                )
                 let needsUpdate = local.title != title || local.startDate != start || local.endDate != end
                     || local.allDay != isAllDay || local.location != location || local.notes != notes
+                    || local.recurrenceRule != recurrenceRule
                 if needsUpdate {
-                    _ = try repo.upsertCalendarEvent(
+                    _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                         id: local.id,
                         title: title.isEmpty ? "Event" : title,
                         startDate: start,
@@ -139,10 +173,12 @@ enum CalendarSyncIngestService {
                         providerSource: isCollegeAppManagedEvent(providerSource: local.providerSource)
                             ? local.providerSource : "AppleCalendar",
                         providerEventId: externalID,
-                        semester: local.semester,
-                        course: local.course,
+                        recurrenceRule: recurrenceRule,
+                        semester: linkedSemester ?? local.semester,
+                        course: linkedCourse,
                         createdAt: local.createdAt,
-                        lastUpdated: Date()
+                        lastUpdated: Date(),
+                        context: ctx
                     )
                 } else if !isCollegeAppManagedEvent(providerSource: local.providerSource) {
                     local.providerSource = "AppleCalendar"
@@ -161,7 +197,12 @@ enum CalendarSyncIngestService {
                 end: end,
                 mappedLocalIDsLower: mappedLocalIDsLower
             ) {
-                _ = try repo.upsertCalendarEvent(
+                let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                    notes: notes,
+                    existingCourse: reusable.course,
+                    context: ctx
+                )
+                _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                     id: reusable.id,
                     title: reusable.title,
                     startDate: start,
@@ -171,17 +212,24 @@ enum CalendarSyncIngestService {
                     location: location,
                     providerSource: "AppleCalendar",
                     providerEventId: externalID,
-                    semester: nil,
-                    course: nil,
+                    recurrenceRule: recurrenceRule,
+                    semester: linkedSemester,
+                    course: linkedCourse,
                     createdAt: reusable.createdAt,
-                    lastUpdated: Date()
-                )
+                lastUpdated: Date(),
+                context: ctx
+            )
                 updates[externalID] = reusable.id.uuidString
                 continue
             }
 
             let newID = UUID()
-            _ = try repo.upsertCalendarEvent(
+            let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                notes: notes,
+                existingCourse: nil,
+                context: ctx
+            )
+            _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                 id: newID,
                 title: title.isEmpty ? "Event" : title,
                 startDate: start,
@@ -191,14 +239,17 @@ enum CalendarSyncIngestService {
                 location: location,
                 providerSource: "AppleCalendar",
                 providerEventId: externalID,
-                semester: nil,
-                course: nil
+                recurrenceRule: recurrenceRule,
+                semester: linkedSemester,
+                course: linkedCourse,
+                context: ctx
             )
             updates[externalID] = newID.uuidString
         }
 
-        try store.profileSave()
+        try ctx.save()
         return updates
+        }
     }
 
     static func ingestGoogleSnapshots(
@@ -207,10 +258,12 @@ enum CalendarSyncIngestService {
         currentMap: [String: String],
         mappedLocalIDsLower: Set<String>,
         deletedTombstones: Set<String>,
-        store: AppDataStore = .shared
-    ) throws -> GoogleIngestResult {
-        let repo = CalendarRepository(context: store.profileContext)
-        let ctx = store.profileContext
+        store: AppDataStore? = nil
+    ) async throws -> GoogleIngestResult {
+        let container = await MainActor.run {
+            (store ?? AppDataStore.shared).profileContainer
+        }
+        return try await BackgroundServiceExecutor.persistOffMain(container: container) { ctx in
         var mapUpdates: [String: String] = [:]
         var mapRemovals: [String] = []
         var cancelledRemoteKeys: [String] = []
@@ -224,7 +277,7 @@ enum CalendarSyncIngestService {
         }
         var preFetched: [UUID: CalendarEvent] = [:]
         for uuid in batchLookupUUIDs {
-            if let event = try? repo.fetchCalendarEvent(id: uuid) {
+            if let event = try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx) {
                 preFetched[uuid] = event
             }
         }
@@ -243,9 +296,31 @@ enum CalendarSyncIngestService {
             }
         }
 
+        let neededProviderIDs = Set(
+            snapshots.filter { !$0.isCancelled }.map(\.providerEventId)
+        )
+        var byProviderEventId: [String: CalendarEvent] = [:]
+        if !neededProviderIDs.isEmpty {
+            var providerDescriptor = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate { event in
+                    event.providerEventId != nil
+                }
+            )
+            providerDescriptor.fetchLimit = 5000
+            if let providerMatches = try? ctx.fetch(providerDescriptor) {
+                for event in providerMatches {
+                    guard let providerEventId = event.providerEventId,
+                          neededProviderIDs.contains(providerEventId),
+                          byProviderEventId[providerEventId] == nil
+                    else { continue }
+                    byProviderEventId[providerEventId] = event
+                }
+            }
+        }
+
         func fetchLocalEvent(uuid: UUID) -> CalendarEvent? {
             if let cached = preFetched[uuid] { return cached }
-            return try? repo.fetchCalendarEvent(id: uuid)
+            return try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx)
         }
 
         func findReusable(title: String, isAllDay: Bool, start: Date, end: Date) -> CalendarEvent? {
@@ -262,12 +337,99 @@ enum CalendarSyncIngestService {
             return nil
         }
 
+        func upsertGoogleSnapshot(
+            _ snap: GoogleEventSnapshot,
+            into local: CalendarEvent,
+            preferLocalSchedule: Bool = false
+        ) throws -> Bool {
+            let keepsCollegeOwnership = isCollegeAppManagedEvent(providerSource: local.providerSource)
+            let resolvedProvider = keepsCollegeOwnership ? local.providerSource : "Google"
+            let attendeesJSON = Self.normalizedAttendeesJSON(snap.attendeesJSON)
+            let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                notes: snap.notes,
+                existingCourse: local.course,
+                context: ctx
+            )
+
+            let title: String
+            let startDate: Date
+            let endDate: Date
+            let allDay: Bool
+            let location: String?
+            let notes: String?
+            let customColorHex: String?
+            let recurrenceRule: String?
+            let mergedAttendeesJSON: String?
+
+            if keepsCollegeOwnership {
+                title = local.title
+                location = local.location
+                notes = local.notes
+                customColorHex = local.customColorHex
+                if preferLocalSchedule {
+                    startDate = local.startDate
+                    endDate = local.endDate
+                    allDay = local.allDay
+                } else {
+                    startDate = snap.start
+                    endDate = snap.end
+                    allDay = snap.isAllDay
+                }
+                recurrenceRule = local.recurrenceRule ?? snap.recurrenceRule
+                mergedAttendeesJSON = attendeesJSON ?? local.attendeesJSON
+            } else {
+                title = snap.title
+                startDate = snap.start
+                endDate = snap.end
+                allDay = snap.isAllDay
+                location = snap.location
+                notes = snap.notes
+                customColorHex = snap.customColorHex
+                recurrenceRule = snap.recurrenceRule
+                mergedAttendeesJSON = attendeesJSON
+            }
+
+            let needsUpdate = local.title != title || local.startDate != startDate || local.endDate != endDate
+                || local.allDay != allDay || local.location != location || local.notes != notes
+                || local.customColorHex != customColorHex || local.recurrenceRule != recurrenceRule
+                || local.attendeesJSON != mergedAttendeesJSON
+                || local.providerEventId != snap.providerEventId
+                || local.course?.id != linkedCourse?.id
+            if needsUpdate {
+                _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
+                    id: local.id,
+                    title: title,
+                    startDate: startDate,
+                    endDate: endDate,
+                    allDay: allDay,
+                    notes: notes,
+                    location: location,
+                    providerSource: resolvedProvider,
+                    providerEventId: snap.providerEventId,
+                    customColorHex: customColorHex,
+                    recurrenceRule: recurrenceRule,
+                    attendeesJSON: mergedAttendeesJSON,
+                    semester: linkedSemester ?? local.semester,
+                    course: linkedCourse ?? local.course,
+                    createdAt: local.createdAt,
+                lastUpdated: Date(),
+                context: ctx
+            )
+            } else if !keepsCollegeOwnership {
+                local.providerSource = "Google"
+                local.providerEventId = snap.providerEventId
+                local.lastUpdated = Date()
+            }
+            return needsUpdate
+        }
+
         for snap in snapshots {
+            try Task.checkCancellation()
             if snap.isCancelled {
                 let mappedStr = currentMap[snap.remoteKey]
                     ?? (calendarID == "primary" ? currentMap[snap.legacyKey] : nil)
                 if let uuidStr = mappedStr, let uuid = UUID(uuidString: uuidStr) {
-                    try? repo.deleteCalendarEvent(id: uuid)
+                    try? CalendarSyncIngestWriter.deleteCalendarEvent(id: uuid, context: ctx)
                 }
                 mapRemovals.append(snap.remoteKey)
                 if calendarID == "primary" { mapRemovals.append(snap.legacyKey) }
@@ -298,28 +460,20 @@ enum CalendarSyncIngestService {
                let uuid = UUID(uuidString: localIDString),
                let local = fetchLocalEvent(uuid: uuid)
             {
-                let keepsCollegeOwnership = isCollegeAppManagedEvent(providerSource: local.providerSource)
-                let resolvedProvider = keepsCollegeOwnership ? local.providerSource : providerSource
-                _ = try repo.upsertCalendarEvent(
-                    id: local.id,
-                    title: title,
-                    startDate: snap.start,
-                    endDate: snap.end,
-                    allDay: snap.isAllDay,
-                    notes: snap.notes,
-                    location: snap.location,
-                    providerSource: resolvedProvider,
-                    providerEventId: snap.providerEventId,
-                    customColorHex: snap.customColorHex,
-                    recurrenceRule: snap.recurrenceRule,
-                    attendeesJSON: snap.attendeesJSON,
-                    semester: local.semester,
-                    course: local.course,
-                    createdAt: local.createdAt,
-                    lastUpdated: Date()
-                )
+                _ = try upsertGoogleSnapshot(snap, into: local, preferLocalSchedule: true)
                 mapUpdates[snap.remoteKey] = localIDString
                 continue
+            }
+
+            if let byProvider = byProviderEventId[snap.providerEventId] {
+                let cid = byProvider.id.uuidString.lowercased()
+                let alreadyMappedElsewhere = mappedLocalIDsLower.contains(cid)
+                    && mappedLocalIDString?.lowercased() != cid
+                if !alreadyMappedElsewhere {
+                    _ = try upsertGoogleSnapshot(snap, into: byProvider, preferLocalSchedule: false)
+                    mapUpdates[snap.remoteKey] = byProvider.id.uuidString
+                    continue
+                }
             }
 
             if let reusable = findReusable(
@@ -328,31 +482,19 @@ enum CalendarSyncIngestService {
                 start: snap.start,
                 end: snap.end
             ) {
-                let keepsCollegeOwnership = isCollegeAppManagedEvent(providerSource: reusable.providerSource)
-                _ = try repo.upsertCalendarEvent(
-                    id: reusable.id,
-                    title: title,
-                    startDate: snap.start,
-                    endDate: snap.end,
-                    allDay: snap.isAllDay,
-                    notes: snap.notes,
-                    location: snap.location,
-                    providerSource: keepsCollegeOwnership ? reusable.providerSource : providerSource,
-                    providerEventId: snap.providerEventId,
-                    customColorHex: snap.customColorHex,
-                    recurrenceRule: snap.recurrenceRule,
-                    attendeesJSON: snap.attendeesJSON,
-                    semester: reusable.semester,
-                    course: reusable.course,
-                    createdAt: reusable.createdAt,
-                    lastUpdated: Date()
-                )
+                _ = try upsertGoogleSnapshot(snap, into: reusable)
                 mapUpdates[snap.remoteKey] = reusable.id.uuidString
                 continue
             }
 
             let newID = UUID()
-            _ = try repo.upsertCalendarEvent(
+            let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                notes: snap.notes,
+                existingCourse: nil,
+                context: ctx
+            )
+            let attendeesJSON = Self.normalizedAttendeesJSON(snap.attendeesJSON)
+            _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                 id: newID,
                 title: title,
                 startDate: snap.start,
@@ -364,30 +506,35 @@ enum CalendarSyncIngestService {
                 providerEventId: snap.providerEventId,
                 customColorHex: snap.customColorHex,
                 recurrenceRule: snap.recurrenceRule,
-                attendeesJSON: snap.attendeesJSON,
-                semester: nil,
-                course: nil
+                attendeesJSON: attendeesJSON,
+                semester: linkedSemester,
+                course: linkedCourse,
+                context: ctx
             )
             mapUpdates[snap.remoteKey] = newID.uuidString
             newCount += 1
         }
 
-        try store.profileSave()
+        try ctx.save()
         return GoogleIngestResult(
             mapUpdates: mapUpdates,
             mapRemovals: mapRemovals,
             cancelledRemoteKeys: cancelledRemoteKeys,
             newCount: newCount
         )
+        }
     }
 
     static func ingestOutlookSnapshots(
         snapshots: [OutlookEventSnapshot],
         calendarID: String,
         currentMap: [String: String],
-        store: AppDataStore = .shared
-    ) throws -> [String: String] {
-        let repo = CalendarRepository(context: store.profileContext)
+        store: AppDataStore? = nil
+    ) async throws -> [String: String] {
+        let container = await MainActor.run {
+            (store ?? AppDataStore.shared).profileContainer
+        }
+        return try await BackgroundServiceExecutor.persistOffMain(container: container) { ctx in
         var updates: [String: String] = [:]
 
         let preFetchUUIDs: [UUID] = snapshots.compactMap { snap in
@@ -395,7 +542,7 @@ enum CalendarSyncIngestService {
         }
         var preFetched: [UUID: CalendarEvent] = [:]
         for uuid in preFetchUUIDs {
-            if let event = try? repo.fetchCalendarEvent(id: uuid) {
+            if let event = try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx) {
                 preFetched[uuid] = event
             }
         }
@@ -403,10 +550,10 @@ enum CalendarSyncIngestService {
         for snap in snapshots {
             let notes = snap.notes
             if let idStr = currentMap[snap.remoteID], let uuid = UUID(uuidString: idStr),
-               let local = preFetched[uuid] ?? (try? repo.fetchCalendarEvent(id: uuid))
+               let local = preFetched[uuid] ?? (try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx))
             {
                 let keepsCollegeOwnership = isCollegeAppManagedEvent(providerSource: local.providerSource)
-                _ = try repo.upsertCalendarEvent(
+                _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                     id: local.id,
                     title: snap.title,
                     startDate: snap.start,
@@ -419,12 +566,13 @@ enum CalendarSyncIngestService {
                     semester: local.semester,
                     course: local.course,
                     createdAt: local.createdAt,
-                    lastUpdated: Date()
-                )
+                lastUpdated: Date(),
+                context: ctx
+            )
                 updates[snap.remoteID] = idStr
             } else {
                 let newID = UUID()
-                _ = try repo.upsertCalendarEvent(
+                _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                     id: newID,
                     title: snap.title,
                     startDate: snap.start,
@@ -435,40 +583,81 @@ enum CalendarSyncIngestService {
                     providerSource: "Outlook",
                     providerEventId: snap.remoteID,
                     semester: nil,
-                    course: nil
+                    course: nil,
+                    context: ctx
                 )
                 updates[snap.remoteID] = newID.uuidString
             }
         }
 
-        try store.profileSave()
+        try ctx.save()
         return updates
+        }
     }
 
     static func ingestICloudSnapshots(
         snapshots: [ICloudEventSnapshot],
         currentMap: [String: String],
-        store: AppDataStore = .shared
-    ) throws -> [String: String] {
-        let repo = CalendarRepository(context: store.profileContext)
+        store: AppDataStore? = nil
+    ) async throws -> [String: String] {
+        let container = await MainActor.run {
+            (store ?? AppDataStore.shared).profileContainer
+        }
+        return try await BackgroundServiceExecutor.persistOffMain(container: container) { ctx in
         var updates: [String: String] = [:]
 
         let preFetchUUIDs: [UUID] = snapshots.compactMap { snap in
-            currentMap[snap.mapKey].flatMap { UUID(uuidString: $0) }
+            if let extracted = snap.localUUIDFromICal { return extracted }
+            return currentMap[snap.mapKey].flatMap { UUID(uuidString: $0) }
         }
         var preFetched: [UUID: CalendarEvent] = [:]
         for uuid in preFetchUUIDs {
-            if let event = try? repo.fetchCalendarEvent(id: uuid) {
+            if let event = try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx) {
                 preFetched[uuid] = event
             }
         }
 
+        let neededProviderIDs = Set(snapshots.map(\.providerEventId))
+        var byProviderEventId: [String: CalendarEvent] = [:]
+        if !neededProviderIDs.isEmpty {
+            var providerDescriptor = FetchDescriptor<CalendarEvent>(
+                predicate: #Predicate { event in
+                    event.providerEventId != nil
+                }
+            )
+            providerDescriptor.fetchLimit = 5000
+            if let providerMatches = try? ctx.fetch(providerDescriptor) {
+                for event in providerMatches {
+                    guard let providerEventId = event.providerEventId,
+                          neededProviderIDs.contains(providerEventId),
+                          byProviderEventId[providerEventId] == nil
+                    else { continue }
+                    byProviderEventId[providerEventId] = event
+                }
+            }
+        }
+
+        func fetchLocalEvent(uuid: UUID) -> CalendarEvent? {
+            if let cached = preFetched[uuid] { return cached }
+            return try? CalendarSyncIngestWriter.fetchCalendarEvent(id: uuid, context: ctx)
+        }
+
         for snap in snapshots {
-            if let idStr = currentMap[snap.mapKey], let uuid = UUID(uuidString: idStr),
-               let local = preFetched[uuid] ?? (try? repo.fetchCalendarEvent(id: uuid))
-            {
+            var localUUID: UUID?
+            if let extracted = snap.localUUIDFromICal {
+                localUUID = extracted
+            } else if let mapped = currentMap[snap.mapKey], let uuid = UUID(uuidString: mapped) {
+                localUUID = uuid
+            }
+
+            if let localUUID, let local = fetchLocalEvent(uuid: localUUID) {
+                let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                    notes: snap.notes,
+                    existingCourse: local.course,
+                    context: ctx
+                )
                 let keepsCollegeOwnership = isCollegeAppManagedEvent(providerSource: local.providerSource)
-                _ = try repo.upsertCalendarEvent(
+                _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
                     id: local.id,
                     title: snap.title,
                     startDate: snap.start,
@@ -478,33 +667,69 @@ enum CalendarSyncIngestService {
                     location: snap.location,
                     providerSource: keepsCollegeOwnership ? local.providerSource : "iCloudCalDAV",
                     providerEventId: snap.providerEventId,
-                    semester: local.semester,
-                    course: local.course,
+                    semester: linkedSemester ?? local.semester,
+                    course: linkedCourse,
                     createdAt: local.createdAt,
-                    lastUpdated: Date()
+                lastUpdated: Date(),
+                context: ctx
+            )
+                updates[snap.mapKey] = localUUID.uuidString
+                continue
+            }
+
+            if let byProvider = byProviderEventId[snap.providerEventId] {
+                let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                    notes: snap.notes,
+                    existingCourse: byProvider.course,
+                    context: ctx
                 )
-                updates[snap.mapKey] = idStr
-            } else {
-                let newID = UUID()
-                _ = try repo.upsertCalendarEvent(
-                    id: newID,
+                let keepsCollegeOwnership = isCollegeAppManagedEvent(providerSource: byProvider.providerSource)
+                _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
+                    id: byProvider.id,
                     title: snap.title,
                     startDate: snap.start,
                     endDate: snap.end,
                     allDay: snap.isAllDay,
                     notes: snap.notes,
                     location: snap.location,
-                    providerSource: "iCloudCalDAV",
+                    providerSource: keepsCollegeOwnership ? byProvider.providerSource : "iCloudCalDAV",
                     providerEventId: snap.providerEventId,
-                    semester: nil,
-                    course: nil
-                )
-                updates[snap.mapKey] = newID.uuidString
+                    semester: linkedSemester ?? byProvider.semester,
+                    course: linkedCourse,
+                    createdAt: byProvider.createdAt,
+                lastUpdated: Date(),
+                context: ctx
+            )
+                updates[snap.mapKey] = byProvider.id.uuidString
+                continue
             }
+
+            let (linkedCourse, linkedSemester) = plannerLinkFromNotes(
+                notes: snap.notes,
+                existingCourse: nil,
+                context: ctx
+            )
+            let newID = UUID()
+            _ = try CalendarSyncIngestWriter.upsertCalendarEvent(
+                id: newID,
+                title: snap.title,
+                startDate: snap.start,
+                endDate: snap.end,
+                allDay: snap.isAllDay,
+                notes: snap.notes,
+                location: snap.location,
+                providerSource: "iCloudCalDAV",
+                providerEventId: snap.providerEventId,
+                semester: linkedSemester,
+                course: linkedCourse,
+                context: ctx
+            )
+            updates[snap.mapKey] = newID.uuidString
         }
 
-        try store.profileSave()
+        try ctx.save()
         return updates
+        }
     }
 
     private static func findReusableUnmappedLocalEvent(
@@ -536,5 +761,79 @@ enum CalendarSyncIngestService {
             return candidate
         }
         return nil
+    }
+}
+
+private enum CalendarSyncIngestWriter {
+    static func fetchCalendarEvent(id: UUID, context: ModelContext) throws -> CalendarEvent? {
+        var descriptor = FetchDescriptor<CalendarEvent>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    static func fetchCourse(id: UUID, context: ModelContext) throws -> PlannerCourse? {
+        var descriptor = FetchDescriptor<PlannerCourse>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    @discardableResult
+    static func upsertCalendarEvent(
+        id: UUID,
+        title: String,
+        startDate: Date,
+        endDate: Date,
+        allDay: Bool = false,
+        notes: String? = nil,
+        location: String? = nil,
+        providerSource: String? = nil,
+        providerEventId: String? = nil,
+        customColorHex: String? = nil,
+        recurrenceRule: String? = nil,
+        attendeesJSON: String? = nil,
+        lmsAnnouncementId: String? = nil,
+        semester: PlannerSemester? = nil,
+        course: PlannerCourse? = nil,
+        createdAt: Date = .now,
+        lastUpdated: Date = .now,
+        context: ModelContext
+    ) throws -> CalendarEvent {
+        let event: CalendarEvent
+        if let existing = try fetchCalendarEvent(id: id, context: context) {
+            event = existing
+        } else {
+            event = CalendarEvent(
+                id: id,
+                title: title,
+                startDate: startDate,
+                endDate: endDate,
+                allDay: allDay,
+                createdAt: createdAt,
+                lastUpdated: lastUpdated
+            )
+            context.insert(event)
+        }
+        event.title = title
+        event.startDate = startDate
+        event.endDate = endDate
+        event.allDay = allDay
+        event.notes = notes
+        event.location = location
+        event.createdAt = createdAt
+        event.lastUpdated = lastUpdated
+        event.providerSource = providerSource
+        event.providerEventId = providerEventId
+        event.customColorHex = customColorHex
+        event.recurrenceRule = recurrenceRule
+        event.attendeesJSON = attendeesJSON
+        event.lmsAnnouncementId = lmsAnnouncementId
+        event.semester = semester
+        event.course = course
+        return event
+    }
+
+    static func deleteCalendarEvent(id: UUID, context: ModelContext) throws {
+        guard let event = try fetchCalendarEvent(id: id, context: context) else { return }
+        context.delete(event)
     }
 }

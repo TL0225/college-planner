@@ -221,14 +221,14 @@ struct SearxSearchToolResult: Codable {
 struct SearxWebSearchTool: AIAssistantTool {
     let descriptor = AssistantToolDescriptor(
         name: "searxWebSearch",
-        description: "Search the public web via the user's configured SearXNG instance. Use for current events, definitions, or external references not in app data. Always cite result URLs in prose.",
+        description: "Search the public web via the built-in DeGoog sidecar (or an advanced custom instance). Use for current events, definitions, or external references not in app data. Always cite result URLs in prose.",
         allowedPersonas: [.academicAdvisor, .financialAdvisor],
         mode: .read,
         requiresConfirmation: false,
         confirmationStyle: .none,
         inputSchemaDescription: "{\"query\":\"string\",\"maxResults\":8}",
         outputSchemaDescription: "hits[{title,url,content,engine}]",
-        sourceLabel: "SearXNGClient"
+        sourceLabel: "DeGoogSearchClient"
     )
 
     func execute(
@@ -245,6 +245,16 @@ struct SearxWebSearchTool: AIAssistantTool {
             throw AssistantToolExecutionError.invalidArguments("query is required")
         }
         let cap = min(12, max(1, decoded.maxResults ?? 8))
+        guard AssistantWebSearchSettings.isWebSearchEnabled else {
+            return AssistantToolResultEnvelope(
+                tool: descriptor.name,
+                ok: false,
+                result: nil,
+                source: descriptor.sourceLabel,
+                summary: DeGoogSearchClientError.disabled.localizedDescription,
+                errorMessage: "web_search_disabled"
+            )
+        }
         guard await AssistantWebSearchRateLimiter.shared.allowSearch() else {
             return AssistantToolResultEnvelope(
                 tool: descriptor.name,
@@ -255,26 +265,48 @@ struct SearxWebSearchTool: AIAssistantTool {
                 errorMessage: "rate_limited"
             )
         }
-        let client = SearXNGClient()
+        if UITestLaunchFlags.stubWebSearchEnabled {
+            let rows = Self.uitestStubHits(query: q)
+            let payload = SearxSearchToolResult(hits: rows)
+            return AssistantToolResultEnvelope(
+                tool: descriptor.name,
+                ok: true,
+                result: try resultObject(payload),
+                source: descriptor.sourceLabel,
+                summary: "UITest stub returned \(rows.count) result(s).",
+                errorMessage: nil
+            )
+        }
+        let client = DeGoogSearchClient()
         do {
             let hits = try await client.search(query: q, maxResults: cap)
-            let filteredHits: [SearXNGClient.Hit] = {
-                guard context.selectedPersona == .financialAdvisor else { return hits }
-                let jurisdiction = context.collegePersistence.activeSchoolPolicyMetadata().map { AssistantFinancialAidPolicy.resolveJurisdiction(metadata: $0) }
-                    ?? AssistantFinancialAidPolicy.resolveJurisdiction(activeUniversityName: context.collegePersistence.getActiveUniversityName())
-                let policyHosts = AssistantFinancialAidPolicy.policyHosts(for: jurisdiction)
-                AssistantWebFetchPolicy.registerPolicyHosts(policyHosts)
-                guard !policyHosts.isEmpty else { return hits }
-                let preferred = hits.filter { hit in
-                    guard let host = URL(string: hit.url)?.host?.lowercased() else { return false }
-                    return policyHosts.contains(host)
+            let filteredHits: [DeGoogSearchClient.Hit] = {
+                if context.selectedPersona == .financialAdvisor {
+                    let jurisdiction = context.collegePersistence.activeSchoolPolicyMetadata().map { AssistantFinancialAidPolicy.resolveJurisdiction(metadata: $0) }
+                        ?? AssistantFinancialAidPolicy.resolveJurisdiction(activeUniversityName: context.collegePersistence.getActiveUniversityName())
+                    let policyHosts = AssistantFinancialAidPolicy.policyHosts(for: jurisdiction)
+                    AssistantWebFetchPolicy.registerPolicyHosts(policyHosts)
+                    guard !policyHosts.isEmpty else { return hits }
+                    let preferred = hits.filter { hit in
+                        guard let host = URL(string: hit.url)?.host?.lowercased() else { return false }
+                        return policyHosts.contains(host)
+                    }
+                    if preferred.isEmpty { return hits }
+                    let remaining = hits.filter { hit in
+                        guard let host = URL(string: hit.url)?.host?.lowercased() else { return true }
+                        return !policyHosts.contains(host)
+                    }
+                    return preferred + remaining
                 }
-                if preferred.isEmpty { return hits }
-                let remaining = hits.filter { hit in
-                    guard let host = URL(string: hit.url)?.host?.lowercased() else { return true }
-                    return !policyHosts.contains(host)
+                if context.activeIntent == "degree_policy_lookup" {
+                    let official = AssistantAcademicWebPolicy.officialHosts(
+                        persistence: context.collegePersistence,
+                        programIdentity: context.programIdentity
+                    )
+                    AssistantWebFetchPolicy.registerPolicyHosts(official)
+                    return AssistantAcademicWebPolicy.reorderSearxHits(hits, url: \.url, officialHosts: official)
                 }
-                return preferred + remaining
+                return hits
             }()
             AssistantWebFetchPolicy.registerRecentSearchHosts(from: filteredHits.map(\.url))
             let rows = filteredHits.map { SearxHitRow(title: $0.title, url: $0.url, content: $0.content, engine: $0.engine) }
@@ -284,7 +316,7 @@ struct SearxWebSearchTool: AIAssistantTool {
                 ok: true,
                 result: try resultObject(payload),
                 source: descriptor.sourceLabel,
-                summary: "SearXNG returned \(rows.count) result(s).",
+                summary: "Web search returned \(rows.count) result(s).",
                 errorMessage: nil
             )
         } catch {
@@ -298,6 +330,23 @@ struct SearxWebSearchTool: AIAssistantTool {
                 errorMessage: error.localizedDescription
             )
         }
+    }
+
+    private static func uitestStubHits(query: String) -> [SearxHitRow] {
+        let official = SearxHitRow(
+            title: "UITest Registrar — residency policy",
+            url: "https://registrar.uitest.edu/residency",
+            content: "Students must complete at least 30 credits in residence for the degree.",
+            engine: "uitest"
+        )
+        let general = SearxHitRow(
+            title: "UITest Forum thread",
+            url: "https://forum.uitest.example/residency",
+            content: "Unofficial discussion about residency requirements.",
+            engine: "uitest"
+        )
+        _ = query
+        return [official, general]
     }
 }
 
@@ -337,8 +386,67 @@ struct FetchWebPageReadableTool: AIAssistantTool {
                 errorMessage: "rate_limited"
             )
         }
+        if UITestLaunchFlags.stubWebSearchEnabled {
+            struct Out: Codable {
+                let url: String
+                let textPreview: String
+            }
+            let preview = """
+            <untrusted_web_content source="\(pageURL.absoluteString)">
+            UITest stub page: residency requires 30 in-residence credits. Official registrar text only.
+            </untrusted_web_content>
+            """
+            let payload = Out(url: pageURL.absoluteString, textPreview: preview)
+            return AssistantToolResultEnvelope(
+                tool: descriptor.name,
+                ok: true,
+                result: try resultObject(payload),
+                source: descriptor.sourceLabel,
+                summary: "UITest stub fetch: \(preview.count) characters.",
+                errorMessage: nil
+            )
+        }
+        if context.activeIntent == "degree_policy_lookup" {
+            let official = AssistantAcademicWebPolicy.officialHosts(
+                persistence: context.collegePersistence,
+                programIdentity: context.programIdentity
+            )
+            if let host = pageURL.host?.lowercased(),
+               !official.isEmpty,
+               !AssistantAcademicWebPolicy.isOfficialHost(host, officialHosts: official) {
+                return AssistantToolResultEnvelope(
+                    tool: descriptor.name,
+                    ok: false,
+                    result: nil,
+                    source: descriptor.sourceLabel,
+                    summary: "That page isn't an official catalog/registrar source for your school.",
+                    errorMessage: "not_official_host"
+                )
+            }
+        }
         do {
+            if let cached = await AssistantWebPageCache.shared.lookup(url: pageURL, policyHost: context.activeIntent == "degree_policy_lookup") {
+                struct Out: Codable {
+                    let url: String
+                    let textPreview: String
+                }
+                let preview = """
+                <untrusted_web_content source="\(pageURL.absoluteString)">
+                \(String(cached.bodyText.prefix(4000)))
+                </untrusted_web_content>
+                """
+                let payload = Out(url: pageURL.absoluteString, textPreview: preview)
+                return AssistantToolResultEnvelope(
+                    tool: descriptor.name,
+                    ok: true,
+                    result: try resultObject(payload),
+                    source: descriptor.sourceLabel,
+                    summary: "Cache hit: \(preview.count) characters.",
+                    errorMessage: nil
+                )
+            }
             let text = try await AssistantWebPageExtractor.shared.fetchReadableText(from: pageURL)
+            await AssistantWebPageCache.shared.store(url: pageURL, bodyText: text)
             struct Out: Codable {
                 let url: String
                 let textPreview: String

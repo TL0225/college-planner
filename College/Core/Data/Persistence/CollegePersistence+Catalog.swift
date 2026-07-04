@@ -60,11 +60,13 @@ extension CollegePersistence {
     func catalogProgramCount(for universityName: String) -> Int {
         let trimmed = universityName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
-              let repo = catalogRepository,
-              let university = try? repo.fetchUniversity(named: trimmed) else {
+              let (repo, universityID) = CatalogStoreSnapshotBridge.catalogRepositoryForUniversity(
+                named: trimmed,
+                appDataStore: appDataStore
+              ) else {
             return 0
         }
-        return (try? repo.fetchAllMajors(universityID: university.id).count) ?? 0
+        return (try? repo.fetchAllMajors(universityID: universityID).count) ?? 0
     }
 
     func fetchDepartmentGroups(
@@ -235,14 +237,17 @@ extension CollegePersistence {
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
                 .filter { !$0.isEmpty }
         )
-        guard !names.isEmpty, let repo = catalogRepository else { return [] }
+        guard !names.isEmpty else { return [] }
 
         var rows: [Major] = []
         for name in universityNames {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty,
-                  let university = try? repo.fetchUniversity(named: trimmed) else { continue }
-            let majors = (try? repo.fetchAllMajors(universityID: university.id)) ?? []
+                  let (repo, universityID) = CatalogStoreSnapshotBridge.catalogRepositoryForUniversity(
+                    named: trimmed,
+                    appDataStore: appDataStore
+                  ) else { continue }
+            let majors = (try? repo.fetchAllMajors(universityID: universityID)) ?? []
             rows.append(contentsOf: majors)
         }
 
@@ -316,11 +321,13 @@ extension CollegePersistence {
     typealias CatalogScrapeDataPresence = CatalogRepository.CatalogScrapeDataPresence
 
     func existingCatalogCourseCount(for universityName: String) -> Int {
-        guard let repo = catalogRepository,
-              let university = try? repo.fetchUniversity(named: universityName) else {
+        guard let (repo, universityID) = CatalogStoreSnapshotBridge.catalogRepositoryForUniversity(
+            named: universityName,
+            appDataStore: appDataStore
+        ) else {
             return 0
         }
-        return (try? repo.fetchCatalogCourseCount(universityID: university.id)) ?? 0
+        return (try? repo.fetchCatalogCourseCount(universityID: universityID)) ?? 0
     }
 
     func catalogScrapeDataPresence(

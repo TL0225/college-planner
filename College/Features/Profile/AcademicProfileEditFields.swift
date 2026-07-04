@@ -13,6 +13,7 @@ struct AcademicProfileEditFields: View {
     private var appNotifications: AppNotificationCenter { container.appNotifications }
     private var persistence: CollegePersistence { container.persistence }
     @Bindable var academicProfile: AcademicProfile
+    let onCommitHandlerReady: (@escaping () -> Void) -> Void
 
     private var collegePersistence: CollegePersistence { container.persistence }
         private var menuBarCatalogStatus: CollegeMenuBarStatusModel { CollegeMenuBarStatusModel.shared }
@@ -72,6 +73,9 @@ struct AcademicProfileEditFields: View {
         .onAppear {
             loadFromEntity()
             refreshUniversityOptionsFromManifest()
+            onCommitHandlerReady {
+                persistToEntity()
+            }
         }
         .onChange(of: academicProfile.id) { _, _ in
             loadFromEntity()
@@ -83,7 +87,6 @@ struct AcademicProfileEditFields: View {
         }
         .onDisappear {
             catalogScrapeTask?.cancel()
-            persistToEntity()
         }
     }
 

@@ -83,50 +83,41 @@ struct PDFAnnotationView: View {
     private let accentPink = Color(hex: "FF1A7F")
 
     var body: some View {
-        ZStack {
-            Color(NSColor.windowBackgroundColor).ignoresSafeArea()
+        VStack(spacing: 0) {
+            // ── Top Toolbar ──────────────────────────────────────────────
+            annotationToolbar
 
-            VStack(spacing: 0) {
-                // ── Top Toolbar ──────────────────────────────────────────────
-                annotationToolbar
+            Divider()
 
-                Divider()
+            if isPasswordLocked {
+                passwordPromptView
+            } else {
+                HStack(spacing: 0) {
+                    thumbnailSidebar
 
-                if isPasswordLocked {
-                    // ── Password Prompt ─────────────────────────────────────
-                    passwordPromptView
-                } else {
-                    // ── Main PDF Area ────────────────────────────────────────
-                    HStack(spacing: 0) {
-                        // Left: thumbnail sidebar
-                        thumbnailSidebar
+                    Divider()
 
-                        Divider()
-
-                        // Center: PDF canvas
-                        PDFViewRepresentable(
-                            document: pdfDocument,
-                            activeTool: activeTool,
-                            activeColor: activeColor,
-                            strokeWidth: strokeWidth,
-                            fontSize: fontSize,
-                            onPageChanged: { page, total in
-                                currentPage = page
-                                totalPages = total
-                            },
-                            onSetup: { view in
-                                pdfViewRef = view
-                            }
-                        )
-                        .background(Color(hex: "525659"))
-                    }
-
-                    // ── Bottom Status Bar ─────────────────────────────────────
-                    statusBar
+                    PDFViewRepresentable(
+                        document: pdfDocument,
+                        activeTool: activeTool,
+                        activeColor: activeColor,
+                        strokeWidth: strokeWidth,
+                        fontSize: fontSize,
+                        onPageChanged: { page, total in
+                            currentPage = page
+                            totalPages = total
+                        },
+                        onSetup: { view in
+                            pdfViewRef = view
+                        }
+                    )
+                    .background(Color(hex: "525659"))
                 }
+
+                statusBar
             }
         }
-        .frame(minWidth: 820, minHeight: 620)
+        .frame(minWidth: 700, idealWidth: 820, minHeight: 540, idealHeight: 620)
         .onAppear { loadDocument() }
     }
 
@@ -136,8 +127,8 @@ struct PDFAnnotationView: View {
             // Close
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(width: 32, height: 32)
                     .background(Color(NSColor.controlBackgroundColor))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -150,8 +141,8 @@ struct PDFAnnotationView: View {
 
             // Document name
             Text(documentName)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(maxWidth: 240)
@@ -165,8 +156,8 @@ struct PDFAnnotationView: View {
                         activeTool = tool
                     } label: {
                         Image(systemName: tool.icon)
-                            .font(.system(size: 13))
-                            .foregroundColor(activeTool == tool ? .white : DesignSystem.Colors.textLight)
+                            .font(DesignSystem.Fonts.main(size: 13))
+                            .foregroundStyle(activeTool == tool ? .white : DesignSystem.Colors.textLight)
                             .frame(width: 30, height: 30)
                             .background(activeTool == tool ? accentPink : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 7))
@@ -175,7 +166,7 @@ struct PDFAnnotationView: View {
                     .help(tool.label)
                 }
             }
-            .padding(3)
+            .padding(DesignSystem.Spacing.xs)
             .background(Color(hex: "f1f5f9"))
             .clipShape(RoundedRectangle(cornerRadius: 9))
             .padding(.horizontal, 12)
@@ -209,8 +200,8 @@ struct PDFAnnotationView: View {
             // Stroke width
             HStack(spacing: 4) {
                 Image(systemName: "line.diagonal")
-                    .font(.system(size: 11))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                 Slider(value: $strokeWidth, in: 1...8, step: 0.5)
                     .frame(width: 70)
                     .help("Stroke width")
@@ -223,8 +214,8 @@ struct PDFAnnotationView: View {
                     NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
                 } label: {
                     Image(systemName: "arrow.uturn.backward")
-                        .font(.system(size: 13))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 13))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
@@ -234,14 +225,14 @@ struct PDFAnnotationView: View {
                     NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
                 } label: {
                     Image(systemName: "arrow.uturn.forward")
-                        .font(.system(size: 13))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 13))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .frame(width: 30, height: 30)
                 }
                 .buttonStyle(.plain)
                 .help("Redo")
             }
-            .padding(3)
+            .padding(DesignSystem.Spacing.xs)
             .background(Color(hex: "f1f5f9"))
             .clipShape(RoundedRectangle(cornerRadius: 9))
             .padding(.trailing, 12)
@@ -255,12 +246,12 @@ struct PDFAnnotationView: View {
                         ProgressView().scaleEffect(0.6)
                     } else {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     }
                     Text(isSaving ? "Saving…" : "Save")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 }
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(accentPink)
@@ -289,22 +280,22 @@ struct PDFAnnotationView: View {
                             VStack(spacing: 4) {
                                 PDFPageThumbnailView(page: doc.page(at: index))
                                     .frame(width: 76, height: 98)
-                                    .background(Color.white)
-                                    .cornerRadius(4)
+                                    .background(DesignSystem.Colors.surface)
+                                    .clipShape(.rect(cornerRadius: 4))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 4)
                                             .stroke(currentPage == index ? Color(hex: "FF1A7F") : Color(hex: "d1d5db"), lineWidth: currentPage == index ? 2 : 1)
                                     )
                                     .shadow(color: .black.opacity(0.06), radius: 2)
                                 Text("\(index + 1)")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(currentPage == index ? Color(hex: "FF1A7F") : DesignSystem.Colors.textLight)
+                                    .font(DesignSystem.Fonts.main(size: 10))
+                                    .foregroundStyle(currentPage == index ? Color(hex: "FF1A7F") : DesignSystem.Colors.textLight)
                             }
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(10)
+                .padding(DesignSystem.Spacing.md)
             }
             .frame(width: 100)
             .background(Color(hex: "f8fafc"))
@@ -319,8 +310,8 @@ struct PDFAnnotationView: View {
                 pdfViewRef?.scaleFactor -= 0.25
             } label: {
                 Image(systemName: "minus.magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .buttonStyle(.plain)
 
@@ -328,8 +319,8 @@ struct PDFAnnotationView: View {
                 pdfViewRef?.scaleFactor = 1.0
             } label: {
                 Text(String(format: "%.0f%%", (pdfViewRef?.scaleFactor ?? 1.0) * 100))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(width: 44)
             }
             .buttonStyle(.plain)
@@ -338,15 +329,15 @@ struct PDFAnnotationView: View {
                 pdfViewRef?.scaleFactor += 0.25
             } label: {
                 Image(systemName: "plus.magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .buttonStyle(.plain)
 
             Button { pdfViewRef?.autoScales = true } label: {
                 Image(systemName: "rectangle.arrowtriangle.2.inward")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .buttonStyle(.plain)
             .help("Fit to window")
@@ -360,22 +351,22 @@ struct PDFAnnotationView: View {
                 pdfViewRef?.go(to: page)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .buttonStyle(.plain)
             .disabled(currentPage <= 0)
 
             Button { showPageJump.toggle() } label: {
                 Text("Page \(currentPage + 1) of \(totalPages)")
-                    .font(.system(size: 11))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 11))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showPageJump) {
                 HStack(spacing: 8) {
                     Text("Go to page:")
-                        .font(.system(size: 12))
+                        .font(DesignSystem.Fonts.main(size: 12))
                     TextField("", text: $pageJumpText)
                         .frame(width: 50)
                         .textFieldStyle(.roundedBorder)
@@ -391,7 +382,7 @@ struct PDFAnnotationView: View {
                             pageJumpText = ""
                         }
                 }
-                .padding(10)
+                .padding(DesignSystem.Spacing.md)
             }
 
             Button {
@@ -400,8 +391,8 @@ struct PDFAnnotationView: View {
                 pdfViewRef?.go(to: page)
             } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
             .buttonStyle(.plain)
             .disabled(totalPages == 0 || currentPage >= totalPages - 1)
@@ -411,36 +402,36 @@ struct PDFAnnotationView: View {
             // Active tool indicator
             HStack(spacing: 4) {
                 Image(systemName: activeTool.icon)
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
                 Text(activeTool.label)
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
             }
-            .foregroundColor(DesignSystem.Colors.textLight)
+            .foregroundStyle(DesignSystem.Colors.textLight)
             .padding(.trailing, 14)
         }
         .frame(height: 34)
         .padding(.horizontal, 14)
         .background(Color(NSColor.controlBackgroundColor))
-        .overlay(Rectangle().frame(height: 1).foregroundColor(Color(hex: "e2e8f0")), alignment: .top)
+        .overlay(Rectangle().frame(height: 1).foregroundStyle(Color(hex: "e2e8f0")), alignment: .top)
     }
 
     // MARK: - Password Prompt
     @ViewBuilder private var passwordPromptView: some View {
         VStack(spacing: 20) {
             Image(systemName: "lock.doc.fill")
-                .font(.system(size: 48))
-                .foregroundColor(Color(hex: "FF1A7F"))
+                .font(DesignSystem.Fonts.main(size: 48))
+                .foregroundStyle(Color(hex: "FF1A7F"))
             Text("This PDF is password protected")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMain)
             SecureField("Enter PDF password", text: $passwordInput)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
                 .onSubmit { unlockPDF() }
             if let error = passwordError {
                 Text(error)
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.error)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(DesignSystem.Colors.error)
             }
             HStack(spacing: 12) {
                 Button("Cancel", action: onDismiss)

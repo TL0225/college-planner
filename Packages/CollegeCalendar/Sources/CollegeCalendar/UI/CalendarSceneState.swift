@@ -16,7 +16,6 @@ public final class CalendarSceneState {
     public var profileInitials: String = ""
     public var toolbarSearchText: String = ""
     public var toolbarSearchResults: [CalendarToolbarSearchMatch] = []
-    public var toolbarSearchExpanded: Bool = false
 
     /// Live handler installed by `CalendarView` while mounted (avoids stale struct captures in `ToolbarDispatcher`).
     public var toolbarHandler: (@MainActor (CalendarToolbarAction) -> Void)?

@@ -24,14 +24,23 @@ struct CareerPipelineWidget: View {
 
     var body: some View {
         OverviewCard {
-            Text("Career Pipeline")
-                .font(DesignSystem.Fonts.title3(weight: .bold))
-            HStack {
-                pipelineMetric("Applied", status: .applied)
-                pipelineMetric("Interview", status: .interviewing)
-                pipelineMetric("Offer", status: .offer)
+            OverviewWidgetHeader("Career Pipeline", systemImage: "briefcase.fill", accentColor: .purple)
+
+            Color.clear.frame(height: 16)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    pipelineMetric("Applied", status: .applied, color: .blue)
+                    pipelineMetric("Interview", status: .interviewing, color: .purple)
+                    pipelineMetric("Offer", status: .offer, color: .green)
+                }
+
+                VStack(spacing: 10) {
+                    pipelineMetric("Applied", status: .applied, color: .blue)
+                    pipelineMetric("Interview", status: .interviewing, color: .purple)
+                    pipelineMetric("Offer", status: .offer, color: .green)
+                }
             }
-            .padding(.top, DesignSystem.Spacing.sm)
         }
         .background {
             OverviewQueryHost { dataRefreshToken += 1 }
@@ -42,21 +51,24 @@ struct CareerPipelineWidget: View {
         statusCounts[status] ?? 0
     }
 
-    private func pipelineMetric(_ title: String, status: CareerApplicationStatus) -> some View {
+    private func pipelineMetric(_ title: String, status: CareerApplicationStatus, color: Color) -> some View {
         let value = count(status: status)
         return Button {
             onNavigateToCareer(status)
         } label: {
-            VStack(spacing: DesignSystem.Spacing.xs) {
-                Text("\(value)")
-                    .font(DesignSystem.Fonts.title2())
-                    .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(value)))
-                Text(title)
-                    .font(DesignSystem.Fonts.caption1())
-                    .foregroundStyle(DesignSystem.Colors.textLight)
+            OverviewWidgetRowSurface(accentColor: color) {
+                VStack(spacing: 4) {
+                    Text("\(value)")
+                        .font(DesignSystem.Fonts.main(size: 30, weight: .heavy, design: .rounded))
+                        .foregroundStyle(color)
+                        .monospacedDigit()
+                        .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(value)))
+                    Text(title.uppercased())
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, DesignSystem.Spacing.sm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

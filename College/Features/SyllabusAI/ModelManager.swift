@@ -10,6 +10,7 @@ enum ModelManagerError: LocalizedError {
     case apiResponseInvalid
     case downloadFailed(String)
     case fileMoveFailed
+    case installSuppressedByUser(String)
 
     var errorDescription: String? {
         switch self {
@@ -21,6 +22,8 @@ enum ModelManagerError: LocalizedError {
             return "Failed to download \(name)."
         case .fileMoveFailed:
             return "Failed to store downloaded model file."
+        case .installSuppressedByUser(let name):
+            return "\(name) was deleted by the user. Reinstall it from Settings to enable automatic use again."
         }
     }
 }
@@ -70,6 +73,10 @@ actor ModelManager {
     private let fileManager = FileManager.default
     private var inFlightInstallTasks: [ModelSpec.Variant: Task<URL, Error>] = [:]
 
+    private static func userDeletedKey(for spec: ModelSpec) -> String {
+        "assistant.model.\(spec.variant.rawValue).userDeleted"
+    }
+
     private struct InstallMarker: Codable {
         let variant: String
         let repoID: String
@@ -92,10 +99,23 @@ actor ModelManager {
     }
 
     func deleteModel(_ spec: ModelSpec) async throws {
+        if let installTask = inFlightInstallTasks[spec.variant] {
+            installTask.cancel()
+            inFlightInstallTasks.removeValue(forKey: spec.variant)
+        }
         let dir = try modelDirectoryURL(for: spec)
         if fileManager.fileExists(atPath: dir.path) {
             try fileManager.removeItem(at: dir)
         }
+        UserDefaults.standard.set(true, forKey: Self.userDeletedKey(for: spec))
+    }
+
+    func isAutoInstallSuppressed(_ spec: ModelSpec) -> Bool {
+        UserDefaults.standard.bool(forKey: Self.userDeletedKey(for: spec))
+    }
+
+    func clearAutoInstallSuppression(_ spec: ModelSpec) {
+        UserDefaults.standard.removeObject(forKey: Self.userDeletedKey(for: spec))
     }
 
     func installedModelSizeBytes(_ spec: ModelSpec) async -> Int64 {
@@ -109,11 +129,16 @@ actor ModelManager {
 
     func ensureModelInstalled(
         _ spec: ModelSpec,
+        allowUserInitiatedInstall: Bool = false,
         progress: @Sendable @escaping (ModelDownloadProgress) -> Void
     ) async throws -> URL {
         let dir = try modelDirectoryURL(for: spec)
         if isValidInstalledModelDirectory(dir, spec: spec) {
             return dir
+        }
+
+        if isAutoInstallSuppressed(spec), !allowUserInitiatedInstall {
+            throw ModelManagerError.installSuppressedByUser(spec.displayName)
         }
 
         if let inFlight = inFlightInstallTasks[spec.variant] {
@@ -217,6 +242,7 @@ actor ModelManager {
             guard isValidInstalledModelDirectory(destinationDirectory, spec: spec) else {
                 throw ModelManagerError.downloadFailed(spec.displayName)
             }
+            clearAutoInstallSuppression(spec)
             return destinationDirectory
         } catch {
             try? fileManager.removeItem(at: stagingDirectory)

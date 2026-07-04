@@ -14,10 +14,10 @@ struct AssistantStudentGuidePanel: View {
         switch selectedRole {
         case .academicAdvisor:
             return [
-                "Plan my next semester around 15 credits.",
-                "Explain which requirements I still need.",
-                "Can I take this course with my prerequisites?",
-                "Create a study schedule for this week."
+                "What career paths fit my major and coursework?",
+                "Can you create a semester-by-semester breakdown of my major?",
+                "What's the residency requirement for my degree?",
+                "What's due this week?"
             ]
         case .financialAid:
             return [
@@ -33,7 +33,7 @@ struct AssistantStudentGuidePanel: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: selectedRole.symbol)
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 20, weight: .semibold))
                     .foregroundStyle(DesignSystem.Colors.primary)
                     .frame(width: 28)
 
@@ -73,7 +73,7 @@ struct AssistantStudentGuidePanel: View {
                 )
             }
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)

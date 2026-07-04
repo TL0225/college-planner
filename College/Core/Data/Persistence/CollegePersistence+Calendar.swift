@@ -22,6 +22,7 @@ extension CollegePersistence {
     }
 
     func deleteCalendarEvent(id: UUID) {
+        AcademicCalendarDeleteHook.recordDeletionIfNeeded(eventID: id)
         try? calendarRepository.deleteCalendarEvent(id: id)
         saveCalendarChanges()
     }
@@ -67,7 +68,7 @@ extension CollegePersistence {
         course: PlannerCourse? = nil,
         notes: String? = nil,
         location: String? = nil,
-        brightspaceAnnouncementId: String? = nil
+        lmsAnnouncementId: String? = nil
     ) -> UUID {
         do {
             let event = try calendarRepository.createCalendarEvent(
@@ -79,7 +80,7 @@ extension CollegePersistence {
                 course: course,
                 notes: notes,
                 location: location,
-                brightspaceAnnouncementId: brightspaceAnnouncementId
+                lmsAnnouncementId: lmsAnnouncementId
             )
             _ = try? appDataStore.profileSave()
             notifyCalendarDidChange()
@@ -165,10 +166,10 @@ extension CollegePersistence {
         saveCalendarChanges()
     }
 
-    func announcementExists(brightspaceAnnouncementId: String) -> Bool {
-        let trimmed = brightspaceAnnouncementId.trimmingCharacters(in: .whitespacesAndNewlines)
+    func announcementExists(lmsAnnouncementId: String) -> Bool {
+        let trimmed = lmsAnnouncementId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        return calendarRepository.announcementExists(brightspaceAnnouncementId: trimmed)
+        return calendarRepository.announcementExists(lmsAnnouncementId: trimmed)
     }
 
     func fetchCalendarEvents(

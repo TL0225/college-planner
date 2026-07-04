@@ -58,6 +58,11 @@ actor UniversalCatalogScraper {
     private var accumulatedIRNodes: [CatalogDocumentNode] = []
     private var runSchoolID: String = ""
     private var runCatalogVersionID: String = ""
+    private var runFetchPoliteness: CatalogFetchPoliteness = .interactiveBackground
+
+    private func fetchCatalogHTML(_ urlString: String) async throws -> String {
+        try await ModernCampusEngine.fetchHTMLPublic(urlString, politeness: runFetchPoliteness)
+    }
 
     nonisolated private static func normalizeCourseCodeForLookup(_ raw: String) -> String? {
         let s = raw
@@ -93,7 +98,11 @@ actor UniversalCatalogScraper {
         }
         let base = "\(scheme)://\(host)"
 
-        let courses = try await ModernCampusEngine.fetchAllCourses(baseURL: base, catoid: String(catalogID))
+        let courses = try await ModernCampusEngine.fetchAllCourses(
+            baseURL: base,
+            catoid: String(catalogID),
+            politeness: runFetchPoliteness
+        )
         logger.log("📚 Courses(content): returned \(courses.count) CatalogCourse rows")
 
         var inserted = 0
@@ -306,6 +315,7 @@ actor UniversalCatalogScraper {
         accumulatedIRNodes.removeAll(keepingCapacity: true)
         runSchoolID = ""
         runCatalogVersionID = ""
+        runFetchPoliteness = .interactiveBackground
     }
     
     /// The main entry point. Probes the sidebar, finds relevant pages, and scrapes them.
@@ -315,7 +325,8 @@ actor UniversalCatalogScraper {
         catalogID: Int,
         programsIndexOnly: Bool = false,
         schoolID: String = "",
-        catalogVersionID: String = ""
+        catalogVersionID: String = "",
+        politeness: CatalogFetchPoliteness = .interactiveBackground
     ) async throws -> [ScrapedProgram] {
         let logger = DebugLogger.shared
         logger.logSection("🌍 UNIVERSAL SCRAPER STARTED")
@@ -326,6 +337,7 @@ actor UniversalCatalogScraper {
         resetRunScopedState()
         runSchoolID = schoolID.trimmingCharacters(in: .whitespacesAndNewlines)
         runCatalogVersionID = catalogVersionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        runFetchPoliteness = politeness
         if runCatalogVersionID.isEmpty {
             runCatalogVersionID = "catoid:\(catalogID)"
         }
@@ -363,8 +375,10 @@ actor UniversalCatalogScraper {
         
         var allItems = Set<HierarchyItem>()
 
-        // 2. Scrape container pages concurrently (max 4 simultaneous) to parallelize network I/O.
-        let containerSemaphore = ModernCampusEngine.AsyncSemaphore(value: 4)
+        let declaredCrawlDelay = await CatalogOriginRobotsThrottle.declaredCrawlDelaySeconds(for: baseURL)
+        // Scrape container pages concurrently (crawl-delay-aware) to parallelize network I/O.
+        let containerConcurrency = ModernCampusEngine.effectiveConcurrency(declaredCrawlDelay: declaredCrawlDelay, max: 4)
+        let containerSemaphore = ModernCampusEngine.AsyncSemaphore(value: containerConcurrency)
         try await withThrowingTaskGroup(of: (String, [HierarchyItem]).self) { group in
             for containerLink in containerLinks {
                 group.addTask { [containerLink] in
@@ -414,7 +428,15 @@ actor UniversalCatalogScraper {
         logger.log("✅ Total unique programs found: \(allItems.count)")
 
         // MARK: - Full debug dump (requested)
-        // DebugLogger writes to Desktop and has no size cap; this can be large but is intentional.
+        // DebugLogger writes to Desktop and has no size cap; gated behind DEBUG or UserDefaults flag.
+        let shouldLogFullSummary: Bool = {
+            #if DEBUG
+            return true
+            #else
+            return CatalogPlatformFlags.universalScraperFullSummaryEnabled
+            #endif
+        }()
+        if shouldLogFullSummary {
         do {
             func displayName(for item: HierarchyItem) -> String {
                 // Combined degrees already include degree credentials (e.g., "BS/MS") in the name.
@@ -493,6 +515,7 @@ actor UniversalCatalogScraper {
                 }
             }
         }
+        }
         
         // Show sample programs for debugging
         logger.log("📊 Sample programs:")
@@ -539,7 +562,9 @@ actor UniversalCatalogScraper {
         // This keeps up to 8 network requests in-flight at all times without serializing on the
         // actor — idle worker slots are filled immediately rather than waiting for an entire
         // batch stride to finish before starting the next one.
-        let semaphore = ModernCampusEngine.AsyncSemaphore(value: 8)
+        let requirementsConcurrency = ModernCampusEngine.effectiveConcurrency(declaredCrawlDelay: declaredCrawlDelay, max: 8)
+        let semaphore = ModernCampusEngine.AsyncSemaphore(value: requirementsConcurrency)
+        let requirementsPoliteness = politeness
         await withTaskGroup(of: (HierarchyItem, [DegreeRequirement]?).self) { group in
             for item in itemsArray {
                 group.addTask {
@@ -548,7 +573,10 @@ actor UniversalCatalogScraper {
                     do {
                         // scrapeProgramRequirements is nonisolated: the expensive network
                         // fetch and HTML parse run off the actor's executor in parallel.
-                        let reqs = try await self.scrapeProgramRequirements(programURL: item.programURL)
+                        let reqs = try await self.scrapeProgramRequirements(
+                            programURL: item.programURL,
+                            politeness: requirementsPoliteness
+                        )
                         return (item, reqs.isEmpty ? nil : reqs)
                     } catch {
                         if await requirementsLogLimiter.shouldLog() {
@@ -621,12 +649,14 @@ actor UniversalCatalogScraper {
     nonisolated func scrapeProgramRequirements(
         programURL: String,
         catalogFormat: String? = nil,
-        schoolID: String? = nil
+        schoolID: String? = nil,
+        politeness: CatalogFetchPoliteness = .interactiveBackground
     ) async throws -> [DegreeRequirement] {
         let result = try await scrapeProgramRequirementsWithDiagnostics(
             programURL: programURL,
             catalogFormat: catalogFormat,
-            schoolID: schoolID
+            schoolID: schoolID,
+            politeness: politeness
         )
         
         // Hop back to actor for the catalog cache lookup (actor-isolated state).
@@ -640,9 +670,15 @@ actor UniversalCatalogScraper {
     nonisolated func scrapeProgramRequirementsWithDiagnostics(
         programURL: String,
         catalogFormat: String? = nil,
-        schoolID: String? = nil
+        schoolID: String? = nil,
+        politeness: CatalogFetchPoliteness = .interactiveBackground
     ) async throws -> (requirements: [DegreeRequirement], diagnostics: ProgramRequirementsDiagnostics) {
         let format = catalogFormat?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if format == "coursedog" || CoursedogEngine.isCoursedogProgramURL(programURL) {
+            return try await Task { @MainActor in
+                try await CoursedogRequirementsParser.scrapeRequirementsWithDiagnostics(programURL: programURL)
+            }.value
+        }
         if format == "courseleaf", let schoolID, !schoolID.isEmpty {
             let logger = DebugLogger.shared
             let indexURL = CourseLeafXMLClient.normalizedIndexURL(
@@ -667,7 +703,7 @@ actor UniversalCatalogScraper {
         let logger = DebugLogger.shared
         logger.scraper("📄 Requirements page fetch: \(programURL)")
 
-        let html = try await ModernCampusEngine.fetchHTMLPublic(programURL)
+        let html = try await ModernCampusEngine.fetchHTMLPublic(programURL, politeness: politeness)
 
         let doc: Document = try autoreleasepool {
             try SwiftSoup.parse(html, programURL)
@@ -882,36 +918,131 @@ actor UniversalCatalogScraper {
             return "acalogCore=\(hasAcalogCore ? 1 : 0);majorScoped=\(usedScoped ? 1 : 0);acalogCourse=\(hasAcalogCourse ? 1 : 0);link=\(linkStyle)"
         }()
 
+        func hasAnyCourses(_ requirement: DegreeRequirement) -> Bool {
+            if let details = requirement.requiredCoursesDetailed, !details.isEmpty { return true }
+            if let details = requirement.selectFromDetailed, !details.isEmpty { return true }
+            if let courses = requirement.requiredCourses, !courses.isEmpty { return true }
+            if let courses = requirement.selectFrom, !courses.isEmpty { return true }
+            return false
+        }
+
+        func isLikelySubsectionLabel(_ label: String) -> Bool {
+            let normalized = label.normalizedCatalogText().lowercased()
+            return normalized.contains("focus area")
+                || normalized.contains("track")
+                || normalized.contains("option")
+                || normalized.contains("concentration")
+                || normalized.contains("specialization")
+                || normalized.contains("path")
+        }
+
+        func replacingHierarchy(
+            _ requirement: DegreeRequirement,
+            parentCategory: String,
+            displayTitle: String
+        ) -> DegreeRequirement {
+            DegreeRequirement(
+                id: requirement.id,
+                degreeType: requirement.degreeType,
+                major: requirement.major,
+                category: requirement.category,
+                requiredCourses: requirement.requiredCourses,
+                requiredCoursesDetailed: requirement.requiredCoursesDetailed,
+                creditsRequired: requirement.creditsRequired,
+                description: requirement.description,
+                selectFrom: requirement.selectFrom,
+                selectFromDetailed: requirement.selectFromDetailed,
+                selectCount: requirement.selectCount,
+                requirementPredicate: requirement.requirementPredicate,
+                requirementKind: requirement.requirementKind,
+                parentCategory: parentCategory,
+                displayTitle: displayTitle
+            )
+        }
+
+        func isSingleChoiceSubsectionContainer(_ requirement: DegreeRequirement) -> Bool {
+            guard !hasAnyCourses(requirement) else { return false }
+            let text = "\(requirement.category) \(requirement.description ?? "")"
+                .normalizedCatalogText()
+                .lowercased()
+            let hasSingleChoiceSignal = requirement.selectCount == 1
+                || text.contains("choose one")
+                || text.contains("select one")
+                || text.contains("one of the following")
+            guard hasSingleChoiceSignal, text.contains("following") else { return false }
+            return isLikelySubsectionLabel(text)
+        }
+
+        func isOpenEndedChoiceRule(_ requirement: DegreeRequirement) -> Bool {
+            guard !hasAnyCourses(requirement) else { return false }
+            let text = "\(requirement.category) \(requirement.description ?? "")"
+                .normalizedCatalogText()
+                .lowercased()
+            return text.contains("choose ") || text.contains("select ")
+        }
+
+        func nestSingleChoiceSubsections(_ input: [DegreeRequirement]) -> [DegreeRequirement] {
+            guard input.count >= 2 else { return input }
+
+            var nested: [DegreeRequirement] = []
+            nested.reserveCapacity(input.count)
+
+            var activeChoiceParent: String?
+            var hasSeenSubsectionChild = false
+
+            for requirement in input {
+                let label = requirement.category.normalizedCatalogText()
+                if isSingleChoiceSubsectionContainer(requirement) {
+                    activeChoiceParent = label
+                    hasSeenSubsectionChild = false
+                    nested.append(replacingHierarchy(
+                        requirement,
+                        parentCategory: label,
+                        displayTitle: label
+                    ))
+                    continue
+                }
+
+                if let parent = activeChoiceParent {
+                    if isLikelySubsectionLabel(label) {
+                        hasSeenSubsectionChild = true
+                        nested.append(replacingHierarchy(
+                            requirement,
+                            parentCategory: parent,
+                            displayTitle: label
+                        ))
+                        continue
+                    }
+
+                    // DSU emits the open-ended elective rule immediately after each specialization.
+                    // Keep that visual relationship by grouping the rule with the active choice bucket.
+                    if hasSeenSubsectionChild, isOpenEndedChoiceRule(requirement) {
+                        nested.append(replacingHierarchy(
+                            requirement,
+                            parentCategory: parent,
+                            displayTitle: label
+                        ))
+                        continue
+                    }
+
+                    activeChoiceParent = nil
+                }
+
+                nested.append(requirement)
+            }
+
+            return nested
+        }
+
         if !requirementsCoreBlocks.isEmpty {
             var out: [DegreeRequirement] = []
             out.reserveCapacity(requirementsCoreBlocks.count)
-
-            func hasAnyCourses(_ r: DegreeRequirement) -> Bool {
-                if let d = r.requiredCoursesDetailed, !d.isEmpty { return true }
-                if let d = r.selectFromDetailed, !d.isEmpty { return true }
-                if let c = r.requiredCourses, !c.isEmpty { return true }
-                if let c = r.selectFrom, !c.isEmpty { return true }
-                return false
-            }
 
             func isContainerCategory(_ r: DegreeRequirement) -> Bool {
                 // These are headings like "Cybersecurity Core (10-11 credits)" that often contain
                 // only descriptive text and nested sub-headings (Focus Areas / Tracks).
                 let hasDescription = !(r.description?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
                 return !hasAnyCourses(r) && (r.creditsRequired > 0 || hasDescription)
-            }
-
-            func isLikelySubsectionLabel(_ label: String) -> Bool {
-                let s = label.normalizedCatalogText().lowercased()
-                // UB commonly nests requirements under a "Core" heading via "Focus Area" blocks.
-                if s.contains("focus area") { return true }
-                // Other common subsection patterns.
-                if s.contains("track") { return true }
-                if s.contains("option") { return true }
-                if s.contains("concentration") { return true }
-                if s.contains("specialization") { return true }
-                if s.contains("path") { return true }
-                return false
             }
 
             func appendDetails(from r: DegreeRequirement, into out: inout [CourseDetail]) {
@@ -1465,6 +1596,7 @@ actor UniversalCatalogScraper {
             }
 
             out = mergeNestedSubsectionsIntoCore(out)
+            out = nestSingleChoiceSubsections(out)
             out = out.map { RequirementRowNormalizer.applySemantics(to: $0) }
 
             logger.scraper("✅ Requirements parse complete. rows=\(out.count)")
@@ -1804,6 +1936,8 @@ actor UniversalCatalogScraper {
             }
         }
 
+        results = nestSingleChoiceSubsections(results)
+
         logger.scraper("✅ Requirements parse complete. rows=\(results.count)")
         let normalized = results.map { RequirementRowNormalizer.applySemantics(to: $0) }
         let diagnostics = buildDiagnostics(signature: signature, usedMajorRequirementsSection: false, requirements: normalized)
@@ -1996,28 +2130,6 @@ actor UniversalCatalogScraper {
     }
     
     /// Instance method wrapper that enhances course details with catalog cache
-    private func extractCourseDetailsWithCatalogFallback(from text: String) async -> [CourseDetail] {
-        var results = Self.extractCourseDetails(from: text)
-        
-        // Enhance results with course catalog data (fallback for missing titles/credits)
-        for i in 0..<results.count {
-            let course = results[i]
-            
-            // If title or credits are missing, check the course catalog cache
-            if course.title == nil || course.credits == nil {
-                if let catalogCourse = courseDetailsByCode[course.code] {
-                    results[i] = CourseDetail(
-                        code: course.code,
-                        title: course.title ?? catalogCourse.title,
-                        credits: course.credits ?? catalogCourse.credits
-                    )
-                }
-            }
-        }
-        
-        return results
-    }
-    
     /// Enhance degree requirements by filling in missing course titles/credits from catalog cache
     private func enhanceRequirementsWithCatalogData(_ requirements: [DegreeRequirement]) -> [DegreeRequirement] {
         let logger = DebugLogger.shared
@@ -2335,7 +2447,7 @@ actor UniversalCatalogScraper {
         
         // Try to find the "Departments & Programs" page in the sidebar
         let indexURL = baseURL.appendingPathComponent("index.php").appending("catoid", value: String(catalogID))
-        let indexHTML = try await ModernCampusEngine.fetchHTMLPublic(indexURL.absoluteString)
+        let indexHTML = try await fetchCatalogHTML(indexURL.absoluteString)
         let indexDoc = try SwiftSoup.parse(indexHTML, indexURL.absoluteString)
         
         // Look for "Departments" or "Programs" link in sidebar
@@ -2358,7 +2470,7 @@ actor UniversalCatalogScraper {
         
         // Fetch and parse the departments page
         let deptURL = Self.forceCatoid(deptPageURL, catalogID: catalogID)
-        let deptHTML = try await ModernCampusEngine.fetchHTMLPublic(deptURL)
+        let deptHTML = try await fetchCatalogHTML(deptURL)
         let deptDoc = try SwiftSoup.parse(deptHTML, deptURL)
         
         // Find all h2/h3 headers (colleges) and their following department links/headers.
@@ -2436,7 +2548,7 @@ actor UniversalCatalogScraper {
 
         // Find the "Departments & Programs" (or similar) page in the sidebar.
         let indexURL = baseURL.appendingPathComponent("index.php").appending("catoid", value: String(catalogID))
-        let indexHTML = try await ModernCampusEngine.fetchHTMLPublic(indexURL.absoluteString)
+        let indexHTML = try await fetchCatalogHTML(indexURL.absoluteString)
         let indexDoc = try SwiftSoup.parse(indexHTML, indexURL.absoluteString)
 
         let sidebarLinks = try indexDoc.select("div.n2_links a, a.navbar, td.block_n2_and_content a, .block_n2_links a, table.block_n2_links a")
@@ -2493,7 +2605,7 @@ actor UniversalCatalogScraper {
         logger.log("📌 UB ownership directory page: \(deptPageURL)")
 
         let deptURL = Self.forceCatoid(deptPageURL, catalogID: catalogID)
-        let deptHTML = try await ModernCampusEngine.fetchHTMLPublic(deptURL)
+        let deptHTML = try await fetchCatalogHTML(deptURL)
         let deptDoc = try SwiftSoup.parse(deptHTML, deptURL)
         let body = deptDoc.body() ?? deptDoc
 
@@ -2621,7 +2733,14 @@ actor UniversalCatalogScraper {
 
         logger.log("🔄 Fetching \(entityLinks.count) entity pages for additional program mappings...")
         // Fetch entity pages concurrently and extract preview_program links.
-        let entityFetchSemaphore = ModernCampusEngine.AsyncSemaphore(value: 8)
+        let entityFetchPoliteness = runFetchPoliteness
+        let declaredCrawlDelay = await CatalogOriginRobotsThrottle.declaredCrawlDelaySeconds(for: baseURL)
+        let entityFetchConcurrency = ModernCampusEngine.effectiveConcurrency(
+            declaredCrawlDelay: declaredCrawlDelay,
+            politeness: entityFetchPoliteness,
+            max: 8
+        )
+        let entityFetchSemaphore = ModernCampusEngine.AsyncSemaphore(value: entityFetchConcurrency)
         await withTaskGroup(of: (tuples: [(programURL: String, programName: String, dept: String, college: String)], failed: Bool).self) { group in
             for entity in entityLinks {
                 group.addTask {
@@ -2629,7 +2748,7 @@ actor UniversalCatalogScraper {
                     defer { entityFetchSemaphore.release() }
 
                     do {
-                        let html = try await ModernCampusEngine.fetchHTMLPublic(entity.entityURL)
+                        let html = try await ModernCampusEngine.fetchHTMLPublic(entity.entityURL, politeness: entityFetchPoliteness)
                         let doc = try SwiftSoup.parse(html, entity.entityURL)
                         let content = doc.body() ?? doc
                         let programAnchors = (try? content.select("a[href*=preview_program]")) ?? Elements()
@@ -2700,167 +2819,6 @@ actor UniversalCatalogScraper {
         }
 
         return s
-    }
-
-    // MARK: - Course Catalog Scraping
-    
-    /// Scrape the "Courses" catalog page to build a comprehensive course database.
-    /// This provides a backup data source for course information (titles, credits, descriptions).
-    ///
-    /// For UB catalogs, the Courses page has navoid values:
-    /// - catoid=17 (Undergraduate): navoid=862
-    /// - catoid=19 (Graduate): navoid=1038
-    /// - catoid=22 (Dental): navoid=1258
-    /// - catoid=23 (Law): navoid=1282
-    /// - catoid=24 (Medical): navoid=1294
-    ///
-    /// Strategy:
-    /// 1. Find "Courses" link in sidebar
-    /// 2. Visit courses page to get list of course links
-    /// 3. Visit each course detail page (preview_course_nopop.php?catoid=X&coid=Y)
-    /// 4. Parse course code, title, credits, description from <h1 id="course_preview_title">
-    private func scrapeCoursesCatalog(baseURL: URL, catalogID: Int) async throws {
-        let logger = DebugLogger.shared
-        logger.logSection("📚 SCRAPING COURSE CATALOG")
-        
-        // 1. Find the Courses link in the sidebar
-        let indexURL = baseURL.appendingPathComponent("index.php").appending("catoid", value: String(catalogID))
-        let indexHTML = try await ModernCampusEngine.fetchHTMLPublic(indexURL.absoluteString)
-        let indexDoc = try SwiftSoup.parse(indexHTML, indexURL.absoluteString)
-        
-        let sidebarLinks = try indexDoc.select("div.n2_links a, a.navbar, td.block_n2_and_content a")
-        var coursesPageURL: String?
-        for link in sidebarLinks {
-            let text = try link.text().lowercased()
-            if text == "courses" || text == "course catalog" {
-                coursesPageURL = Self.forceCatoid(try link.attr("abs:href"), catalogID: catalogID)
-                break
-            }
-        }
-        
-        guard let coursesURL = coursesPageURL else {
-            logger.log("⚠️ Could not find 'Courses' sidebar link for catalog \(catalogID)")
-            return
-        }
-        
-        logger.log("📖 Found Courses page: \(coursesURL)")
-        
-        // 2. Visit courses page to extract all course detail links
-        let coursesHTML = try await ModernCampusEngine.fetchHTMLPublic(coursesURL)
-        let coursesDoc = try SwiftSoup.parse(coursesHTML, coursesURL)
-        
-        // Extract all preview_course_nopop.php links
-        let courseLinks = try coursesDoc.select("a[href*=preview_course_nopop]")
-        logger.log("📝 Found \(courseLinks.count) course links on Courses page")
-        
-        // 3. Scrape course details — all links in one TaskGroup, concurrency capped by semaphore.
-        // Avoids the stride "idle-worker" problem where the group waits for an entire batch
-        // before launching the next one.
-        var scrapedCount = 0
-
-        let linksArray = courseLinks.array()
-        let detailSemaphore = ModernCampusEngine.AsyncSemaphore(value: 12)
-
-        try await withThrowingTaskGroup(of: CourseDetail?.self) { group in
-            for linkElement in linksArray {
-                let linkURL = (try? linkElement.attr("abs:href")) ?? ""
-                guard !linkURL.isEmpty else { continue }
-
-                group.addTask {
-                    await detailSemaphore.acquire()
-                    defer { detailSemaphore.release() }
-
-                    let courseDetailURL = Self.forceCatoid(linkURL, catalogID: catalogID)
-
-                    do {
-                        let courseHTML = try await ModernCampusEngine.fetchHTMLPublic(courseDetailURL)
-
-                        // autoreleasepool prevents SwiftSoup DOM trees from accumulating in memory
-                        // when hundreds of tasks are in-flight simultaneously.
-                        return try autoreleasepool {
-                            let courseDoc = try SwiftSoup.parse(courseHTML, courseDetailURL)
-
-                            // The <h1 id="course_preview_title"> contains: "CODE - Title"
-                            guard let courseTitleH1 = try courseDoc.select("#course_preview_title").first() else {
-                                return nil
-                            }
-
-                            // normalizedCatalogText() uses a statically compiled \s+ regex — no per-call overhead.
-                            let h1Text = (try? courseTitleH1.text())?.normalizedCatalogText() ?? ""
-
-                            // Parse course code from H1 text (e.g., "AAP 101SEM - Introduction to Arts Management")
-                            guard let codeRe = Self.cachedRegex("^([A-Z]{2,6})\\s+(\\d{3})([A-Z]*)"),
-                                  let codeMatch = codeRe.firstMatch(in: h1Text, range: NSRange(h1Text.startIndex..<h1Text.endIndex, in: h1Text)),
-                                  codeMatch.numberOfRanges >= 3,
-                                  let subjRange = Range(codeMatch.range(at: 1), in: h1Text),
-                                  let numRange = Range(codeMatch.range(at: 2), in: h1Text)
-                            else {
-                                return nil
-                            }
-
-                            let subj = String(h1Text[subjRange])
-                            let num = String(h1Text[numRange])
-                            let code = "\(subj) \(num)"
-
-                            var title: String?
-                            let afterCode = String(h1Text[h1Text.index(h1Text.startIndex, offsetBy: codeMatch.range.upperBound)...])
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            if let dashRange = afterCode.range(of: "-") {
-                                title = String(afterCode[dashRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                                if title?.isEmpty == true { title = nil }
-                            }
-
-                            guard let courseContainer = courseTitleH1.parent() else { return nil }
-                            let containerText = (try? courseContainer.text())?.normalizedCatalogText() ?? ""
-
-                            var credits: String?
-                            if let creditsRe = Self.cachedRegex("Credits:\\s*(\\d+(?:\\s*-\\s*\\d+)?)", options: [.caseInsensitive]),
-                               let creditsMatch = creditsRe.firstMatch(in: containerText, range: NSRange(containerText.startIndex..<containerText.endIndex, in: containerText)),
-                               creditsMatch.numberOfRanges >= 2,
-                               let creditsRange = Range(creditsMatch.range(at: 1), in: containerText) {
-                                // Strip interior whitespace from ranges like "3 - 4" → "3-4"
-                                credits = String(containerText[creditsRange])
-                                    .components(separatedBy: .whitespaces).joined()
-                            }
-
-                            guard credits != nil else { return nil }
-                            return CourseDetail(code: code, title: title, credits: credits)
-                        }
-                    } catch {
-                        return nil
-                    }
-                }
-            }
-
-            var processedLinks = 0
-            for try await courseDetail in group {
-                processedLinks += 1
-                if let detail = courseDetail {
-                    courseDetailsByCode[detail.code] = detail
-                    scrapedCount += 1
-                    if scrapedCount <= 10 {
-                        let title = detail.title ?? "no title"
-                        let credits = detail.credits ?? "no credits"
-                        logger.log("   📝 Cached: \(detail.code) - \(title) (\(credits) credits)")
-                    }
-                }
-                if processedLinks % 50 == 0 || processedLinks == linksArray.count {
-                    logger.log("   ✓ \(processedLinks)/\(linksArray.count) course pages processed (\(scrapedCount) cached)")
-                }
-            }
-        }
-        
-        logger.log("✅ Course catalog scraping complete: \(courseDetailsByCode.count) courses cached")
-        
-        // Sample the cache to verify it has real data
-        if !courseDetailsByCode.isEmpty {
-            let sample = courseDetailsByCode.prefix(3)
-            for (code, detail) in sample {
-                let title = detail.title ?? "no title"
-                let credits = detail.credits ?? "no credits"
-                logger.log("   📚 Sample: \(code) - \(title) (\(credits) cr)")
-            }
-        }
     }
 
     // MARK: - Test hooks
@@ -3092,7 +3050,7 @@ actor UniversalCatalogScraper {
         // Construct the index URL
         let indexURL = baseURL.appendingPathComponent("index.php").appending("catoid", value: String(catalogID))
         logger.log("🔍 Probing sidebar for catalog \(catalogID): \(indexURL.absoluteString)")
-        let html = try await ModernCampusEngine.fetchHTMLPublic(indexURL.absoluteString)
+        let html = try await fetchCatalogHTML(indexURL.absoluteString)
         let doc = try SwiftSoup.parse(html, indexURL.absoluteString) // Use base URL for resolving relative links
         
         var results: [SidebarLink] = []
@@ -3165,7 +3123,7 @@ actor UniversalCatalogScraper {
             return [] 
         }
         
-        let html = try await ModernCampusEngine.fetchHTMLPublic(validURL.absoluteString)
+        let html = try await fetchCatalogHTML(validURL.absoluteString)
         logger.log("📥 Fetched HTML (\(html.count) chars)")
         accumulateDocumentIRNodes(html: html, sourceURL: validURL)
 
@@ -3424,7 +3382,7 @@ actor UniversalCatalogScraper {
         }
 
         // Fetch the program detail page
-        let html = try await ModernCampusEngine.fetchHTMLPublic(programURL)
+        let html = try await fetchCatalogHTML(programURL)
         let doc = try SwiftSoup.parse(html, programURL)
         
         let logger = DebugLogger.shared

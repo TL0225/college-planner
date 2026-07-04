@@ -1,0 +1,47 @@
+name: Release notarization (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Git tag for this release (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  notarize-release:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Share extension app group entitlements
+        run: bash scripts/check-share-extension-entitlements.sh
+
+      - name: Verify hardened runtime is enabled (Release)
+        run: |
+          xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release -showBuildSettings | grep -E "^ *ENABLE_HARDENED_RUNTIME = YES"
+
+      - name: Build Release archive (unsigned CI smoke)
+        run: |
+          set -euo pipefail
+          xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release \
+            -archivePath "$RUNNER_TEMP/College.xcarchive" archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="-"
+
+      - name: Document encryption ship posture (ADR 008)
+        run: cat docs/adr/008-encryption-ship-posture.md
+
+      - name: Document local-first sync posture (ADR 010)
+        run: cat docs/adr/010-sync-local-first.md
+
+      - name: Notarization instructions (requires signing secrets)
+        run: |
+          echo "Configure CODE_SIGN_IDENTITY, PROVISIONING_PROFILE, and ExportOptions.plist for your team."
+          echo "Then: xcodebuild -exportArchive -archivePath ... -exportPath ... -exportOptionsPlist ExportOptions.plist"
+          echo "Then: xcrun notarytool submit College.app --wait --apple-id \$APPLE_ID --team-id \$TEAM_ID --password \$APP_PASSWORD"
+          echo "Then: xcrun stapler staple College.app"

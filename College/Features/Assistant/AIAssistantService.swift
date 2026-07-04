@@ -20,6 +20,7 @@ actor AIAssistantService {
         case disabled
         case modelNotInstalled
         case modelEnsureFailed
+        case mlxIncompatible
         case generationFailed
         case decodeFailed
         case unknown
@@ -83,6 +84,30 @@ actor AIAssistantService {
         policyContext: AssistantPolicyContext? = nil,
         onRawChunk: (@Sendable (String) async -> Void)? = nil
     ) async -> GenerationOutcome {
+        await BackgroundServiceOnDemand.runReturning(id: "assistant_reply_generation") {
+            await AIAssistantService.shared.generateReplyOutcomeImpl(
+                message: message,
+                role: role,
+                contextSummary: contextSummary,
+                recentConversation: recentConversation,
+                toolContext: toolContext,
+                attachmentContextBlock: attachmentContextBlock,
+                policyContext: policyContext,
+                onRawChunk: onRawChunk
+            )
+        }
+    }
+
+    private func generateReplyOutcomeImpl(
+        message: String,
+        role: Role,
+        contextSummary: String,
+        recentConversation: String? = nil,
+        toolContext: String? = nil,
+        attachmentContextBlock: String? = nil,
+        policyContext: AssistantPolicyContext? = nil,
+        onRawChunk: (@Sendable (String) async -> Void)? = nil
+    ) async -> GenerationOutcome {
         setAssistantBreadcrumb("service.generateReply.start")
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -104,6 +129,24 @@ actor AIAssistantService {
             )
         }
 
+        let prompt = makePrompt(
+            message: trimmed,
+            role: role,
+            contextSummary: contextSummary,
+            recentConversation: recentConversation,
+            toolContext: toolContext,
+            attachmentContextBlock: attachmentContextBlock
+        )
+
+        if AssistantInferenceSettings.preferFoundationModels,
+           await MainActor.run(body: { AssistantInferenceAvailability.resolvesFoundationModels() }),
+           let foundationOutcome = await generateReplyOutcomeViaFoundationModels(
+                prompt: prompt,
+                onRawChunk: onRawChunk
+           ) {
+            return foundationOutcome
+        }
+
         setAssistantBreadcrumb("service.model.ensure.begin")
         let modelPath: URL
         do {
@@ -119,15 +162,6 @@ actor AIAssistantService {
                 diagnostics: error.localizedDescription
             )
         }
-
-        let prompt = makePrompt(
-            message: trimmed,
-            role: role,
-            contextSummary: contextSummary,
-            recentConversation: recentConversation,
-            toolContext: toolContext,
-            attachmentContextBlock: attachmentContextBlock
-        )
 
         let tokenBudget = AssistantContextBudget.currentFromUserDefaults()
         do {
@@ -209,6 +243,32 @@ actor AIAssistantService {
     }
 
     func planResponse(
+        message: String,
+        role: Role,
+        contextSummary: String,
+        recentConversation: String?,
+        toolCatalogJSON: String,
+        allowedPlanningToolNames: Set<String>,
+        planningToolContext: String? = nil,
+        attachmentContextBlock: String? = nil,
+        policyContext: AssistantPolicyContext? = nil
+    ) async -> PlanningOutcome {
+        await BackgroundServiceOnDemand.runReturning(id: "assistant_reply_generation") {
+            await AIAssistantService.shared.planResponseImpl(
+                message: message,
+                role: role,
+                contextSummary: contextSummary,
+                recentConversation: recentConversation,
+                toolCatalogJSON: toolCatalogJSON,
+                allowedPlanningToolNames: allowedPlanningToolNames,
+                planningToolContext: planningToolContext,
+                attachmentContextBlock: attachmentContextBlock,
+                policyContext: policyContext
+            )
+        }
+    }
+
+    private func planResponseImpl(
         message: String,
         role: Role,
         contextSummary: String,
@@ -412,6 +472,15 @@ actor AIAssistantService {
     }
 
     func preflightFailureReason() async -> FailureReason? {
+        if AssistantInferenceSettings.preferFoundationModels {
+            let foundationModelsAvailable = await MainActor.run {
+                AssistantInferenceAvailability.resolvesFoundationModels()
+            }
+            if foundationModelsAvailable {
+                return nil
+            }
+        }
+
         let hasExplicitLocalLLMPref = UserDefaults.standard.object(forKey: Self.localLLMEnabledKey) != nil
         var localEnabled = Self.isLocalLLMEnabled()
         let modelInstalled = await ModelManager.shared.isModelInstalled(.jsonWorker)
@@ -428,6 +497,10 @@ actor AIAssistantService {
 
         if !modelInstalled {
             return .modelNotInstalled
+        }
+
+        guard AppleSiliconPlatform.isMLXCompatible else {
+            return .mlxIncompatible
         }
 
         return nil
@@ -640,6 +713,35 @@ What I know from your planner:
 
 For exact blocks, I need your class/work times and preferred study windows.
 """
+        case "career_exploration":
+            return """
+I can still help with career direction even though the local model had trouble finishing this turn (\(fallbackModeLabel(reason))).
+
+Typical next steps:
+1. Confirm your declared major in Profile if it is missing.
+2. Add planned or completed major courses in the Degree planner.
+3. Ask again — I will use your coursework, not just your major title.
+
+What I know from your planner:
+\(keyFacts)
+
+\(AssistantCareerReplyGuide.synthesisRules)
+
+These are planning ideas, not career placement advice.
+"""
+        case "degree_policy_lookup":
+            return """
+I could not finish a full policy lookup (\(fallbackModeLabel(reason))), but here is how to get an official answer:
+
+1. Open your synced **catalog** in Settings if it is not up to date.
+2. Search the official catalog/registrar site for your program rule.
+3. Ask me again with a specific policy phrase (e.g. "pass/fail policy for major courses").
+
+Official catalog and registrar information supersede this assistant.
+
+Planner context:
+\(keyFacts)
+"""
         case "fafsa_help", "state_aid_help", "financial_aid", "enrollment_intensity", "sap_risk":
             return financialAidFallbackReply(
                 intent: frame.detectedIntent,
@@ -756,6 +858,8 @@ Important limits:
             return "local model not installed"
         case .modelEnsureFailed:
             return "model initialization failed"
+        case .mlxIncompatible:
+            return "GPU not MLX compatible"
         case .generationFailed:
             return "generation failed"
         case .decodeFailed:
@@ -773,6 +877,8 @@ Important limits:
             return "I analyzed your planner snapshot, but the local model is not installed yet."
         case .modelEnsureFailed:
             return "I analyzed your planner snapshot, but the local model could not be initialized for this request."
+        case .mlxIncompatible:
+            return AppleSiliconPlatform.mlxRequirementMessage
         case .generationFailed:
             return "I analyzed your planner snapshot, but the local model failed while generating this response."
         case .decodeFailed:
@@ -790,6 +896,8 @@ Important limits:
             return "Install the on-device JSON model in Settings > AI & Storage, then retry."
         case .modelEnsureFailed:
             return "Retry once; if this repeats, reinstall the JSON model from Settings > AI & Storage."
+        case .mlxIncompatible:
+            return "Turn on Apple Intelligence in System Settings, or use a Mac whose GPU supports on-device MLX (1024-thread Metal kernels)."
         case .generationFailed:
             return "Retry once; if this repeats, reduce prompt complexity and check model health in Settings > AI & Storage."
         case .decodeFailed:
@@ -1009,6 +1117,38 @@ User message:
         )
     }
     #endif
+
+    private func generateReplyOutcomeViaFoundationModels(
+        prompt: String,
+        onRawChunk: (@Sendable (String) async -> Void)?
+    ) async -> GenerationOutcome? {
+        setAssistantBreadcrumb("service.generation.foundationModels.begin")
+        let raw = await CareerFoundationModelsJSONService.generateJSON(prompt: prompt)
+        guard let raw else {
+            setAssistantBreadcrumb("service.generation.foundationModels.unavailable")
+            return nil
+        }
+
+        if let onRawChunk {
+            await onRawChunk(raw)
+        }
+
+        if let parsedReply = AssistantPlanJSONParser.parseReply(from: raw),
+           !parsedReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            setAssistantBreadcrumb("service.reply.foundationModels.success")
+            return GenerationOutcome(reply: parsedReply, failureReason: nil, diagnostics: "foundationModels")
+        }
+
+        if let plaintext = extractUsablePlaintext(from: raw),
+           !plaintext.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            setAssistantBreadcrumb("service.reply.foundationModels.plaintext")
+            return GenerationOutcome(reply: plaintext, failureReason: nil, diagnostics: "foundationModels_plaintext")
+        }
+
+        setAssistantBreadcrumb("service.generation.foundationModels.decode_fail")
+        log("AIAssistantService Foundation Models decode failed; falling back to local JSON worker", level: .warn)
+        return nil
+    }
 
     private func runModel(
         prompt: String,

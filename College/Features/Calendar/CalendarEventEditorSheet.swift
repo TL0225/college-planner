@@ -36,7 +36,7 @@ struct CalendarEventEditorSheet: View {
                     initialStartDateTime: start,
                     initialEndDateTime: end,
                     eventToEdit: nil,
-                    presentationStyle: .floatingCards,
+                    presentationStyle: .anchoredPanel,
                     onLiveUpdate: { _, _, _, _ in collegePersistence.notifyCalendarDidChange() }
                 )
 
@@ -49,7 +49,7 @@ struct CalendarEventEditorSheet: View {
                     initialStartDateTime: event?.startDate,
                     initialEndDateTime: event?.endDate,
                     eventToEdit: event,
-                    presentationStyle: .floatingCards,
+                    presentationStyle: .anchoredPanel,
                     onLiveUpdate: { _, _, _, _ in collegePersistence.notifyCalendarDidChange() }
                 )
 

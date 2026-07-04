@@ -70,4 +70,13 @@ final class CareerReadBridgeTests: PersistenceTestCase {
         XCTAssertEqual(apps.count, 1)
         XCTAssertEqual(apps.first?.company, "Acme")
     }
+
+    func testResumeAvailabilityReportsConsistentCounts() {
+        let availability = CareerReadBridge.resumeAvailability(collegePersistence: .shared)
+        XCTAssertGreaterThanOrEqual(availability.resumeCount, availability.activeResumeCount)
+        XCTAssertEqual(
+            CareerReadBridge.hasCareerResume(collegePersistence: .shared),
+            availability.activeResumeCount > 0
+        )
+    }
 }

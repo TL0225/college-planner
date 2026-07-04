@@ -6,8 +6,8 @@ enum CalendarFeaturePreloadRegistration {
     static func register() {
         LaunchPreloadCoordinator.registerFeaturePreload(
             .init(
-                id: "calendar-toolbar",
-                title: "Calendar toolbar",
+                id: "calendar",
+                title: "Calendar",
                 criticality: .bestEffort,
                 timeoutSeconds: 0.5,
                 retryLimit: 0,

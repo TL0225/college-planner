@@ -31,6 +31,7 @@ final class LaunchPerformanceAcceptanceTests: XCTestCase {
 
     // MARK: - Lightweight CI gates (generous headroom for test host RSS)
 
+    @MainActor
     func testInMemoryStoreContainer_doesNotSpikeRSSBeyondGenerousDelta() throws {
         let baselineMB = PerformanceDiagnostics.residentMemoryMB()
         _ = try CollegeModelContainerFactory.makeUnifiedInMemoryContainer()

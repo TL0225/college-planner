@@ -22,7 +22,7 @@ enum VaultDocumentAccess {
     static func decryptedTempURL(for id: UUID, collegePersistence: CollegePersistence = .shared) async -> URL? {
         guard let doc = document(id: id, collegePersistence: collegePersistence),
               !doc.localRelativePath.isEmpty else { return nil }
-        return collegePersistence.decryptedTempURLForStoredRelativePath(
+        return await collegePersistence.vaultRepository.decryptedTempURLForStoredRelativePath(
             doc.localRelativePath,
             displayFileName: doc.fileName
         )

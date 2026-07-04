@@ -1,0 +1,75 @@
+name: Assistant Tests
+
+on:
+  pull_request:
+    paths:
+      - 'College/Features/Assistant/**'
+      - 'College/DegoogSidecar/**'
+      - 'scripts/fetch-degoog-sidecar.sh'
+      - 'CollegeTests/Features/Assistant/**'
+      - 'CollegeUITests/Assistant*.swift'
+      - 'CollegeUITests/CollegeUITestCase.swift'
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  assistant-pr-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage DeGoog sidecar
+        run: bash scripts/fetch-degoog-sidecar.sh
+      - name: Run Layer 0–2 smoke
+        run: |
+          bash scripts/college-xcodebuild-test.sh \
+            -scheme College \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CollegeAssistantCI \
+            -only-testing:CollegeTests/AssistantPromptBuilderTests \
+            -only-testing:CollegeTests/AssistantRoutingEvalTests/corpusSize \
+            -only-testing:CollegeTests/AssistantRoutingEvalTests/routingBenchmarkBaseline \
+            -only-testing:CollegeTests/AIAssistantToolRouterTests \
+            test \
+            | xcpretty || true
+
+  assistant-nightly-full:
+    if: github.event_name == 'schedule'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage DeGoog sidecar
+        run: bash scripts/fetch-degoog-sidecar.sh
+      - name: Full Assistant Swift Testing suite
+        run: |
+          bash scripts/college-xcodebuild-test.sh \
+            -scheme College \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CollegeAssistantNightly \
+            -only-testing:CollegeTests/AssistantRoutingEvalTests \
+            -only-testing:CollegeTests/AssistantQualityEvalTests \
+            -only-testing:CollegeTests/AssistantToolExecutionTests \
+            -only-testing:CollegeTests/AssistantConversationSummaryTests \
+            -only-testing:CollegeTests/AssistantConversationPersistenceTests \
+            test \
+            | xcpretty || true
+      - name: Benchmark drift check
+        run: |
+          bash scripts/college-xcodebuild-test.sh \
+            -scheme College \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CollegeAssistantNightly \
+            -only-testing:CollegeTests/AssistantRoutingEvalTests/routingBenchmarkDriftHistory \
+            test \
+            | xcpretty || true
+      - name: Assistant UI smoke
+        run: |
+          bash scripts/college-xcodebuild-test.sh \
+            -scheme College \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CollegeAssistantNightly \
+            -retry-tests-on-failure 2 \
+            -only-testing:CollegeUITests/AssistantChatUITests \
+            -only-testing:CollegeUITests/AssistantInteractionUITests \
+            test \
+            | xcpretty || true

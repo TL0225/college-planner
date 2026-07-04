@@ -18,24 +18,55 @@ import PDFKit
 @MainActor
 enum CatalogBackgroundSyncRunner {
     private static let poiLog = OSLog(subsystem: "Timothy.College", category: .pointsOfInterest)
-    private static let ingestSignatureKeyPrefix = "catalog.ingest.signature.v1."
     private static let forceNextRescrapeKey = "catalog.ingest.forceNext.v1"
+
+    private enum IngestSignatureStorage {
+        static let keyPrefix = "catalog.ingest.signature.v1."
+
+        nonisolated static func key(schoolID: String, format: String, depth: CatalogSyncDepth) -> String {
+            "\(keyPrefix)\(schoolID).\(format).\(depth == .light ? "light" : "full")"
+        }
+    }
 
     nonisolated static func supportsLiveIngestCoordinator(format rawFormat: String) -> Bool {
         let format = rawFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return format == "acalog" || format == "moderncampus" || format == "courseleaf"
+        return format == "acalog" || format == "moderncampus" || format == "courseleaf" || format == "coursedog"
     }
 
-    static func ingestSignatureKey(schoolID: String, format: String, depth: CatalogSyncDepth) -> String {
-        "\(ingestSignatureKeyPrefix)\(schoolID).\(format).\(depth == .light ? "light" : "full")"
+    nonisolated static func ingestSignatureKey(schoolID: String, format: String, depth: CatalogSyncDepth) -> String {
+        IngestSignatureStorage.key(schoolID: schoolID, format: format, depth: depth)
     }
 
-    static func storedIngestSignature(schoolID: String, format: String, depth: CatalogSyncDepth) -> String? {
+    nonisolated static func storedIngestSignature(schoolID: String, format: String, depth: CatalogSyncDepth) -> String? {
         UserDefaults.standard.string(forKey: ingestSignatureKey(schoolID: schoolID, format: format, depth: depth))
     }
 
-    static func setStoredIngestSignature(_ signature: String, schoolID: String, format: String, depth: CatalogSyncDepth) {
+    nonisolated static func setStoredIngestSignature(_ signature: String, schoolID: String, format: String, depth: CatalogSyncDepth) {
         UserDefaults.standard.set(signature, forKey: ingestSignatureKey(schoolID: schoolID, format: format, depth: depth))
+    }
+
+    nonisolated static func clearStoredIngestSignatures(schoolID: String, format: String) {
+        for depth in [CatalogSyncDepth.light, CatalogSyncDepth.full] {
+            UserDefaults.standard.removeObject(forKey: ingestSignatureKey(schoolID: schoolID, format: format, depth: depth))
+        }
+    }
+
+    /// Clears ingest sanity baselines when catalog discovery changes or the user forces a re-scrape.
+    static func invalidateIngestBaselineIfDiscoveryChanged(
+        manifest: SchoolManifest,
+        depth: CatalogSyncDepth,
+        ingestSignature: String,
+        forceRescrape: Bool,
+        format: String
+    ) {
+        let catalogVersionID = CatalogVersion.resolve(school: manifest, segment: .manifestOnly).id
+        let previous = storedIngestSignature(schoolID: manifest.id, format: format, depth: depth)
+        if forceRescrape || (previous != nil && previous != ingestSignature) {
+            CatalogExtractorMetricsBaselineStore.clear(
+                schoolID: manifest.id,
+                catalogVersionID: catalogVersionID
+            )
+        }
     }
 
     static var shouldForceNextRescrape: Bool {
@@ -146,6 +177,12 @@ enum CatalogBackgroundSyncRunner {
                     if chunk.count >= 131_072 {
                         try handle.write(contentsOf: chunk)
                         completedBytes += chunk.count
+                        if completedBytes > CatalogPDFOperationalLimits.maxPDFSizeBytes {
+                            throw CatalogPDFError.exceededMaxPDFSize(
+                                actualBytes: completedBytes,
+                                limitBytes: CatalogPDFOperationalLimits.maxPDFSizeBytes
+                            )
+                        }
                         chunk.removeAll(keepingCapacity: true)
                         receivedSinceProgress += 131_072
                         if receivedSinceProgress >= 131_072 {
@@ -158,6 +195,12 @@ enum CatalogBackgroundSyncRunner {
                 if !chunk.isEmpty {
                     try handle.write(contentsOf: chunk)
                     completedBytes += chunk.count
+                    if completedBytes > CatalogPDFOperationalLimits.maxPDFSizeBytes {
+                        throw CatalogPDFError.exceededMaxPDFSize(
+                            actualBytes: completedBytes,
+                            limitBytes: CatalogPDFOperationalLimits.maxPDFSizeBytes
+                        )
+                    }
                 }
 
                 let total = max(totalLengthHint ?? 0, completedBytes)
@@ -206,7 +249,7 @@ enum CatalogBackgroundSyncRunner {
     }
 
     private nonisolated static func clearModernCampusCachesIfAvailable() {
-        // Newer engine versions no longer expose explicit cache-clearing APIs.
+        ModernCampusEngine.clearAllCourseCachesForMemoryPressure()
     }
 
     private static var lastCatalogToastBump = Date.distantPast
@@ -233,6 +276,7 @@ enum CatalogBackgroundSyncRunner {
         schoolID: String,
         recordDeepScrapeDone: Bool,
         toastID: UUID,
+        politeness: CatalogFetchPoliteness = .bulk,
         importIncremental: @MainActor @escaping (_ profile: SchoolProfile) async throws -> Void
     ) async throws -> (
         coursesByCode: [String: CatalogCourse],
@@ -275,24 +319,28 @@ enum CatalogBackgroundSyncRunner {
             for try await scrapedCoursesChunk in ModernCampusEngine.streamCourseBatches(
                 baseURL: normalizedCatalogURL,
                 catoid: catalog.catoid,
-                batchSize: 250
+                batchSize: 250,
+                politeness: politeness
             ) {
                 streamedChunkIndex += 1
                 streamedCount += scrapedCoursesChunk.count
-                let toastMessage = "Importing \(catalog.title) courses… (\(streamedCount) rows)"
-                await MainActor.run {
-                    CatalogMenuBarProgressNotifier.postCountProgress(
-                        completed: streamedCount,
-                        total: max(streamedCount, 1),
-                        title: catalog.title,
-                        stage: "Courses"
-                    )
-                    throttledToastUpdate(
-                        notifications: AppNotificationCenter.shared,
-                        id: toastID,
-                        message: toastMessage,
-                        progress: frac
-                    )
+                if streamedChunkIndex == 1 || streamedChunkIndex.isMultiple(of: 2) {
+                    let toastMessage = "Importing \(catalog.title) courses… (\(streamedCount) rows)"
+                    let fracSnapshot = frac
+                    await MainActor.run {
+                        CatalogMenuBarProgressNotifier.postCountProgress(
+                            completed: streamedCount,
+                            total: max(streamedCount, 1),
+                            title: catalog.title,
+                            stage: "Courses"
+                        )
+                        throttledToastUpdate(
+                            notifications: AppNotificationCenter.shared,
+                            id: toastID,
+                            message: toastMessage,
+                            progress: fracSnapshot
+                        )
+                    }
                 }
 
                 if !scrapedCoursesChunk.isEmpty {
@@ -433,6 +481,13 @@ enum CatalogBackgroundSyncRunner {
                 || normalizedDegreeType.contains("certificate")
                 || normalizedDegreeType.contains("credential")
             let isMinor = normalizedType.contains("minor") && !isCredentialLike
+
+            // IR-extracted programs (mappingSource `…ir|entityPreviewProgram`) arrive with
+            // `degreeType == nil`, leaving rows that the requirements hydrator and profile
+            // link-resolution cannot match. Recover the degree token from the program's own
+            // display name (e.g. "Cyber Defense, M.S." → "MS") as a last resort.
+            let nameInference = DeclaredProgramDegreeMetadata.infer(fromProgramDisplay: program.name)
+
             let degreeType: String? = {
                 if let rawDegreeType, !rawDegreeType.isEmpty {
                     if let canonical = DegreeTypeNormalizer.normalize(rawDegreeType) {
@@ -443,7 +498,18 @@ enum CatalogBackgroundSyncRunner {
                 if normalizedType.contains("certificate") { return "Certificate" }
                 if normalizedType.contains("credential") { return "Credential" }
                 if isMinor { return "Minor" }
+                if let nameInference { return nameInference.token }
                 return nil
+            }()
+
+            // Prefer the catalog bucket level; if it couldn't be normalized to a real level
+            // (e.g. "Catalog 45"), fall back to the level implied by the program name.
+            let resolvedDegreeLevel: String = {
+                let bucket = degreeLevelForProgram(program).trimmingCharacters(in: .whitespacesAndNewlines)
+                if (bucket.isEmpty || bucket.hasPrefix("Catalog ")), let nameInference {
+                    return nameInference.degreeLevel
+                }
+                return bucket
             }()
 
             let requirementsForProgram = extractedRequirements.filter {
@@ -453,7 +519,7 @@ enum CatalogBackgroundSyncRunner {
             let dept = (deptTrimmed?.isEmpty ?? true) ? nil : deptTrimmed
             return (
                 name: program.name,
-                degreeLevel: degreeLevelForProgram(program),
+                degreeLevel: resolvedDegreeLevel,
                 degreeType: degreeType,
                 isMinor: isMinor,
                 department: dept,
@@ -479,6 +545,7 @@ enum CatalogBackgroundSyncRunner {
         universityName: String,
         snapshot: CatalogIngestSnapshot,
         commitReason: String,
+        hooks: Hooks? = nil,
         signature: String? = nil,
         signatureFormat: String? = nil,
         signatureDepth: CatalogSyncDepth? = nil
@@ -487,10 +554,30 @@ enum CatalogBackgroundSyncRunner {
         CatalogStoreSnapshotBridge.materializePerSchoolCatalogSnapshot(universityName: universityName)
         let summary = CatalogIngestReconciler.reconcile(after: snapshot)
         if let uni = collegePersistence.getActiveUniversity() {
+            let commitPhase: CatalogIngestPipeline.CommitPhase = {
+                switch snapshot.scope {
+                case .programsOnly, .requirementsOnly:
+                    return .phaseA
+                case .fullSchool, .partialCourses:
+                    return .phaseB
+                case .bundleImport:
+                    return .profile
+                }
+            }()
             CatalogIngestPipeline.postCatalogDataDidCommit(
                 universityID: uni.id,
-                reason: commitReason
+                reason: commitReason,
+                commitPhase: commitPhase,
+                programCount: snapshot.programCount,
+                schoolID: snapshot.schoolID
             )
+            if commitPhase == .phaseA {
+                CatalogSyncProgressReporter.emitPhaseACommitted(
+                    universityID: uni.id,
+                    programCount: snapshot.programCount,
+                    hooks: hooks
+                )
+            }
         }
         if let signature, let signatureFormat, let signatureDepth {
             setStoredIngestSignature(
@@ -532,6 +619,8 @@ enum CatalogBackgroundSyncRunner {
         var onCatalogsDiscovered: (([ModernCampusCatalogDescriptor]) -> Void)?
         var onCatalogIndexStarted: ((String, String) -> Void)?
         var onCatalogIndexFinished: ((String, Bool) -> Void)?
+        var onPhaseACommitted: ((UUID, Int) -> Void)?
+        var onSyncTerminal: ((CatalogSyncTerminal) -> Void)?
     }
 
     static func matchSchoolManifest(named schoolName: String, in schools: [SchoolManifest]) -> SchoolManifest? {
@@ -567,6 +656,11 @@ enum CatalogBackgroundSyncRunner {
         throw GitHubError.invalidData
     }
 
+    /// Platform probe preflight — applies local override when confidence is high.
+    static func preflightManifest(_ manifest: SchoolManifest, forceRefresh: Bool = false) async -> SchoolManifest {
+        await CatalogPlatformProbe.resolveEffectiveManifest(manifest, forceRefresh: forceRefresh)
+    }
+
     /// Phase A indexes programs (and optionally full requirement pages); Phase B imports courses in a detached task. Returns `true` when Phase B was scheduled.
     static func runModernCampusCatalogSync(
         manifest: SchoolManifest,
@@ -582,13 +676,14 @@ enum CatalogBackgroundSyncRunner {
         defer { os_signpost(.end, log: poiLog, name: "CatalogSync.Run", signpostID: syncSignpost) }
         CatalogIngestCheckpoint.clearCancel(schoolID: manifest.id)
         try CatalogIngestCheckpoint.throwIfCancelled(schoolID: manifest.id)
+        ModernCampusEngine.resetDiscoveryTelemetryCounts()
         let startedAt = Date()
 
         let catalogURL = (manifest.catalogURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !catalogURL.isEmpty else {
             throw ScraperError.invalidURL
         }
-        CatalogPlatformProbe.enqueueMismatchWarningIfNeeded(manifest: manifest, catalogURL: catalogURL)
+        _ = await CatalogPlatformProbe.probe(catalogURL: catalogURL, manifest: manifest)
 
         notifications.update(id: toastID, message: "Discovering catalogs…", progress: 0.2)
         hooks?.onVisualPhase?(.discovering)
@@ -599,19 +694,12 @@ enum CatalogBackgroundSyncRunner {
             throw ScraperError.invalidURL
         }
 
-        let discovered = (try? await ModernCampusEngine.discoverActiveCatalogs(baseURL: normalizedCatalogURL)) ?? []
-        let postedCatalogs = ModernCampusCatalogLabels.filterPostedCatalogs(from: discovered)
-        let catalogsToScrape: [ModernCampusCatalogDescriptor]
-        if !postedCatalogs.isEmpty {
-            catalogsToScrape = postedCatalogs
-        } else {
-            let catalogID: String
-            if let catoidHint, !catoidHint.isEmpty {
-                catalogID = catoidHint
-            } else {
-                catalogID = try await ModernCampusEngine.discoverCurrentCatalogID(baseURL: normalizedCatalogURL)
-            }
-            catalogsToScrape = [ModernCampusCatalogDescriptor(catoid: catalogID, title: "Catalog")]
+        let catalogsToScrape = await ModernCampusCatalogDiscovery.resolveCatalogsForIngestLenient(
+            normalizedBaseURL: normalizedCatalogURL,
+            catoidHint: catoidHint
+        )
+        guard !catalogsToScrape.isEmpty else {
+            throw ScraperError.invalidURL
         }
 
         hooks?.onCatalogsDiscovered?(catalogsToScrape)
@@ -632,22 +720,44 @@ enum CatalogBackgroundSyncRunner {
             )
         }
 
-        let catalogSignatureSource = catalogsToScrape
-            .map { "\($0.catoid)|\($0.title)" }
-            .sorted()
-            .joined(separator: "||")
-        let signatureDigest = SHA256.hash(data: Data(catalogSignatureSource.utf8))
-        let ingestSignature = signatureDigest.map { String(format: "%02x", $0) }.joined()
+        let discoverySignature = CatalogIngestSignature.discoveryFromCatalogs(catalogsToScrape)
+        let ingestSignature = discoverySignature
         let forceRescrape = consumeForceNextRescrapeIfNeeded()
+        invalidateIngestBaselineIfDiscoveryChanged(
+            manifest: manifest,
+            depth: depth,
+            ingestSignature: ingestSignature,
+            forceRescrape: forceRescrape,
+            format: "moderncampus"
+        )
+        let host = baseURL.host
+        let layoutPrior = ModernCampusProfileRegistry.resolvedProfileID(
+            forSchoolID: manifest.id,
+            host: host,
+            classifiedProfile: .sidebarN2Links
+        ).rawValue
+        let presenceBeforeSync = await collegePersistence.catalogPresence(universityName: manifest.name)
+        let programCountBeforeSync = presenceBeforeSync.majors + presenceBeforeSync.minors
+        let graphSignature = catalogGraph?.sourceSignature ?? discoverySignature
+        let skipSignature = CatalogIngestSignature.modernCampusV2(
+            graphSourceSignature: graphSignature,
+            layoutProfileID: layoutPrior,
+            programCount: programCountBeforeSync
+        )
         if !forceRescrape,
-           storedIngestSignature(schoolID: manifest.id, format: "moderncampus", depth: depth) == ingestSignature {
-            notifications.update(
-                id: toastID,
-                message: "Catalog unchanged — skipped incremental sync.",
-                progress: 1
-            )
-            hooks?.onProgress?(1, "Catalog unchanged — skipped.")
-            return .skipped(message: "Catalog unchanged — skipped incremental sync.")
+           let stored = storedIngestSignature(schoolID: manifest.id, format: "moderncampus", depth: depth),
+           (stored == skipSignature || (!CatalogIngestSignature.isV2(stored) && stored == discoverySignature)) {
+            _ = collegePersistence.setActiveUniversity(named: manifest.name)
+            let presence = await collegePersistence.catalogPresence(universityName: manifest.name)
+            if presence.majors + presence.minors > 0 {
+                notifications.update(
+                    id: toastID,
+                    message: "Catalog unchanged — skipped incremental sync.",
+                    progress: 1
+                )
+                hooks?.onProgress?(1, "Catalog unchanged — skipped.")
+                return .skipped(message: "Catalog unchanged — skipped incremental sync.")
+            }
         }
 
         var programsByCatalogAndURL: [String: ScrapedProgram] = [:]
@@ -655,6 +765,7 @@ enum CatalogBackgroundSyncRunner {
         var dominantLayoutProfileID: String?
         var irCoursesCollected: [CatalogCourse] = []
         let programIndexOnly = (depth == .light)
+        let fetchPoliteness: CatalogFetchPoliteness = programIndexOnly ? .catalogSkeleton : .bulk
 
         for (index, catalog) in catalogsToScrape.enumerated() {
             await Task.yield()
@@ -721,7 +832,8 @@ enum CatalogBackgroundSyncRunner {
                         graph: catalogGraph,
                         manifest: manifest,
                         catalog: catalog,
-                        programsIndexOnly: programIndexOnly
+                        programsIndexOnly: programIndexOnly,
+                        politeness: fetchPoliteness
                     )
                     irScrapeResult = irResult
                     irCoursesCollected.append(contentsOf: irResult.courses)
@@ -740,7 +852,8 @@ enum CatalogBackgroundSyncRunner {
                             catalogID: catalogIDInt,
                             programsIndexOnly: programIndexOnly,
                             schoolID: manifest.id,
-                            catalogVersionID: catalogVersion.id
+                            catalogVersionID: catalogVersion.id,
+                            politeness: fetchPoliteness
                         )
                     } else {
                         scrapedPrograms = irResult.programs
@@ -751,7 +864,8 @@ enum CatalogBackgroundSyncRunner {
                         catalogID: catalogIDInt,
                         programsIndexOnly: programIndexOnly,
                         schoolID: manifest.id,
-                        catalogVersionID: catalogVersion.id
+                        catalogVersionID: catalogVersion.id,
+                        politeness: fetchPoliteness
                     )
                 }
                 await ModernCampusCatalogIngestAdapter.persistDocumentIRIfNeeded(
@@ -760,7 +874,9 @@ enum CatalogBackgroundSyncRunner {
                     graph: catalogGraph,
                     scraper: programScraper,
                     irScrapeResult: irScrapeResult,
-                    layoutProfileID: dominantLayoutProfileID
+                    layoutProfileID: dominantLayoutProfileID,
+                    programsIndexOnly: programIndexOnly,
+                    politeness: fetchPoliteness
                 )
                 await Task.yield()
                 for program in scrapedPrograms {
@@ -778,6 +894,8 @@ enum CatalogBackgroundSyncRunner {
             hooks?.onCatalogIndexFinished?(catalog.catoid, true)
             os_signpost(.end, log: poiLog, name: "CatalogSync.Catalog", signpostID: catalogSignpost)
         }
+
+        programsByCatalogAndURL = CatalogScrapedProgramDedup.collapseByCanonicalMajor(programsByCatalogAndURL)
 
         let programs = Array(programsByCatalogAndURL.values)
 
@@ -799,7 +917,7 @@ enum CatalogBackgroundSyncRunner {
             )
             ingestGateOutcome = gate
             if gate.shouldAbortIngest {
-                throw ScraperError.parsingFailed
+                throw ScraperError.ingestRejected(CatalogIngestGate.abortSummary(gate))
             }
             if !gate.allowsRequirements {
                 extractedRequirements = []
@@ -855,7 +973,7 @@ enum CatalogBackgroundSyncRunner {
             let catoidFromKey = dedupKey.split(separator: "|", maxSplits: 1).first.map(String.init) ?? ""
             let catalogMeta = catalogsToScrape.first { $0.catoid == catoidFromKey }
             let catalogLabel = catalogMeta.map {
-                ModernCampusCatalogLabels.postedDisplayTitle(from: $0.title)
+                ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: $0.title, catoid: $0.catoid)
             } ?? "Catalog \(catoidFromKey)"
 
             let preferredGroup = (program.college ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -985,8 +1103,9 @@ enum CatalogBackgroundSyncRunner {
         for (dedupKey, program) in programsByCatalogAndURL.sorted(by: { $0.key < $1.key }) {
             let catoidFromKey = dedupKey.split(separator: "|", maxSplits: 1).first.map(String.init) ?? ""
             let catalogMeta = catalogsToScrape.first { $0.catoid == catoidFromKey }
-            let bucket = catalogMeta.map { ModernCampusCatalogLabels.postedDisplayTitle(from: $0.title) }
-                ?? "Catalog \(catoidFromKey)"
+            let bucket = catalogMeta.map {
+                ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: $0.title, catoid: $0.catoid)
+            } ?? "Catalog \(catoidFromKey)"
             let dedupStem = dedupKey.split(separator: "|", maxSplits: 1).dropFirst().first.map(String.init)
                 ?? program.url.trimmingCharacters(in: .whitespacesAndNewlines)
             rows.append(
@@ -1032,6 +1151,18 @@ enum CatalogBackgroundSyncRunner {
             }
         }
 
+        if rows.isEmpty {
+            throw ScraperError.ingestRejected(
+                "No programs were found after scraping \(catalogsToScrape.count) catalog edition(s)."
+            )
+        }
+
+        let finalIngestSignature = CatalogIngestSignature.modernCampusV2(
+            graphSourceSignature: graphSignature,
+            layoutProfileID: dominantLayoutProfileID ?? layoutPrior,
+            programCount: rows.count
+        )
+
         if !rows.isEmpty {
             let provenanceRows = rows.filter { $0.provenanceJSON != nil }.count
             if provenanceRows > 0 {
@@ -1067,7 +1198,7 @@ enum CatalogBackgroundSyncRunner {
                 collegePersistence: collegePersistence
             )
         }
-        CatalogIngestCheckpoint.save(stage: .passA, schoolID: manifest.id, signature: ingestSignature)
+        CatalogIngestCheckpoint.save(stage: .passA, schoolID: manifest.id, signature: finalIngestSignature)
 
         let catoidSummary = catalogsToScrape.map(\.catoid).joined(separator: ",")
         let programsWithRequirements = rows.filter { row in
@@ -1098,6 +1229,35 @@ enum CatalogBackgroundSyncRunner {
                     defaultValue: "Importing course catalog in the background…"
                 )
             )
+
+            let requirementCount = rows.reduce(0) { partial, row in
+                partial + (row.requirements?.count ?? 0)
+            }
+            _ = persistStructuredCatalogIngest(
+                collegePersistence: collegePersistence,
+                universityName: manifest.name,
+                snapshot: CatalogIngestSnapshot(
+                    schoolID: manifest.id,
+                    schoolName: manifest.name,
+                    scope: .programsOnly,
+                    format: "moderncampus",
+                    importedAt: Date(),
+                    courseCount: 0,
+                    programCount: rows.count,
+                    requirementCount: requirementCount,
+                    policyCount: 0
+                ),
+                commitReason: "catalog moderncampus phaseA programs committed",
+                hooks: hooks
+            )
+            CatalogSyncProgressReporter.main.reportStage(
+                .importingCourses,
+                detail: String(
+                    localized: "catalog.sync.phase.programs_saved_partial",
+                    defaultValue: "Programs saved — importing courses…"
+                ),
+                hooks: hooks
+            )
         } else {
             notifications.update(
                 id: toastID,
@@ -1127,7 +1287,8 @@ enum CatalogBackgroundSyncRunner {
                     policyCount: 0
                 ),
                 commitReason: "catalog moderncampus programs committed",
-                signature: ingestSignature,
+                hooks: hooks,
+                signature: finalIngestSignature,
                 signatureFormat: "moderncampus",
                 signatureDepth: depth
             )
@@ -1156,27 +1317,25 @@ enum CatalogBackgroundSyncRunner {
 
         Task { @MainActor in
             UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
-            NotificationCenter.default.post(
-                name: .collegeCatalogBackgroundImportProgress,
-                object: nil,
-                userInfo: [
-                    "fraction": 0.05,
-                    "title": "Importing \(manifestCopy.name) courses",
-                    "finished": false
-                ]
+            CatalogSyncProgressReporter.courses.reportStage(
+                .importingCourses,
+                detail: String(
+                    format: String(
+                        localized: "catalog.sync.phase.courses_start_fmt",
+                        defaultValue: "Importing %@ courses"
+                    ),
+                    manifestCopy.name
+                )
             )
 
             defer {
                 UserDefaults.standard.set(false, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
+                CatalogSchoolImportService.clearStreamingImportSession(schoolID: manifestCopy.id)
                 clearModernCampusCachesIfAvailable()
-                NotificationCenter.default.post(
-                    name: .collegeCatalogBackgroundImportProgress,
-                    object: nil,
-                    userInfo: ["finished": true]
-                )
             }
 
             do {
+                let phaseBCoursePoliteness = fetchPoliteness
                 let scrapeResult = try await Self.scrapeModernCampusPhaseBCourses(
                     catalogs: catalogsCopy,
                     manifestID: manifestCopy.id,
@@ -1185,10 +1344,13 @@ enum CatalogBackgroundSyncRunner {
                     schoolID: manifestCopy.id,
                     recordDeepScrapeDone: recordDeepScrapeDone,
                     toastID: toastID,
+                    politeness: phaseBCoursePoliteness,
                     importIncremental: { profile in
-                        try await dataManager.importSchoolCatalog(
-                            profile,
-                            policy: .preserveExistingCourses
+                        try await CatalogSchoolImportService.upsertCourseChunk(
+                            courses: profile.courses,
+                            schoolID: manifestCopy.id,
+                            schoolName: manifestCopy.name,
+                            catalogURL: normalizedURLCopy
                         )
                     }
                 )
@@ -1320,7 +1482,10 @@ enum CatalogBackgroundSyncRunner {
                     if let uni = dataManager.getActiveUniversity() {
                         CatalogIngestPipeline.postCatalogDataDidCommit(
                             universityID: uni.id,
-                            reason: "catalog phaseB committed"
+                            reason: "catalog phaseB committed",
+                            commitPhase: .phaseB,
+                            programCount: rows.count,
+                            schoolID: manifestCopy.id
                         )
                     }
                     clearModernCampusCachesIfAvailable()
@@ -1331,10 +1496,10 @@ enum CatalogBackgroundSyncRunner {
                     if recordDeepScrapeDone {
                         UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.deepCatalogScrapeCompletedKey)
                     }
-                    CatalogIngestCheckpoint.save(stage: .passB, schoolID: manifestCopy.id, signature: ingestSignature)
+                    CatalogIngestCheckpoint.save(stage: .passB, schoolID: manifestCopy.id, signature: finalIngestSignature)
 
                     setStoredIngestSignature(
-                        ingestSignature,
+                        finalIngestSignature,
                         schoolID: manifestCopy.id,
                         format: "moderncampus",
                         depth: .full
@@ -1347,6 +1512,18 @@ enum CatalogBackgroundSyncRunner {
                         isDismissible: true,
                         autoDismissAfter: 4
                     )
+                    CatalogSyncProgressReporter.courses.reportTerminal(
+                        .succeeded(
+                            summary: String(
+                                format: String(
+                                    localized: "catalog.sync.phase.courses_done_fmt",
+                                    defaultValue: "%@: %d courses saved."
+                                ),
+                                manifestCopy.name,
+                                courses.count
+                            )
+                        )
+                    )
                 }
             } catch {
                 notify.post(
@@ -1356,6 +1533,9 @@ enum CatalogBackgroundSyncRunner {
                     isDismissible: true,
                     autoDismissAfter: 8
                 )
+                CatalogSyncProgressReporter.courses.reportTerminal(
+                    .failed(message: error.localizedDescription)
+                )
             }
         }
 
@@ -1363,41 +1543,77 @@ enum CatalogBackgroundSyncRunner {
     }
 
     /// Start or restart catalog sync for the user’s school (Settings / menu bar / Overview). Safe to call when not onboarding.
+    @discardableResult
     static func runUserInitiatedCatalogSync(
         schoolName: String,
         collegePersistence: CollegePersistence,
         notifications: AppNotificationCenter,
         depth: CatalogSyncDepth = .full
-    ) async {
+    ) async -> CatalogUserInitiatedSyncResult {
+        await BackgroundServiceOnDemand.runReturning(id: "catalog_background_sync") {
+            await runUserInitiatedCatalogSyncImpl(
+                schoolName: schoolName,
+                collegePersistence: collegePersistence,
+                notifications: notifications,
+                depth: depth
+            )
+        }
+    }
+
+    struct CatalogUserInitiatedSyncResult: Sendable {
+        var terminal: CatalogSyncTerminal?
+        var scheduledBackgroundCourseImport: Bool = false
+    }
+
+    private static func runUserInitiatedCatalogSyncImpl(
+        schoolName: String,
+        collegePersistence: CollegePersistence,
+        notifications: AppNotificationCenter,
+        depth: CatalogSyncDepth = .full
+    ) async -> CatalogUserInitiatedSyncResult {
         let githubService = GitHubDataService()
         let trimmed = schoolName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
+            let message = String(localized: "catalog.sync.no_school_title", defaultValue: "No school selected")
             notifications.post(
                 kind: .error,
-                title: String(localized: "catalog.sync.no_school_title", defaultValue: "No school selected"),
+                title: message,
                 message: String(localized: "catalog.sync.no_school_body", defaultValue: "Set your college or university in Profile first."),
                 isDismissible: true,
                 autoDismissAfter: 6
             )
-            CatalogMenuBarProgressNotifier.postFinished()
-            return
+            CatalogMenuBarProgressNotifier.postFailed(
+                message: message
+            )
+            CatalogSyncProgressReporter.main.reportTerminal(.failed(message: message))
+            return CatalogUserInitiatedSyncResult(
+                terminal: .failed(message: message)
+            )
         }
 
-        if UserDefaults.standard.bool(forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey) {
+        if UserDefaults.standard.bool(forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey),
+           depth == .full {
+            let skipMessage = String(
+                localized: "catalog.sync.already_running_body",
+                defaultValue: "Wait for the current import to finish, then you can start another."
+            )
             notifications.post(
                 kind: .info,
                 title: String(localized: "catalog.sync.already_running_title", defaultValue: "Catalog import running"),
-                message: String(localized: "catalog.sync.already_running_body", defaultValue: "Wait for the current import to finish, then you can start another."),
+                message: skipMessage,
                 isDismissible: true,
                 autoDismissAfter: 5
             )
-            return
+            let terminal = CatalogSyncTerminal.skipped(reason: skipMessage)
+            CatalogSyncProgressReporter.main.reportTerminal(terminal)
+            return CatalogUserInitiatedSyncResult(terminal: terminal)
         }
 
-        CatalogMenuBarProgressNotifier.postInProgress(
-            fraction: 0,
-            title: String(localized: "catalog.sync.menubar_starting", defaultValue: "Starting catalog sync…"),
-            indeterminate: true
+        defer { CatalogSyncProgressReporter.endSession() }
+
+        CatalogSyncProgressReporter.main.reportStage(
+            .discoveringCatalogs,
+            detail: String(localized: "catalog.sync.menubar_starting", defaultValue: "Starting catalog sync…")
         )
 
         let toastID = notifications.post(
@@ -1410,35 +1626,45 @@ enum CatalogBackgroundSyncRunner {
 
         do {
             notifications.update(id: toastID, message: String(localized: "catalog.sync.loading_manifest", defaultValue: "Loading school manifest…"), progress: 0.15)
-            CatalogMenuBarProgressNotifier.postInProgress(
-                fraction: 0.12,
-                title: String(localized: "catalog.sync.menubar_manifest", defaultValue: "Loading school manifest…"),
-                indeterminate: false
+            CatalogSyncProgressReporter.main.reportStage(
+                .discoveringCatalogs,
+                detail: String(localized: "catalog.sync.menubar_manifest", defaultValue: "Loading school manifest…")
             )
 
             let manifest = try await resolveSchoolManifest(named: trimmed, githubService: githubService)
-            let canonicalSchoolName = manifest.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let effectiveManifest = await preflightManifest(manifest)
+            try CatalogIngestCheckpoint.throwIfCancelled(schoolID: effectiveManifest.id)
+            let canonicalSchoolName = effectiveManifest.name.trimmingCharacters(in: .whitespacesAndNewlines)
             _ = collegePersistence.setActiveUniversity(named: canonicalSchoolName.isEmpty ? trimmed : canonicalSchoolName)
 
-            let format = manifest.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let format = effectiveManifest.catalogFormat.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let shouldUseCatalogIngestCoordinator = supportsLiveIngestCoordinator(format: format)
 
             var scheduledBackgroundCourseImport = false
             var skippedMessage: String?
+            var syncTerminal: CatalogSyncTerminal?
             if shouldUseCatalogIngestCoordinator {
                 let menuBarHooks = Hooks(
                     onVisualPhase: { _ in },
                     onProgress: { fraction, title in
-                        CatalogMenuBarProgressNotifier.postInProgress(
-                            fraction: fraction,
-                            title: title,
-                            indeterminate: false
+                        CatalogSyncProgressReporter.main.reportProgress(
+                            CatalogSyncProgress(
+                                phase: .importing,
+                                completed: Int((fraction * 100).rounded()),
+                                total: 100,
+                                unit: .none,
+                                detail: title
+                            )
                         )
                     },
-                    onCatalogsDiscovered: { _ in }
+                    onCatalogsDiscovered: { _ in },
+                    onSyncTerminal: { terminal in
+                        syncTerminal = terminal
+                    }
                 )
+                CatalogSyncProgressReporter.beginSession(hooks: menuBarHooks)
                 let outcome = try await CatalogIngestCoordinator.runCatalogSync(
-                    manifest: manifest,
+                    manifest: effectiveManifest,
                     toastID: toastID,
                     collegePersistence: collegePersistence,
                     notifications: notifications,
@@ -1449,30 +1675,35 @@ enum CatalogBackgroundSyncRunner {
                 switch outcome {
                 case .completed(let scheduled):
                     scheduledBackgroundCourseImport = scheduled
+                    if !scheduled {
+                        syncTerminal = .succeeded(
+                            summary: String(localized: "catalog.sync.ready_title", defaultValue: "Catalog Ready")
+                        )
+                    }
                 case .skipped(let message):
                     skippedMessage = message
+                    syncTerminal = .skipped(reason: message)
                 }
             } else {
+                CatalogSyncProgressReporter.beginSession(hooks: nil)
                 notifications.update(id: toastID, message: String(localized: "catalog.sync.discovering_profile", defaultValue: "Discovering catalog profile…"), progress: 0.2)
-                CatalogMenuBarProgressNotifier.postInProgress(
-                    fraction: 0.25,
-                    title: String(localized: "catalog.sync.menubar_downloading_profile", defaultValue: "Downloading school profile…"),
-                    indeterminate: false
+                CatalogSyncProgressReporter.main.reportStage(
+                    .discoveringCatalogs,
+                    detail: String(localized: "catalog.sync.menubar_downloading_profile", defaultValue: "Downloading school profile…")
                 )
-                let profile = try await githubService.downloadSchoolProfile(schoolID: manifest.id)
+                let profile = try await githubService.downloadSchoolProfile(schoolID: effectiveManifest.id)
 
                 notifications.update(id: toastID, message: String(localized: "catalog.sync.importing", defaultValue: "Importing catalog to local database…"), progress: 0.75)
-                CatalogMenuBarProgressNotifier.postInProgress(
-                    fraction: 0.75,
-                    title: String(localized: "catalog.sync.menubar_importing_db", defaultValue: "Importing catalog to database…"),
-                    indeterminate: false
+                CatalogSyncProgressReporter.main.reportStage(
+                    .savingPrograms,
+                    detail: String(localized: "catalog.sync.menubar_importing_db", defaultValue: "Importing catalog to database…")
                 )
                 try await collegePersistence.importSchoolCatalog(profile)
                 _ = persistStructuredCatalogIngest(
                     collegePersistence: collegePersistence,
                     universityName: canonicalSchoolName.isEmpty ? trimmed : canonicalSchoolName,
                     snapshot: CatalogIngestSnapshot(
-                        schoolID: manifest.id,
+                        schoolID: effectiveManifest.id,
                         schoolName: canonicalSchoolName.isEmpty ? trimmed : canonicalSchoolName,
                         scope: .fullSchool,
                         format: "profile",
@@ -1487,11 +1718,18 @@ enum CatalogBackgroundSyncRunner {
                 if depth == .full {
                     UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.deepCatalogScrapeCompletedKey)
                 }
+                syncTerminal = .succeeded(
+                    summary: String(localized: "catalog.sync.ready_title", defaultValue: "Catalog Ready")
+                )
             }
 
             if !scheduledBackgroundCourseImport {
                 UserDefaults.standard.set(false, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
-                CatalogMenuBarProgressNotifier.postFinished()
+                if let syncTerminal {
+                    CatalogSyncProgressReporter.main.reportTerminal(syncTerminal)
+                } else {
+                    CatalogMenuBarProgressNotifier.postFinished()
+                }
             }
 
             let readyLabel = canonicalSchoolName.isEmpty ? trimmed : canonicalSchoolName
@@ -1526,6 +1764,7 @@ enum CatalogBackgroundSyncRunner {
                     autoDismissAfter: 4
                 )
             }
+            return CatalogUserInitiatedSyncResult(terminal: syncTerminal, scheduledBackgroundCourseImport: scheduledBackgroundCourseImport)
         } catch {
             notifications.dismiss(id: toastID)
             notifications.post(
@@ -1536,7 +1775,9 @@ enum CatalogBackgroundSyncRunner {
                 autoDismissAfter: 6
             )
             UserDefaults.standard.set(false, forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey)
-            CatalogMenuBarProgressNotifier.postFinished()
+            let terminal = CatalogSyncTerminal.failed(message: error.localizedDescription)
+            CatalogSyncProgressReporter.main.reportTerminal(terminal)
+            return CatalogUserInitiatedSyncResult(terminal: terminal)
         }
     }
 }
@@ -1555,14 +1796,38 @@ enum CatalogIngestCoordinator {
         depth: CatalogBackgroundSyncRunner.CatalogSyncDepth = .full,
         hooks: CatalogBackgroundSyncRunner.Hooks? = nil
     ) async throws -> CatalogBackgroundSyncRunner.CatalogIngestSyncOutcome {
-        let format = manifest.catalogFormat
+        try await BackgroundServiceOnDemand.runThrowing(id: "catalog_ingest_coordinator") {
+            try await runCatalogSyncImpl(
+                manifest: manifest,
+                toastID: toastID,
+                collegePersistence: collegePersistence,
+                notifications: notifications,
+                githubService: githubService,
+                depth: depth,
+                hooks: hooks
+            )
+        }
+    }
+
+    private static func runCatalogSyncImpl(
+        manifest: SchoolManifest,
+        toastID: UUID,
+        collegePersistence: CollegePersistence,
+        notifications: AppNotificationCenter,
+        githubService: GitHubDataService,
+        depth: CatalogBackgroundSyncRunner.CatalogSyncDepth = .full,
+        hooks: CatalogBackgroundSyncRunner.Hooks? = nil
+    ) async throws -> CatalogBackgroundSyncRunner.CatalogIngestSyncOutcome {
+        try CatalogIngestCheckpoint.throwIfCancelled(schoolID: manifest.id)
+        let effectiveManifest = await CatalogBackgroundSyncRunner.preflightManifest(manifest)
+        let format = effectiveManifest.catalogFormat
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
         switch format {
         case "acalog", "moderncampus":
             return try await CatalogBackgroundSyncRunner.runModernCampusCatalogSync(
-                manifest: manifest,
+                manifest: effectiveManifest,
                 toastID: toastID,
                 collegePersistence: collegePersistence,
                 notifications: notifications,
@@ -1573,7 +1838,18 @@ enum CatalogIngestCoordinator {
 
         case "courseleaf":
             return try await CourseLeafCatalogIngestAdapter.runCourseLeafCatalogSync(
-                manifest: manifest,
+                manifest: effectiveManifest,
+                toastID: toastID,
+                collegePersistence: collegePersistence,
+                notifications: notifications,
+                githubService: githubService,
+                depth: depth,
+                hooks: hooks
+            )
+
+        case "coursedog":
+            return try await CoursedogCatalogIngestAdapter.runCoursedogCatalogSync(
+                manifest: effectiveManifest,
                 toastID: toastID,
                 collegePersistence: collegePersistence,
                 notifications: notifications,
@@ -1629,7 +1905,10 @@ enum CourseLeafCatalogIngestAdapter {
             throw ScraperError.invalidURL
         }
         await CourseLeafSitemapCache.clear()
-        let sitemapPageURLs = try await CourseLeafSitemapCache.pageURLs(baseURL: normalizedBase)
+        let sitemapPageURLs = try await Task.detached(priority: .utility) {
+            try await CourseLeafSitemapCache.pageURLs(baseURL: normalizedBase)
+        }.value
+        try CatalogIngestCheckpoint.throwIfCancelled(schoolID: schoolID)
 
         let onboardingCatalogs = CourseLeafCatalogSegmentDiscoverer.onboardingCatalogs(
             pageURLs: sitemapPageURLs,
@@ -1663,6 +1942,13 @@ enum CourseLeafCatalogIngestAdapter {
         let ingestSignature = signatureDigest.map { String(format: "%02x", $0) }.joined()
 
         let forceRescrape = CatalogBackgroundSyncRunner.consumeForceNextRescrapeIfNeeded()
+        CatalogBackgroundSyncRunner.invalidateIngestBaselineIfDiscoveryChanged(
+            manifest: manifest,
+            depth: depth,
+            ingestSignature: ingestSignature,
+            forceRescrape: forceRescrape,
+            format: "courseleaf"
+        )
         if !forceRescrape,
            CatalogBackgroundSyncRunner.storedIngestSignature(schoolID: schoolID, format: "courseleaf", depth: depth) == ingestSignature {
             let presence = await collegePersistence.catalogPresence(universityName: manifest.name)
@@ -1829,7 +2115,7 @@ enum CourseLeafCatalogIngestAdapter {
             )
             ingestGateOutcome = gate
             if gate.shouldAbortIngest {
-                throw ScraperError.parsingFailed
+                throw ScraperError.ingestRejected(CatalogIngestGate.abortSummary(gate))
             }
             if !gate.allowsRequirements {
                 extractedRequirements = []
@@ -2210,6 +2496,31 @@ enum PDFCatalogIngestAdapter {
         depth: CatalogBackgroundSyncRunner.CatalogSyncDepth,
         hooks: CatalogBackgroundSyncRunner.Hooks?
     ) async throws -> CatalogBackgroundSyncRunner.CatalogIngestSyncOutcome {
+        do {
+            return try await performPDFCatalogSync(
+                manifest: manifest,
+                toastID: toastID,
+                collegePersistence: collegePersistence,
+                notifications: notifications,
+                githubService: githubService,
+                depth: depth,
+                hooks: hooks
+            )
+        } catch {
+            recordPDFIngestFailure(manifest: manifest, error: error)
+            throw error
+        }
+    }
+
+    private static func performPDFCatalogSync(
+        manifest: SchoolManifest,
+        toastID: UUID,
+        collegePersistence: CollegePersistence,
+        notifications: AppNotificationCenter,
+        githubService: GitHubDataService,
+        depth: CatalogBackgroundSyncRunner.CatalogSyncDepth,
+        hooks: CatalogBackgroundSyncRunner.Hooks?
+    ) async throws -> CatalogBackgroundSyncRunner.CatalogIngestSyncOutcome {
         let schoolID = manifest.id
         let cachedPDFURL = CatalogArchiveStore.cachedPDFURL(schoolID: schoolID)
         let hasCachedPDF = FileManager.default.fileExists(atPath: cachedPDFURL.path)
@@ -2300,7 +2611,8 @@ enum PDFCatalogIngestAdapter {
             title: manifest.name,
             stage: "Download"
         )
-        let totalPDFPages = max(0, PDFDocument(url: localPDFURL)?.pageCount ?? 0)
+        let pdfContext = try CatalogPDFContext(pdfURL: localPDFURL)
+        let totalPDFPages = pdfContext.pageCount
         CatalogIngestCheckpoint.save(stage: .passA, schoolID: schoolID, signature: nil)
         let pdfSignature = try CatalogArchiveStore.sha256Hex(of: localPDFURL)
         if !forceRescrape,
@@ -2341,28 +2653,43 @@ enum PDFCatalogIngestAdapter {
         let schoolName = manifest.name
         let catalogVersion = CatalogPDFIngestPersistence.catalogVersion(for: manifest)
         let ingestRunID = UUID()
-        let extractionResult: CatalogPDFIngestOutput = try await Task.detached(priority: .utility) { () async throws -> CatalogPDFIngestOutput in
-            try await CatalogPDFPipeline.run(
-                pdfURL: localPDFURL,
-                options: CatalogPDFPipeline.Options(
-                    schoolID: manifest.id,
-                    catalogVersionID: catalogVersion.id,
-                    includeCourses: depth == .full,
-                    includePolicies: depth == .light,
-                    ocrFallback: depth == .full
-                ),
-                onPageProgress: { completed, total in
-                    Task { @MainActor in
-                        CatalogMenuBarProgressNotifier.postCountProgress(
-                            completed: completed,
-                            total: total,
-                            title: schoolName,
-                            stage: "Pages"
-                        )
-                    }
-                }
-            )
-        }.value
+        let extractionResult: CatalogPDFIngestOutput = try await withThrowingTaskGroup(of: CatalogPDFIngestOutput.self) { group in
+            let timeoutSeconds = CatalogPDFOperationalLimits.maxProcessingTimeSeconds
+            group.addTask {
+                try await Task.detached(priority: .utility) {
+                    try await CatalogPDFPipeline.run(
+                        pdfURL: localPDFURL,
+                        context: pdfContext,
+                        options: CatalogPDFPipeline.Options(
+                            schoolID: manifest.id,
+                            catalogVersionID: catalogVersion.id,
+                            includeCourses: depth == .full,
+                            includePolicies: depth == .light,
+                            ocrFallback: depth == .full
+                        ),
+                        onPageProgress: { completed, total in
+                            Task { @MainActor in
+                                CatalogMenuBarProgressNotifier.postCountProgress(
+                                    completed: completed,
+                                    total: total,
+                                    title: schoolName,
+                                    stage: "Pages"
+                                )
+                            }
+                        }
+                    )
+                }.value
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                throw CatalogPDFError.exceededMaxProcessingTime(seconds: timeoutSeconds)
+            }
+            guard let first = try await group.next() else {
+                throw CatalogPDFError.extractedEmptyText
+            }
+            group.cancelAll()
+            return first
+        }
 
         guard !extractionResult.programs.isEmpty else {
             throw CatalogPDFError.noProgramsExtracted
@@ -2399,9 +2726,55 @@ enum PDFCatalogIngestAdapter {
             )
             pdfIngestGateOutcome = gate
             if gate.shouldAbortIngest {
-                throw ScraperError.parsingFailed
+                await persistPDFIngestDiagnostics(
+                    manifest: manifest,
+                    pdfSignature: pdfSignature,
+                    pageCount: extractionResult.healthReport.pageCount,
+                    programs: extractionResult.programs.count,
+                    courses: extractionResult.courses.count,
+                    requirements: extractedRequirements.count,
+                    policies: extractionResult.policyRows.count,
+                    healthReport: extractionResult.healthReport,
+                    blockClassification: extractionResult.classificationDiagnostics,
+                    ocrPagesUsed: extractionResult.ocrPagesUsed,
+                    documentIR: extractionResult.documentIR,
+                    collegePersistence: collegePersistence
+                )
+                return .skipped(message: "PDF ingest gated due to low confidence/sanity checks; raw diagnostics preserved for review.")
             }
         }
+
+        // Persist recognized departments first so that courses and majors can be
+        // linked to them during import (department lookup is keyed by name and code).
+        if !extractionResult.departments.isEmpty {
+            let departmentRows = extractionResult.departments.map {
+                (name: $0.name, code: $0.code, school: nil as String?)
+            }
+            try? CatalogProgramWriteBridge.saveDepartments(departmentRows, for: manifest.name)
+        }
+
+        // Relabel each course's department from its raw subject prefix to the resolved
+        // department name so course<->department links resolve even for departments
+        // that own multiple subject prefixes (e.g. graduate + undergraduate variants).
+        let coursesForImport: [CatalogCourse] = extractionResult.departmentSubjectMap.isEmpty
+            ? extractionResult.courses
+            : extractionResult.courses.map { course in
+                guard let prefix = course.department?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                      let name = extractionResult.departmentSubjectMap[prefix.uppercased()]
+                else { return course }
+                return CatalogCourse(
+                    courseCode: course.courseCode,
+                    title: course.title,
+                    description: course.description,
+                    credits: course.credits,
+                    department: name,
+                    prerequisites: course.prerequisites,
+                    prerequisiteText: course.prerequisiteText,
+                    corequisites: course.corequisites,
+                    typicallyOffered: course.typicallyOffered
+                )
+            }
 
         let policies = SchoolPolicies(
             transferCreditLimit: nil,
@@ -2492,7 +2865,10 @@ enum PDFCatalogIngestAdapter {
                     if let uni = collegePersistence.getActiveUniversity() {
                         CatalogIngestPipeline.postCatalogDataDidCommit(
                             universityID: uni.id,
-                            reason: "catalog pdf fallback profile committed"
+                            reason: "catalog pdf fallback profile committed",
+                            commitPhase: .phaseA,
+                            programCount: fallbackProfile.degreeRequirements.map(\.major).count,
+                            schoolID: manifest.id
                         )
                     }
                     CatalogBackgroundSyncRunner.setStoredIngestSignature(pdfSignature, schoolID: manifest.id, format: "pdf", depth: depth)
@@ -2586,7 +2962,10 @@ enum PDFCatalogIngestAdapter {
             if let uni = collegePersistence.getActiveUniversity() {
                 CatalogIngestPipeline.postCatalogDataDidCommit(
                     universityID: uni.id,
-                    reason: "catalog pdf programs committed"
+                    reason: "catalog pdf programs committed",
+                    commitPhase: .phaseA,
+                    programCount: extractionResult.programs.count,
+                    schoolID: manifest.id
                 )
             }
 
@@ -2608,7 +2987,7 @@ enum PDFCatalogIngestAdapter {
                 progress: 0.75
             )
 
-            let profile = makeProfile(courses: extractionResult.courses, degreeRequirements: extractedRequirements, versionSuffix: "courses-programs")
+            let profile = makeProfile(courses: coursesForImport, degreeRequirements: extractedRequirements, versionSuffix: "courses-programs")
             try await collegePersistence.importSchoolCatalog(profile)
             _ = collegePersistence.setActiveUniversity(named: manifest.name)
             CatalogStoreSnapshotBridge.materializePerSchoolCatalogSnapshot(universityName: manifest.name)
@@ -2638,7 +3017,7 @@ enum PDFCatalogIngestAdapter {
             }
 
             try await CatalogPDFIngestPersistence.persistCourseMetadataIfNeeded(
-                courses: extractionResult.courses,
+                courses: coursesForImport,
                 manifest: manifest,
                 documentIR: extractionResult.documentIR,
                 ingestRunID: ingestRunID
@@ -2715,6 +3094,9 @@ enum PDFCatalogIngestAdapter {
                 CatalogIngestPipeline.postCatalogDataDidCommit(
                     universityID: uni.id,
                     reason: "catalog pdf courses+programs committed",
+                    commitPhase: .phaseB,
+                    programCount: extractionResult.programs.count,
+                    schoolID: manifest.id,
                     archive: CatalogIngestPipeline.ArchivePassRequest(
                         schoolID: manifest.id,
                         schoolName: manifest.name,
@@ -2777,6 +3159,55 @@ enum PDFCatalogIngestAdapter {
                 requirements: requirementsForProgram.isEmpty ? nil : requirementsForProgram
             )
         }
+    }
+
+    private static func recordPDFIngestFailure(manifest: SchoolManifest, error: Error) {
+        let failureClass: CatalogPDFFailureClass = {
+            if let pdfError = error as? CatalogPDFError { return pdfError.failureClass }
+            if error is ScraperError { return .download }
+            return .persistence
+        }()
+        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        PDFScrapeReport.save(
+            PDFScrapeReport(
+                schoolID: manifest.id,
+                schoolName: manifest.name,
+                generatedAt: Date(),
+                parserVersion: "2.0.0-pdf-blocks",
+                pdfSHA256: "",
+                pageCount: 0,
+                programsExtracted: 0,
+                coursesExtracted: 0,
+                requirementsExtracted: 0,
+                policiesExtracted: 0,
+                healthReport: nil,
+                blockClassification: nil,
+                parserCapabilityVersion: CatalogParserCapability.version,
+                ocrPagesUsed: nil,
+                averageProgramConfidence: nil,
+                layoutProfileID: "pdf-\(manifest.id)",
+                documentIRNodeCount: nil,
+                warnings: [message],
+                failureClass: failureClass,
+                lastFailureMessage: message
+            )
+        )
+        CatalogIngestObservability.record(
+            CatalogIngestMetricSample(
+                schoolID: manifest.id,
+                source: "pdf",
+                succeeded: false,
+                durationMs: 0,
+                pageCount: 0,
+                ocrPagesUsed: 0,
+                averageProgramConfidence: nil,
+                timestamp: Date(),
+                programsFound: 0,
+                coursesFound: 0,
+                requirementsFound: 0,
+                layoutProfileID: "pdf-\(manifest.id)"
+            )
+        )
     }
 
     private static func persistPDFIngestDiagnostics(
@@ -2896,6 +3327,12 @@ enum PDFCatalogIngestAdapter {
 // MARK: - Minimal ingest pipeline signaling (catalogDataDidCommit)
 
 enum CatalogIngestPipeline {
+    enum CommitPhase: String, Sendable {
+        case phaseA
+        case phaseB
+        case profile
+    }
+
     struct ArchivePassRequest: Sendable {
         let schoolID: String
         let schoolName: String
@@ -2912,16 +3349,26 @@ enum CatalogIngestPipeline {
     static func postCatalogDataDidCommit(
         universityID: UUID,
         reason: String,
+        commitPhase: CommitPhase? = nil,
+        programCount: Int = 0,
+        schoolID: String? = nil,
         archive: ArchivePassRequest? = nil
     ) {
-        CatalogVectorIndexingLifecycle.start()
+        var userInfo: [AnyHashable: Any] = [
+            "universityID": universityID.uuidString,
+            "reason": reason,
+            "programCount": programCount,
+        ]
+        if let commitPhase {
+            userInfo["commitPhase"] = commitPhase.rawValue
+        }
+        if let schoolID {
+            userInfo["schoolID"] = schoolID
+        }
         NotificationCenter.default.post(
             name: .catalogDataDidCommit,
             object: nil,
-            userInfo: [
-                "universityID": universityID.uuidString,
-                "reason": reason
-            ]
+            userInfo: userInfo
         )
         if let archive {
             scheduleFullArchivePass(archive)
@@ -2949,21 +3396,26 @@ enum CatalogIngestPipeline {
                         completed: completed,
                         total: total,
                         title: request.schoolName,
-                        stage: "Archive"
+                        stage: "Archive",
+                        activityID: "catalog.archive"
                     )
                 }
                 CatalogIngestCheckpoint.save(stage: .archive, schoolID: schoolID, signature: pdfSHA)
                 await MainActor.run {
-                    CatalogMenuBarProgressNotifier.postSucceeded(
-                        title: String(
-                            localized: "catalog.archive.complete",
-                            defaultValue: "Catalog archive complete"
+                    CatalogSyncProgressReporter.archive.reportTerminal(
+                        .succeeded(
+                            summary: String(
+                                localized: "catalog.archive.complete",
+                                defaultValue: "Catalog archive complete"
+                            )
                         )
                     )
                 }
             } catch {
                 await MainActor.run {
-                    CatalogMenuBarProgressNotifier.postFailed(message: error.localizedDescription)
+                    CatalogSyncProgressReporter.archive.reportTerminal(
+                        .failed(message: error.localizedDescription)
+                    )
                 }
             }
         }

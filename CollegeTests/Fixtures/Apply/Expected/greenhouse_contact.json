@@ -1,0 +1,11 @@
+{
+  "fixture": "greenhouse_contact",
+  "attemptedPayloadKeys": [
+    "personal.firstName",
+    "personal.lastName",
+    "personal.email",
+    "personal.phone",
+    "personal.linkedInURL"
+  ],
+  "minWriteAttemptCount": 5
+}

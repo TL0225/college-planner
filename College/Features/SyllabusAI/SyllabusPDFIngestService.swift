@@ -32,12 +32,24 @@ struct SyllabusIngestResult: Sendable {
 
 /// User-uploaded syllabus PDF text extraction (Gemma analysis path). Catalog bulletins use `College/Catalog/PDF/`.
 struct SyllabusPDFIngestService {
-    func extractText(from pdfURL: URL) throws -> SyllabusIngestResult {
-        guard FileManager.default.fileExists(atPath: pdfURL.path) else {
+    func extractText(from pdfURL: URL) async throws -> SyllabusIngestResult {
+        let data: Data
+        do {
+            data = try await VaultSourceFileMaterializer.materializedDataAsync(from: pdfURL)
+        } catch VaultSourceFileMaterializer.MaterializeError.cloudDownloadTimedOut {
+            throw SyllabusPDFIngestError.failedToOpenPDF
+        } catch {
+            guard FileManager.default.fileExists(atPath: pdfURL.path) else {
+                throw SyllabusPDFIngestError.fileNotFound
+            }
+            data = (try? Data(contentsOf: pdfURL)) ?? Data()
+        }
+
+        guard !data.isEmpty else {
             throw SyllabusPDFIngestError.fileNotFound
         }
 
-        guard let doc = PDFDocument(url: pdfURL) else {
+        guard let doc = PDFDocument(data: data) ?? PDFDocument(url: pdfURL) else {
             throw SyllabusPDFIngestError.failedToOpenPDF
         }
 

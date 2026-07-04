@@ -19,6 +19,7 @@ struct AssistantReplySource: Codable, Hashable, Sendable {
     let toolName: String?
     let hopIndex: Int?
     let latencyMS: Int?
+    let trustTier: AssistantSourceTrustTier?
 
     init(
         title: String,
@@ -27,7 +28,8 @@ struct AssistantReplySource: Codable, Hashable, Sendable {
         snippet: String? = nil,
         toolName: String? = nil,
         hopIndex: Int? = nil,
-        latencyMS: Int? = nil
+        latencyMS: Int? = nil,
+        trustTier: AssistantSourceTrustTier? = nil
     ) {
         self.title = title
         self.url = url
@@ -36,6 +38,7 @@ struct AssistantReplySource: Codable, Hashable, Sendable {
         self.toolName = toolName
         self.hopIndex = hopIndex
         self.latencyMS = latencyMS
+        self.trustTier = trustTier
     }
 }
 

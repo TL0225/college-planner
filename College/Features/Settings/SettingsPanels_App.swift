@@ -33,11 +33,15 @@ private struct SettingsAppLocaleAndUpdatesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            SettingsCard(title: "Region & format", icon: "globe", iconColor: DesignSystem.Colors.primary) {
+            SettingsCard(
+                title: String(localized: "settings.app.region.card_title", defaultValue: "Region & format"),
+                icon: "globe",
+                iconColor: DesignSystem.Colors.primary
+            ) {
                 SRow(
-                    label: "Language",
-                    subtitle: "Select your preferred interface language",
-                    value: "English (US)"
+                    label: String(localized: "settings.app.region.language_label", defaultValue: "Language"),
+                    subtitle: String(localized: "settings.app.region.language_subtitle", defaultValue: "Select your preferred interface language"),
+                    value: String(localized: "settings.app.region.language_value", defaultValue: "English (US)")
                 )
 
                 Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
@@ -47,77 +51,74 @@ private struct SettingsAppLocaleAndUpdatesSection: View {
                 Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
 
                 SRow(
-                    label: "Date Format",
-                    subtitle: "How dates are displayed across the portal",
-                    value: "MM/DD/YYYY"
+                    label: String(localized: "settings.app.region.date_format_label", defaultValue: "Date Format"),
+                    subtitle: String(localized: "settings.app.region.date_format_subtitle", defaultValue: "How dates are displayed across the portal"),
+                    value: String(localized: "settings.app.region.date_format_value", defaultValue: "MM/DD/YYYY")
                 )
             }
 
-            SettingsCard(title: "App Updates", icon: "arrow.down.circle", iconColor: .green) {
-                appUpdateRow
+            SettingsCard(
+                title: String(localized: "settings.app.updates.card_title", defaultValue: "App Updates"),
+                icon: "arrow.down.circle",
+                iconColor: .green
+            ) {
+                SActionRow(
+                    label: appUpdateRowLabel,
+                    subtitle: appUpdateStatusText,
+                    actionLabel: appUpdateCheckActionLabel
+                ) {
+                    checkForAppUpdates()
+                }
+
+                if let appUpdateInfo, appUpdateInfo.isUpdateAvailable {
+                    Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+
+                    SActionRow(
+                        label: appUpdateDownloadRowLabel,
+                        actionLabel: String(localized: "settings.app.updates.download_action", defaultValue: "DOWNLOAD UPDATE")
+                    ) {
+                        NSWorkspace.shared.open(appUpdateInfo.downloadURL)
+                    }
+                }
             }
         }
     }
 
-    private var appUpdateRow: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("College")
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+    private var appUpdateRowLabel: String {
+        String(localized: "settings.app.updates.app_name", defaultValue: "College")
+    }
 
-                Text(appUpdateStatusText)
-                    .font(DesignSystem.Fonts.main(size: 11))
-                    .foregroundColor(appUpdateErrorText == nil ? DesignSystem.Colors.textLight : DesignSystem.Colors.warning)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let appUpdateInfo, appUpdateInfo.isUpdateAvailable, let releaseName = appUpdateInfo.releaseName, !releaseName.isEmpty {
-                    Text(releaseName)
-                        .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                }
-            }
-
-            Spacer(minLength: 12)
-
-            HStack(spacing: 10) {
-                if let appUpdateInfo, appUpdateInfo.isUpdateAvailable {
-                    Button("DOWNLOAD UPDATE") {
-                        NSWorkspace.shared.open(appUpdateInfo.downloadURL)
-                    }
-                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.primary)
-                    .buttonStyle(.plain)
-                }
-
-                Button(isCheckingForAppUpdate ? "CHECKING..." : appUpdateInfo == nil ? "CHECK FOR APP UPDATES" : "CHECK AGAIN") {
-                    checkForAppUpdates()
-                }
-                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(isCheckingForAppUpdate ? DesignSystem.Colors.textLight : DesignSystem.Colors.primary)
-                .buttonStyle(.plain)
-                .disabled(isCheckingForAppUpdate)
-            }
+    private var appUpdateCheckActionLabel: String {
+        if isCheckingForAppUpdate {
+            return String(localized: "settings.app.updates.checking_action", defaultValue: "CHECKING…")
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .background(Color.primary.opacity(0.015))
+        if appUpdateInfo == nil {
+            return String(localized: "settings.app.updates.check_action", defaultValue: "CHECK FOR APP UPDATES")
+        }
+        return String(localized: "settings.app.updates.check_again_action", defaultValue: "CHECK AGAIN")
+    }
+
+    private var appUpdateDownloadRowLabel: String {
+        if let appUpdateInfo, let releaseName = appUpdateInfo.releaseName, !releaseName.isEmpty {
+            return releaseName
+        }
+        return String(localized: "settings.app.updates.update_available_label", defaultValue: "Update available")
     }
 
     private var appUpdateStatusText: String {
         if isCheckingForAppUpdate {
-            return "Checking GitHub releases..."
+            return String(localized: "settings.app.updates.status_checking", defaultValue: "Checking GitHub releases…")
         }
         if let appUpdateErrorText {
             return appUpdateErrorText
         }
         guard let appUpdateInfo else {
-            return "Current version \(AppUpdateCheckService.currentAppVersion()). Check GitHub for the latest College release."
+            return String(localized: "settings.app.updates.status_unknown", defaultValue: "Current version \(AppUpdateCheckService.currentAppVersion()). Check GitHub for the latest College release.")
         }
         if appUpdateInfo.isUpdateAvailable {
-            return "Version \(appUpdateInfo.latestVersion) is available. You have \(appUpdateInfo.currentVersion)."
+            return String(localized: "settings.app.updates.status_available", defaultValue: "Version \(appUpdateInfo.latestVersion) is available. You have \(appUpdateInfo.currentVersion).")
         }
-        return "College is up to date. Current version \(appUpdateInfo.currentVersion)."
+        return String(localized: "settings.app.updates.status_up_to_date", defaultValue: "College is up to date. Current version \(appUpdateInfo.currentVersion).")
     }
 
     private func checkForAppUpdates() {
@@ -134,7 +135,7 @@ private struct SettingsAppLocaleAndUpdatesSection: View {
             } catch {
                 await MainActor.run {
                     appUpdateInfo = nil
-                    appUpdateErrorText = "Unable to check for updates. Open \(AppUpdateCheckService.repositoryURL.host ?? "GitHub") and try again."
+                    appUpdateErrorText = String(localized: "settings.app.updates.error", defaultValue: "Unable to check for updates. Open \(AppUpdateCheckService.repositoryURL.host ?? "GitHub") and try again.")
                     isCheckingForAppUpdate = false
                 }
             }
@@ -143,18 +144,12 @@ private struct SettingsAppLocaleAndUpdatesSection: View {
 
     @ViewBuilder
     private var timeZoneRow: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Time Zone")
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                Text("Your local time for scheduling")
-                    .font(DesignSystem.Fonts.main(size: 11))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-            }
-            Spacer()
+        SCustomRow(
+            label: String(localized: "settings.app.region.timezone_label", defaultValue: "Time Zone"),
+            subtitle: String(localized: "settings.app.region.timezone_subtitle", defaultValue: "Your local time for scheduling")
+        ) {
             Menu {
-                Button("Automatic (System)") {
+                Button(String(localized: "settings.app.region.timezone_automatic_option", defaultValue: "Automatic (System)")) {
                     calendarTimeZoneSelection = CalendarTimeZonePreference.systemValue
                 }
                 Divider()
@@ -173,22 +168,20 @@ private struct SettingsAppLocaleAndUpdatesSection: View {
                 HStack(spacing: 4) {
                     Text(selectedTimeZoneLabel)
                         .font(DesignSystem.Fonts.main(size: 13))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 10))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 10))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
     }
 
     private var selectedTimeZoneLabel: String {
         guard calendarTimeZoneSelection != CalendarTimeZonePreference.systemValue else {
-            return "Automatic"
+            return String(localized: "settings.app.region.timezone_automatic", defaultValue: "Automatic")
         }
         let parts = calendarTimeZoneSelection.split(separator: "/")
         if let last = parts.last {
@@ -205,16 +198,20 @@ struct SettingsAppNotificationsSection: View {
     @AppStorage("notifications.emailDigest") private var emailDigest: Bool = false
 
     var body: some View {
-        SettingsCard(title: "Notifications", icon: "bell", iconColor: .orange) {
+        SettingsCard(
+            title: String(localized: "settings.app.notifications.card_title", defaultValue: "Notifications"),
+            icon: "bell",
+            iconColor: .orange
+        ) {
             SToggleRow(
-                label: "Desktop alerts",
-                subtitle: "Show banners for important app events",
+                label: String(localized: "settings.app.notifications.desktop_label", defaultValue: "Desktop alerts"),
+                subtitle: String(localized: "settings.app.notifications.desktop_subtitle", defaultValue: "Show banners for important app events"),
                 isOn: $desktopAlerts
             )
             Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
             SToggleRow(
-                label: "Email digest",
-                subtitle: "Periodic summary of activity",
+                label: String(localized: "settings.app.notifications.digest_label", defaultValue: "Email digest"),
+                subtitle: String(localized: "settings.app.notifications.digest_subtitle", defaultValue: "Periodic summary of activity"),
                 isOn: $emailDigest
             )
         }

@@ -165,6 +165,15 @@ struct DegreeConfiguration {
             return doctorateProfessional
         }
 
+        // Modern Campus posted titles (e.g. "Graduate Catalog 2025-2026") normalize to picker levels.
+        let fromCatalogTitle = ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: trimmed, catoid: "")
+        if fromCatalogTitle.compare(trimmed, options: [.caseInsensitive, .diacriticInsensitive]) != .orderedSame {
+            let catalogCanonical = canonicalLevel(fromCatalogTitle)
+            if allLevels.contains(catalogCanonical) {
+                return catalogCanonical
+            }
+        }
+
         return trimmed
     }
 }

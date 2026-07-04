@@ -204,5 +204,6 @@ extension CalendarPersistencePortBootstrap {
         CalendarModalAccess.coordinator = container.calendarShellPorts.modalCoordinator
         CalendarToolbarAccess.dispatcher = container.calendarShellPorts.toolbarDispatcher
         CalendarIntegrationBridge.manager = container.calendarManager
+        CalendarProviderSyncBridge.wireIntegrationBridge()
     }
 }

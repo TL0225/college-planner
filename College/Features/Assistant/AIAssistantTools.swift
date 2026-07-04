@@ -172,6 +172,8 @@ struct AssistantToolExecutionContext {
     let selectedPersona: AssistantPersona
     let snapshot: AssistantPlannerSnapshot
     let currentDate: Date
+    var activeIntent: String?
+    var programIdentity: AssistantProgramIdentityContext?
     var navigate: ((AppPage) -> Bool)?
     var highlightVaultDocument: ((UUID) -> Void)?
     var askCollegeSessionID: UUID?
@@ -228,11 +230,14 @@ enum AIAssistantToolRegistry {
         GetSAPStatusTool(),
         GetFullTimeStatusTool(),
         SearchCatalogCoursesTool(),
+        SemanticCatalogSearchTool(),
+        ProgramsUnderDepartmentTool(),
         CheckPrerequisitesTool(),
         GetDegreeAuditTool(),
         DraftSemesterPlanTool(),
         ExplainRequirementsTool(),
         AssessRegistrationReadinessTool(),
+        GetStudentLearningProfileTool(),
         DraftWeeklyScheduleTool(),
         GetAidDeadlinesTool(),
         ScreenAidEligibilityTool(),
@@ -265,6 +270,16 @@ enum AIAssistantToolRegistry {
         UpdateProfileTool(),
         ListJobApplicationsTool(),
         UpdateJobApplicationStatusTool(),
+        ListCareerResumesTool(),
+        OpenResumeBuilderTool(),
+        GetJobResumeMatchTool(),
+        GetJobApplicationDetailTool(),
+        AssessRequirementRiskTool(),
+        SimulateCourseSwapTool(),
+        SuggestCoursesForSkillGapsTool(),
+        AssessRegistrationWorkloadTool(),
+        ProposeSyllabusDeadlineSyncTool(),
+        SyncSyllabusDeadlinesToPlannerTool(),
     ]
 
     static func descriptors(for persona: AssistantPersona) -> [AssistantToolDescriptor] {

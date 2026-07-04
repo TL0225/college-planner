@@ -20,79 +20,98 @@ struct SettingsAppearancePanel: View {
     }
 
     var body: some View {
-        Form {
-            Section {
-                HStack(spacing: 14) {
-                    ForEach(AppAppearance.allCases) { mode in
-                        appearanceCard(for: mode)
-                    }
-                }
-                .padding(.vertical, 6)
+        VStack(alignment: .leading, spacing: 24) {
+            SettingsCard(
+                title: String(localized: "settings.appearance.card_appearance"),
+                icon: "paintpalette",
+                iconColor: DesignSystem.Colors.primary
+            ) {
+                appearanceModeRow
 
-                LabeledContent(String(localized: "settings.appearance.density_title")) {
-                    HStack(spacing: 4) {
-                        ForEach(["Compact", "Comfortable"], id: \.self) { option in
-                            let isActive = density == option
-                            Button(action: { density = option }) {
-                                Text(densityOptionLabel(option))
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(isActive ? Color.white : Color.secondary)
-                                    .padding(.horizontal, 11)
-                                    .padding(.vertical, 6)
-                                    .background(
-                                        Group {
-                                            if isActive {
-                                                RoundedRectangle(cornerRadius: 6)
-                                                    .fill(Color.secondary)
-                                            } else {
-                                                RoundedRectangle(cornerRadius: 6)
-                                                    .stroke(Color.secondary.opacity(0.45), lineWidth: 1)
-                                            }
-                                        }
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .animation(.easeInOut(duration: 0.15), value: isActive)
-                        }
-                    }
-                }
-            } header: {
-                Label(
-                    String(localized: "settings.appearance.card_appearance"),
-                    systemImage: "paintpalette"
-                )
+                Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+
+                densityRow
             }
 
-            Section {
-                Toggle(String(localized: "settings.appearance.reduce_motion"), isOn: $reduceMotion)
+            SettingsCard(
+                title: String(localized: "settings.appearance.card_system"),
+                icon: "macwindow",
+                iconColor: DesignSystem.Colors.secondary
+            ) {
+                SToggleRow(
+                    label: String(localized: "settings.appearance.reduce_motion"),
+                    isOn: $reduceMotion
+                )
 
-                Toggle(
-                    String(
-                        localized: "settings.appearance.inactive_state",
-                        defaultValue: "Reduce visual noise when inactive"
-                    ),
+                Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+
+                SToggleRow(
+                    label: String(localized: "settings.appearance.inactive_state", defaultValue: "Reduce visual noise when inactive"),
+                    subtitle: String(localized: "settings.appearance.inactive_state_subtitle", defaultValue: "Subtly dims and defers periodic UI refresh while unfocused."),
                     isOn: $inactiveStateEnabled
                 )
-                .help("When enabled, the app subtly dims and defers periodic UI refresh while unfocused.")
 
-                Picker(String(localized: "settings.appearance.font_size_label"), selection: $fontSize) {
-                    ForEach(["Small", "Medium", "Large"], id: \.self) { opt in
-                        Text(fontSizeLabel(opt)).tag(opt)
-                    }
-                }
-            } header: {
-                Label(
-                    String(localized: "settings.appearance.card_system"),
-                    systemImage: "macwindow"
+                Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+
+                SPickerRow(
+                    label: String(localized: "settings.appearance.font_size_label"),
+                    selection: $fontSize,
+                    options: ["Small", "Medium", "Large"],
+                    optionLabel: fontSizeLabel
                 )
             }
         }
-        .formStyle(.grouped)
+        .frame(maxWidth: SettingsMetrics.detailMaxWidth, alignment: .leading)
         .onAppear {
             AppActivityCoordinator.shared.refreshPolicyFromSettings()
         }
         .onChange(of: inactiveStateEnabled) { _, _ in
             AppActivityCoordinator.shared.refreshPolicyFromSettings()
+        }
+    }
+
+    // MARK: - Appearance mode + density rows
+
+    private var appearanceModeRow: some View {
+        HStack(spacing: 14) {
+            ForEach(AppAppearance.allCases) { mode in
+                appearanceCard(for: mode)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.015))
+    }
+
+    private var densityRow: some View {
+        SCustomRow(label: String(localized: "settings.appearance.density_title")) {
+            HStack(spacing: 4) {
+                ForEach(["Compact", "Comfortable"], id: \.self) { option in
+                    let isActive = density == option
+                    Button(action: { density = option }) {
+                        Text(densityOptionLabel(option))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                            .foregroundStyle(isActive ? Color.white : Color.secondary)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(
+                                Group {
+                                    if isActive {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(Color.secondary)
+                                    } else {
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Color.secondary.opacity(0.45), lineWidth: 1)
+                                    }
+                                }
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .animation(.easeInOut(duration: 0.15), value: isActive)
+                }
+            }
         }
     }
 
@@ -120,10 +139,10 @@ struct SettingsAppearancePanel: View {
 
             VStack(spacing: 2) {
                 Text(modeTitle(for: mode))
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: isSelected ? .semibold : .medium))
                     .foregroundStyle(isSelected ? DesignSystem.Colors.primary : Color.primary)
                 Text(modeSubtitle(for: mode))
-                    .font(.system(size: 10))
+                    .font(DesignSystem.Fonts.main(size: 10))
                     .foregroundStyle(Color.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 160)
@@ -157,7 +176,7 @@ struct SettingsAppearancePanel: View {
                 RoundedRectangle(cornerRadius: 3).fill(Color(hex: "cbd5e1")).frame(width: 70, height: 7)
                 RoundedRectangle(cornerRadius: 3).fill(Color(hex: "e2e8f0")).frame(width: 50, height: 7)
                 Spacer().frame(height: 10)
-                Circle().fill(Color(hex: "6366f1")).frame(width: 16, height: 16)
+                Circle().fill(DesignSystem.Colors.primary).frame(width: 16, height: 16)
             }
             .padding(.leading, 48)
             .padding(.top, 22)
@@ -202,12 +221,12 @@ struct SettingsAppearancePanel: View {
                 Spacer()
             }
             Image(systemName: "sun.max")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color(hex: "f59e0b"))
+                .font(DesignSystem.Fonts.main(size: 15, weight: .medium))
+                .foregroundStyle(DesignSystem.Colors.warning)
                 .padding(.leading, 46)
                 .padding(.top, 32)
             Image(systemName: "moon.fill")
-                .font(.system(size: 13, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                 .foregroundStyle(Color(hex: "818cf8"))
                 .padding(.leading, 98)
                 .padding(.top, 34)

@@ -20,7 +20,7 @@ extension CalendarRepository {
         customColorHex: String? = nil,
         recurrenceRule: String? = nil,
         attendeesJSON: String? = nil,
-        brightspaceAnnouncementId: String? = nil,
+        lmsAnnouncementId: String? = nil,
         providerSource: String? = "CollegeApp",
         id: UUID = UUID()
     ) throws -> CalendarEvent {
@@ -39,7 +39,7 @@ extension CalendarRepository {
         event.customColorHex = customColorHex?.isEmpty == true ? nil : customColorHex
         event.recurrenceRule = recurrenceRule
         event.attendeesJSON = attendeesJSON
-        event.brightspaceAnnouncementId = brightspaceAnnouncementId
+        event.lmsAnnouncementId = lmsAnnouncementId
         event.providerSource = providerSource
         event.semester = semester
         event.course = course
@@ -65,7 +65,7 @@ extension CalendarRepository {
             customColorHex: input.customColorHex,
             recurrenceRule: input.recurrenceRule,
             attendeesJSON: input.guestsJSON,
-            brightspaceAnnouncementId: input.brightspaceAnnouncementId
+            lmsAnnouncementId: input.lmsAnnouncementId
         )
     }
 
@@ -82,7 +82,7 @@ extension CalendarRepository {
         customColorHex: String? = nil,
         recurrenceRule: String? = nil,
         attendeesJSON: String? = nil,
-        brightspaceAnnouncementId: String? = nil
+        lmsAnnouncementId: String? = nil
     ) throws {
         guard let event = try fetchCalendarEvent(id: id) else { return }
         if !title.isEmpty { event.title = title }
@@ -102,8 +102,8 @@ extension CalendarRepository {
         if let attendeesJSON {
             event.attendeesJSON = attendeesJSON
         }
-        if let brightspaceAnnouncementId {
-            event.brightspaceAnnouncementId = brightspaceAnnouncementId
+        if let lmsAnnouncementId {
+            event.lmsAnnouncementId = lmsAnnouncementId
         }
         if event.providerSource == nil || event.providerSource?.isEmpty == true {
             event.providerSource = "CollegeApp"
@@ -131,7 +131,7 @@ extension CalendarRepository {
             customColorHex: input.customColorHex,
             recurrenceRule: input.recurrenceRule,
             attendeesJSON: input.guestsJSON,
-            brightspaceAnnouncementId: input.brightspaceAnnouncementId
+            lmsAnnouncementId: input.lmsAnnouncementId
         )
     }
 

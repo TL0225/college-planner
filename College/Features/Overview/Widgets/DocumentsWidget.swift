@@ -25,19 +25,17 @@ struct DocumentsWidget: View {
 
     var body: some View {
         OverviewCard {
-            Text("Recent Documents")
-                .font(.system(size: 16, weight: .bold, design: .serif))
-                .foregroundColor(DesignSystem.Colors.textMain)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            OverviewWidgetHeader("Recent Documents", systemImage: "doc.fill", accentColor: WidgetCategory.productivity.accentColor)
 
             Color.clear.frame(height: 16)
 
             if recentDocuments.isEmpty {
-                Label("No documents yet", systemImage: "doc.text")
-                    .font(.system(size: 12))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
+                OverviewWidgetEmptyState(
+                    title: "No documents yet",
+                    message: "Recently opened Vault files will appear here.",
+                    systemImage: "doc.text",
+                    accentColor: .indigo
+                )
             } else {
                 VStack(spacing: 8) {
                     ForEach(recentDocuments) { doc in
@@ -54,37 +52,38 @@ struct DocumentsWidget: View {
     // MARK: - Row
 
     private func documentRow(_ doc: OverviewDocumentSummary) -> some View {
-        let (iconName, iconColor, iconBg) = documentIconInfo(doc)
+        let (iconName, iconColor) = documentIconInfo(doc)
         let dateLabel = relativeDocumentDate(doc)
 
-        return HStack(spacing: 10) {
-            Image(systemName: iconName)
-                .font(.system(size: 14))
-                .foregroundColor(iconColor)
-                .frame(width: 36, height: 36)
-                .background(iconBg)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(doc.displayName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
-                Text(dateLabel)
-                    .font(.system(size: 10)).foregroundColor(DesignSystem.Colors.textLight)
+        return OverviewWidgetRowSurface(accentColor: iconColor) {
+            HStack(spacing: 10) {
+                Image(systemName: iconName)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 36, height: 36)
+                    .background(iconColor.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(doc.displayName)
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(dateLabel)
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            Spacer()
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(Color(hex: "F9FAFB").opacity(0.8))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private func documentIconInfo(_ doc: OverviewDocumentSummary) -> (String, Color, Color) {
+    private func documentIconInfo(_ doc: OverviewDocumentSummary) -> (String, Color) {
         let name = (doc.fileName ?? doc.displayName).lowercased()
-        if      name.hasSuffix(".pdf")              { return ("doc.fill",                    Color(hex: "EF4444"), Color(hex: "FEF2F2")) }
-        else if name.hasSuffix(".docx") || name.hasSuffix(".doc") { return ("doc.text.fill", Color(hex: "3B82F6"), Color(hex: "EFF6FF")) }
-        else if name.hasSuffix(".xlsx") || name.hasSuffix(".xls") { return ("tablecells.fill", Color(hex: "10B981"), Color(hex: "ECFDF5")) }
-        else if name.hasSuffix(".pptx") || name.hasSuffix(".ppt") { return ("rectangle.on.rectangle.fill", Color(hex: "F97316"), Color(hex: "FFF7ED")) }
-        else { return ("doc.fill", Color(hex: "6366F1"), Color(hex: "EEF2FF")) }
+        if      name.hasSuffix(".pdf")              { return ("doc.fill", .red) }
+        else if name.hasSuffix(".docx") || name.hasSuffix(".doc") { return ("doc.text.fill", .blue) }
+        else if name.hasSuffix(".xlsx") || name.hasSuffix(".xls") { return ("tablecells.fill", .green) }
+        else if name.hasSuffix(".pptx") || name.hasSuffix(".ppt") { return ("rectangle.on.rectangle.fill", .orange) }
+        else { return ("doc.fill", .indigo) }
     }
 
     private func relativeDocumentDate(_ doc: OverviewDocumentSummary) -> String {
@@ -127,16 +126,16 @@ private struct DocumentsWidgetPreview: View {
     var body: some View {
         OverviewCard {
             Text("Recent Documents")
-                .font(.system(size: 14, weight: .bold, design: .serif))
-                .foregroundColor(DesignSystem.Colors.textMain).padding(.bottom, 12)
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold, design: .serif))
+                .foregroundStyle(DesignSystem.Colors.textMain).padding(.bottom, 12)
             VStack(spacing: 7) {
                 ForEach(docs, id: \.1) { icon, name, color, bg in
                     HStack(spacing: 10) {
-                        Image(systemName: icon).font(.system(size: 12)).foregroundColor(color)
+                        Image(systemName: icon).font(DesignSystem.Fonts.main(size: 12)).foregroundStyle(color)
                             .frame(width: 32, height: 32).background(bg)
                             .clipShape(RoundedRectangle(cornerRadius: 7))
-                        Text(name).font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
+                        Text(name).font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textMain).lineLimit(1)
                         Spacer()
                     }
                     .padding(.horizontal, 8).padding(.vertical, 6)

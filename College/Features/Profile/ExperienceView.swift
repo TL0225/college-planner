@@ -20,17 +20,15 @@ struct ExperienceView: View {
             if profile.experiencesArray.isEmpty {
                 Text("No experience added yet.")
                     .font(DesignSystem.Fonts.main(size: 14))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             } else {
                 ForEach(profile.experiencesArray) { experience in
                     ExperienceCard(experience: experience)
                 }
             }
         }
-        .padding(24)
-        .background(Color.white)
-        .cornerRadius(24)
-        .shadow(color: .black.opacity(0.05), radius: 12, x: 0, y: 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .profileCardSurface(padding: 24)
     }
 
     private var header: some View {
@@ -60,20 +58,20 @@ struct ExperienceCard: View {
             HStack(alignment: .top, spacing: 16) {
                 // Logo placeholder (rounded square) – matches reference layout.
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white)
+                    .fill(DesignSystem.Colors.surface)
                     .frame(width: 64, height: 64)
                     .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 6)
                     .overlay(
                         Image(systemName: "briefcase.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(Color(hex: "94a3b8"))
+                            .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                            .foregroundStyle(Color(hex: "94a3b8"))
                     )
 
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text(experience.title ?? "Unknown")
                             .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
@@ -81,47 +79,65 @@ struct ExperienceCard: View {
 
                         Text(dateRange)
                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                            .foregroundColor(Color(hex: "94a3b8"))
+                            .foregroundStyle(Color(hex: "94a3b8"))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(Color.white)
+                            .background(DesignSystem.Colors.surface)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                                    .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
                             )
                     }
 
                     Text(experience.company ?? "")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .lineLimit(1)
                         .padding(.top, 4)
+
+                    if let technologies = experience.technologies?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !technologies.isEmpty {
+                        Text(technologies)
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                            .foregroundStyle(Color(hex: "94a3b8"))
+                            .lineLimit(1)
+                            .padding(.top, 4)
+                    }
 
                     if let desc = experience.descriptionText, !desc.isEmpty {
                         Text(desc)
                             .font(DesignSystem.Fonts.main(size: 14))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                             .lineLimit(2)
                             .padding(.top, 8)
                     }
                 }
             }
-            .padding(16)
-            .background(Color.white)
+            .padding(DesignSystem.Spacing.lg)
+            .background(DesignSystem.Colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(isHovering ? DesignSystem.Colors.primary.opacity(0.5) : Color(hex: "e2e8f0"), lineWidth: isHovering ? 2 : 1)
+                    .stroke(isHovering ? DesignSystem.Colors.primary.opacity(0.5) : DesignSystem.Colors.chromeStroke, lineWidth: isHovering ? 2 : 1)
             )
             .shadow(color: Color.black.opacity(isHovering ? 0.08 : 0.03), radius: isHovering ? 12 : 8, x: 0, y: isHovering ? 6 : 4)
-            .scaleEffect(isHovering ? 1.01 : 1.0)
-            .animation(.easeInOut(duration: 0.2), value: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(experienceAccessibilityLabel)
+        .accessibilityHint("Opens experience editor")
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+
+    private var experienceAccessibilityLabel: String {
+        let title = experience.title?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Experience"
+        let company = experience.company?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        if let company {
+            return "Edit experience, \(title) at \(company)"
+        }
+        return "Edit experience, \(title)"
     }
 
     private var dateRange: String {
@@ -148,6 +164,7 @@ struct AddExperienceView: View {
     private var collegePersistence: CollegePersistence { container.persistence }
         @Binding var isPresented: Bool
     let experience: Experience?  // nil for add, non-nil for edit
+    var embedInSheet: Bool = false
 
     @State private var title: String = ""
     @State private var company: String = ""
@@ -156,34 +173,59 @@ struct AddExperienceView: View {
     @State private var endDate: Date = Date()
     @State private var isCurrent: Bool = false
     @State private var description: String = ""
-    
+    @State private var technologies: String = ""
+
     private var isEditMode: Bool {
         experience != nil
     }
 
     var body: some View {
-        ZStack {
-            // Web-style dim backdrop (no native frosted blur)
-            Color(hex: "0f172a")
-                .opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture { isPresented = false }
+        Group {
+            if embedInSheet {
+                experienceEditorCard
+            } else {
+                ZStack {
+                    Color(hex: "0f172a")
+                        .opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture { isPresented = false }
 
-            // Modal Content
-            VStack(spacing: 0) {
+                    experienceEditorCard
+                }
+            }
+        }
+        .transition(.opacity)
+        .zIndex(embedInSheet ? 0 : 100)
+        .onAppear {
+            // Populate fields when editing an existing experience
+            if let exp = experience {
+                title = exp.title ?? ""
+                company = exp.company ?? ""
+                location = exp.location ?? ""
+                startDate = exp.startDate ?? Date()
+                endDate = exp.endDate ?? Date()
+                isCurrent = exp.isCurrent
+                description = exp.descriptionText ?? ""
+                technologies = exp.technologies ?? ""
+            }
+        }
+    }
+
+    private var experienceEditorCard: some View {
+        VStack(spacing: 0) {
                 // Header
                 HStack {
                     Text(isEditMode ? "Edit Experience" : "Add Experience")
                         .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
 
                     Spacer()
 
                     Button(action: { isPresented = false }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
-                            .padding(8)
+                            .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.textLight)
+                            .padding(DesignSystem.Spacing.sm)
                             .background(Color.clear)
                     }
                 }
@@ -193,7 +235,7 @@ struct AddExperienceView: View {
 
                 Text("Fill in the details below to add an experience to your profile.")
                     .font(DesignSystem.Fonts.main(size: 14))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
@@ -203,6 +245,7 @@ struct AddExperienceView: View {
                         labeledTextField(title: "TITLE / ROLE *", placeholder: "e.g. Research Assistant", text: $title)
                         labeledTextField(title: "COMPANY / ORGANIZATION *", placeholder: "e.g. University Lab", text: $company)
                         labeledTextField(title: "LOCATION", placeholder: "e.g. New York, NY", text: $location)
+                        labeledTextField(title: "TECHNOLOGIES / TOOLS", placeholder: "e.g. Swift, Python, AWS", text: $technologies)
 
                         HStack(spacing: 16) {
                             CustomDatePickerInput(title: "Start Date", date: $startDate)
@@ -217,7 +260,7 @@ struct AddExperienceView: View {
                         Toggle(isOn: $isCurrent) {
                             Text("I currently work here")
                                 .font(DesignSystem.Fonts.main(size: 14))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                         }
                         .toggleStyle(.checkbox)
 
@@ -232,7 +275,32 @@ struct AddExperienceView: View {
                     // Delete button (only show in edit mode)
                     if isEditMode, let exp = experience {
                         Button(action: {
-                            collegePersistence.deleteExperience(exp)
+                            let snapshot = (
+                                title: exp.title,
+                                company: exp.company,
+                                location: exp.location,
+                                startDate: exp.startDate,
+                                endDate: exp.endDate,
+                                isCurrent: exp.isCurrent,
+                                description: exp.descriptionText,
+                                technologies: exp.technologies
+                            )
+                            AppUndoCoordinator.shared.performUndoable(
+                                label: "Delete Experience",
+                                forward: { collegePersistence.deleteExperience(exp) },
+                                backward: {
+                                    collegePersistence.addExperience(
+                                        title: snapshot.title ?? "Experience",
+                                        company: snapshot.company ?? "",
+                                        location: snapshot.location,
+                                        startDate: snapshot.startDate ?? Date(),
+                                        endDate: snapshot.endDate,
+                                        isCurrent: snapshot.isCurrent,
+                                        description: snapshot.description,
+                                        technologies: snapshot.technologies
+                                    )
+                                }
+                            )
 
                             notifications.post(
                                 kind: .success,
@@ -245,15 +313,15 @@ struct AddExperienceView: View {
                         }) {
                             HStack(spacing: 8) {
                                 Image(systemName: "trash.fill")
-                                    .font(.system(size: 14, weight: .bold))
+                                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                                 Text("Delete")
                                     .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
                             }
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(Color.red)
-                            .cornerRadius(16)
+                            .clipShape(.rect(cornerRadius: 16))
                         }
                         .buttonStyle(.plain)
                     }
@@ -283,6 +351,7 @@ struct AddExperienceView: View {
                             exp.endDate = isCurrent ? nil : endDate
                             exp.isCurrent = isCurrent
                             exp.descriptionText = description
+                            exp.technologies = technologies.nilIfEmpty
                             collegePersistence.save()
 
                             notifications.post(
@@ -301,7 +370,8 @@ struct AddExperienceView: View {
                                 startDate: startDate,
                                 endDate: isCurrent ? nil : endDate,
                                 isCurrent: isCurrent,
-                                description: description
+                                description: description,
+                                technologies: technologies.nilIfEmpty
                             )
 
                             notifications.post(
@@ -316,53 +386,38 @@ struct AddExperienceView: View {
                     }) {
                         Text("Save Experience")
                             .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .background(DesignSystem.Colors.primary)
-                            .cornerRadius(16)
+                            .clipShape(.rect(cornerRadius: 16))
                     }
                     .buttonStyle(.plain)
                     .disabled(title.isEmpty || company.isEmpty)
                     .opacity((title.isEmpty || company.isEmpty) ? 0.6 : 1.0)
                 }
-                .padding(24)
+                .padding(DesignSystem.Spacing.xl)
             }
-            .background(Color.white)
-            .cornerRadius(24)
+            .background(DesignSystem.Colors.surface)
+            .clipShape(.rect(cornerRadius: 24))
             .shadow(color: Color.black.opacity(0.2), radius: 20)
-            .frame(maxWidth: 500, maxHeight: 700)
-            .padding(24)
-        }
-        .transition(.opacity)
-        .zIndex(100)
-        .onAppear {
-            // Populate fields when editing an existing experience
-            if let exp = experience {
-                title = exp.title ?? ""
-                company = exp.company ?? ""
-                location = exp.location ?? ""
-                startDate = exp.startDate ?? Date()
-                endDate = exp.endDate ?? Date()
-                isCurrent = exp.isCurrent
-                description = exp.descriptionText ?? ""
-            }
-        }
+            .frame(maxWidth: embedInSheet ? .infinity : 500, maxHeight: embedInSheet ? .infinity : 700)
+            .padding(embedInSheet ? 0 : DesignSystem.Spacing.xl)
     }
 
     private func labeledTextField(title: String, placeholder: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             TextField(placeholder, text: text)
                 .font(DesignSystem.Fonts.main(size: 14))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .textFieldStyle(.plain)
-                .padding(12)
-                .background(Color.white)
-                .cornerRadius(12)
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.surface)
+                .clipShape(.rect(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
@@ -374,25 +429,25 @@ struct AddExperienceView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("DESCRIPTION / KEY RESPONSIBILITIES")
                 .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             ZStack(alignment: .topLeading) {
                 if description.isEmpty {
                     Text("Describe your key responsibilities and achievements...")
                         .font(DesignSystem.Fonts.main(size: 14))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                        .padding(12)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
+                        .padding(DesignSystem.Spacing.md)
                 }
 
                 TextEditor(text: $description)
                     .font(DesignSystem.Fonts.main(size: 14))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                     .scrollContentBackground(.hidden)
-                    .padding(8)
+                    .padding(DesignSystem.Spacing.sm)
             }
             .frame(height: 120)
-            .background(Color.white)
-            .cornerRadius(12)
+            .background(DesignSystem.Colors.surface)
+            .clipShape(.rect(cornerRadius: 12))
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
@@ -404,21 +459,28 @@ struct AddExperienceView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("END DATE")
                 .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             Text("Present")
                 .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
-                .padding(12)
+                .foregroundStyle(DesignSystem.Colors.textLight)
+                .padding(DesignSystem.Spacing.md)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(DesignSystem.Colors.bgMain)
-                .cornerRadius(12)
+                .clipShape(.rect(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
                 )
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -431,7 +493,7 @@ struct CustomDatePickerInput: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title.uppercased())
                 .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             Button {
                 showPicker.toggle()
@@ -439,14 +501,14 @@ struct CustomDatePickerInput: View {
                 HStack {
                     Text(date, style: .date)
                         .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                     Spacer()
                     Image(systemName: "calendar")
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
-                .padding(12)
-                .background(Color.white)
-                .cornerRadius(12)
+                .padding(DesignSystem.Spacing.md)
+                .background(DesignSystem.Colors.surface)
+                .clipShape(.rect(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
@@ -467,7 +529,6 @@ struct CustomDatePickerInput: View {
 // MARK: - Add Button Component
 struct AddButton: View {
     let action: () -> Void
-    @State private var isHovering = false
     @State private var isPressed = false
     
     var body: some View {
@@ -476,15 +537,12 @@ struct AddButton: View {
         } label: {
             Label("Add", systemImage: "plus")
                 .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                .foregroundColor(isPressed ? DesignSystem.Colors.primary.opacity(0.7) : DesignSystem.Colors.primary)
-                .scaleEffect(isPressed ? 0.95 : (isHovering ? 1.05 : 1.0))
-                .animation(.easeInOut(duration: 0.15), value: isHovering)
+                .foregroundStyle(isPressed ? DesignSystem.Colors.primary.opacity(0.7) : DesignSystem.Colors.primary)
+                .scaleEffect(isPressed ? 0.95 : 1.0)
                 .animation(.easeInOut(duration: 0.1), value: isPressed)
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-        }
+        .accessibilityLabel("Add")
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in isPressed = true }

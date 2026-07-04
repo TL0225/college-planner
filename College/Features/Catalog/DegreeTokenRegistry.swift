@@ -42,6 +42,8 @@ enum DegreeTokenRegistry {
         Entry(token: "MSW", fullLabel: "Master of Social Work (MSW)", displayLabel: "Master of Social Work", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
         Entry(token: "MED", fullLabel: "Master of Education (MEd)", displayLabel: "Master of Education", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
         Entry(token: "MSED", fullLabel: "Master of Science in Education (MSEd)", displayLabel: "Master of Science in Education", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
+        Entry(token: "MSE", fullLabel: "Master of Science in Education (MSE)", displayLabel: "Master of Science in Education", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
+        Entry(token: "MST", fullLabel: "Master of Science in Teaching (MST)", displayLabel: "Master of Science in Teaching", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
         Entry(token: "MENG", fullLabel: "Master of Engineering (MEng)", displayLabel: "Master of Engineering", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
         Entry(token: "MARCH", fullLabel: "Master of Architecture (MArch)", displayLabel: "Master of Architecture", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),
         Entry(token: "MPA", fullLabel: "Master of Public Administration (MPA)", displayLabel: "Master of Public Administration", degreeLevel: DegreeConfiguration.graduate, suffixPositionOnly: false),

@@ -347,7 +347,9 @@ final class CalendarEvent {
     var customColorHex: String?
     var recurrenceRule: String?
     var attendeesJSON: String?
-    var brightspaceAnnouncementId: String?
+    /// Persisted LMS announcement identifier (de-dup key). `originalName` preserves data
+    /// from stores created before the Brightspace-specific property name was generalized.
+    @Attribute(originalName: "brightspaceAnnouncementId") var lmsAnnouncementId: String?
 
     var semester: PlannerSemester?
     var course: PlannerCourse?
@@ -384,7 +386,9 @@ final class PlannerTask {
     var categoryWeightPercent: Double?
     var weightPercent: Double?
     var estimatedEffortMinutes: Int32?
-    var brightspaceItemId: String?
+    /// Persisted LMS item identifier (de-dup key). `originalName` preserves data
+    /// from stores created before the Brightspace-specific property name was generalized.
+    @Attribute(originalName: "brightspaceItemId") var lmsItemId: String?
     var createdAt: Date
     var lastUpdated: Date
 
@@ -423,6 +427,8 @@ final class Profile {
     var personalPhone: String?
     var permanentAddress: String?
     var advisorName: String?
+    var skillsJSON: String?
+    var linksJSON: String?
     @Attribute(.externalStorage) var profilePhotoData: Data?
 
     @Relationship(deleteRule: .cascade, inverse: \Experience.profile)
@@ -450,6 +456,7 @@ final class Experience {
     var endDate: Date?
     var isCurrent: Bool
     var descriptionText: String?
+    var technologies: String?
 
     var profile: Profile?
 
@@ -502,6 +509,7 @@ final class VaultDocument {
     var readingProgress: Int16
     var readingTotalPages: Int16
     var linkedTaskID: UUID?
+    var linkedCalendarEventID: UUID?
     var summaryText: String?
     var classificationConfidence: Float
     var isDuplicate: Bool
@@ -599,6 +607,9 @@ final class JobApplication {
     var locationText: String?
     var baseSalaryText: String?
     var resumeDisplayName: String?
+    var submittedResumeContentHash: String?
+    var matchScoreAtSubmission: Int?
+    var matchResultJSONAtSubmission: String?
 
     @Relationship(deleteRule: .cascade, inverse: \RecruiterContact.application)
     var contacts: [RecruiterContact]?
@@ -607,6 +618,8 @@ final class JobApplication {
     var events: [CareerEvent]?
 
     var submittedResume: VaultDocument?
+
+    @Relationship(deleteRule: .nullify, inverse: \WorkdayJobPosting.trackedApplication)
     var workdaySourcePosting: WorkdayJobPosting?
 
     init(
@@ -714,6 +727,78 @@ final class CareerEvent {
     }
 }
 
+// MARK: - Career resume ↔ job match cache (schema 1.3)
+
+@Model
+final class CareerResumeJobMatch {
+    @Attribute(.unique) var id: UUID
+    var postingCompanySlug: String
+    var postingExternalPath: String
+    var resumeDocumentID: UUID
+    var overallScore: Int
+    var keywordScore: Int
+    var semanticScore: Int
+    var experienceScore: Int
+    var missingKeywordsJSON: String?
+    var recommendedForPosting: Bool
+    var resultJSON: String?
+    var scoredAt: Date
+    var descriptionHashAtScore: String?
+    var resumeHashAtScore: String?
+
+    init(
+        id: UUID = UUID(),
+        postingCompanySlug: String,
+        postingExternalPath: String,
+        resumeDocumentID: UUID,
+        overallScore: Int = 0,
+        keywordScore: Int = 0,
+        semanticScore: Int = 0,
+        experienceScore: Int = 0,
+        missingKeywordsJSON: String? = nil,
+        recommendedForPosting: Bool = false,
+        resultJSON: String? = nil,
+        scoredAt: Date = .now,
+        descriptionHashAtScore: String? = nil,
+        resumeHashAtScore: String? = nil
+    ) {
+        self.id = id
+        self.postingCompanySlug = postingCompanySlug
+        self.postingExternalPath = postingExternalPath
+        self.resumeDocumentID = resumeDocumentID
+        self.overallScore = overallScore
+        self.keywordScore = keywordScore
+        self.semanticScore = semanticScore
+        self.experienceScore = experienceScore
+        self.missingKeywordsJSON = missingKeywordsJSON
+        self.recommendedForPosting = recommendedForPosting
+        self.resultJSON = resultJSON
+        self.scoredAt = scoredAt
+        self.descriptionHashAtScore = descriptionHashAtScore
+        self.resumeHashAtScore = resumeHashAtScore
+    }
+}
+
+@Model
+final class CareerResumeJobMatchSnapshot {
+    @Attribute(.unique) var id: UUID
+    var matchID: UUID
+    var overallScore: Int
+    var scoredAt: Date
+
+    init(
+        id: UUID = UUID(),
+        matchID: UUID,
+        overallScore: Int,
+        scoredAt: Date = .now
+    ) {
+        self.id = id
+        self.matchID = matchID
+        self.overallScore = overallScore
+        self.scoredAt = scoredAt
+    }
+}
+
 // MARK: - Catalog partition
 
 @Model
@@ -743,6 +828,12 @@ final class University {
 
     @Relationship(deleteRule: .cascade, inverse: \Major.university)
     var majors: [Major]?
+
+    @Relationship(deleteRule: .cascade, inverse: \CatalogCollege.university)
+    var colleges: [CatalogCollege]?
+
+    @Relationship(deleteRule: .cascade, inverse: \CatalogEdition.university)
+    var catalogEditions: [CatalogEdition]?
 
     @Relationship(deleteRule: .cascade, inverse: \CatalogPolicyDocument.university)
     var policyDocuments: [CatalogPolicyDocument]?
@@ -774,6 +865,10 @@ final class CourseCatalog {
     var isArchived: Bool
     var catalogStableID: UUID?
     var provenanceJSON: String?
+    var extractionConfidence: Double?
+    var signalSource: String?
+    var parserVersion: String?
+    var departmentLinkConfidence: Double?
 
     var university: University?
 
@@ -838,6 +933,9 @@ final class Department {
     var code: String?
     var school: String?
     var lastUpdated: Date
+    var extractionConfidence: Double?
+    var signalSource: String?
+    var parserVersion: String?
 
     var university: University?
 
@@ -852,6 +950,61 @@ final class Department {
         self.id = id
         self.name = name
         self.lastUpdated = lastUpdated
+    }
+}
+
+@Model
+final class CatalogCollege {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var code: String?
+    var lastUpdated: Date
+
+    var university: University?
+
+    var majors: [Major]?
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        lastUpdated: Date = .now
+    ) {
+        self.id = id
+        self.name = name
+        self.lastUpdated = lastUpdated
+    }
+}
+
+@Model
+final class CatalogEdition {
+    @Attribute(.unique) var id: UUID
+    var editionKey: String
+    var schoolID: String
+    var label: String
+    var sourceHash: String?
+    var parserVersion: String?
+    var replayConfigJSON: String?
+    var effectiveFrom: Date?
+    var effectiveTo: Date?
+    var isPublished: Bool
+    var createdAt: Date
+
+    var university: University?
+
+    init(
+        id: UUID = UUID(),
+        editionKey: String,
+        schoolID: String,
+        label: String,
+        isPublished: Bool = false,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.editionKey = editionKey
+        self.schoolID = schoolID
+        self.label = label
+        self.isPublished = isPublished
+        self.createdAt = createdAt
     }
 }
 
@@ -872,11 +1025,19 @@ final class Major {
     var provenanceJSON: String?
     var mappingConfidence: Double?
     var mappingSource: String?
+    var parserVersion: String?
+    var programKind: String?
+    var parentProgramKey: String?
+    var trackVariant: String?
+    var catalogEditionID: String?
 
     var university: University?
 
     @Relationship(deleteRule: .nullify, inverse: \Department.majors)
     var departments: [Department]?
+
+    @Relationship(deleteRule: .nullify, inverse: \CatalogCollege.majors)
+    var collegeEntity: CatalogCollege?
 
     init(
         id: UUID = UUID(),
@@ -918,6 +1079,12 @@ final class CatalogDegreeRequirement {
     var lastUpdated: Date
     var catalogStableID: UUID?
     var provenanceJSON: String?
+    var extractionConfidence: Double?
+    var signalSource: String?
+    var parserVersion: String?
+    var programAttachmentConfidence: Double?
+    var catalogEditionID: String?
+    var requirementPredicateJSON: String?
 
     var university: University?
 
@@ -1024,5 +1191,131 @@ final class CatalogScrapeState {
         self.catoid = catoid
         self.courseCount = courseCount
         self.lastScrapedAt = lastScrapedAt
+    }
+}
+
+// MARK: - Transfer Database (schema 1.4)
+
+@Model
+final class TransferEquivalency {
+    @Attribute(.unique) var id: UUID
+    var sourceSchoolID: String
+    var sourceSchoolName: String
+    var sourceCourseCode: String
+    var sourceCourseTitle: String?
+    var sourceCredits: Int16
+    var targetSchoolID: String
+    var targetSchoolName: String
+    var targetCourseCode: String
+    var targetCourseTitle: String?
+    var targetCredits: Int16
+    var equivalencyKind: String
+    var degreeLevel: String
+    var sourceTier: String
+    var originIdentifier: String
+    var sourceURL: String?
+    var submittedAt: Date
+    var lastVerifiedAt: Date?
+    var effectiveTerm: String?
+    var verificationStatus: String
+    var proofDocumentID: UUID?
+    var confidenceOverride: Int16?
+    @Attribute(.unique) var dedupeKey: String
+    var notes: String?
+    var isArchived: Bool
+
+    init(
+        id: UUID = UUID(),
+        sourceSchoolID: String,
+        sourceSchoolName: String,
+        sourceCourseCode: String,
+        sourceCourseTitle: String? = nil,
+        sourceCredits: Int16,
+        targetSchoolID: String,
+        targetSchoolName: String,
+        targetCourseCode: String,
+        targetCourseTitle: String? = nil,
+        targetCredits: Int16,
+        equivalencyKind: String,
+        degreeLevel: String,
+        sourceTier: String,
+        originIdentifier: String,
+        sourceURL: String? = nil,
+        submittedAt: Date = .now,
+        lastVerifiedAt: Date? = nil,
+        effectiveTerm: String? = nil,
+        verificationStatus: String,
+        proofDocumentID: UUID? = nil,
+        confidenceOverride: Int16? = nil,
+        dedupeKey: String,
+        notes: String? = nil,
+        isArchived: Bool = false
+    ) {
+        self.id = id
+        self.sourceSchoolID = sourceSchoolID
+        self.sourceSchoolName = sourceSchoolName
+        self.sourceCourseCode = sourceCourseCode
+        self.sourceCourseTitle = sourceCourseTitle
+        self.sourceCredits = sourceCredits
+        self.targetSchoolID = targetSchoolID
+        self.targetSchoolName = targetSchoolName
+        self.targetCourseCode = targetCourseCode
+        self.targetCourseTitle = targetCourseTitle
+        self.targetCredits = targetCredits
+        self.equivalencyKind = equivalencyKind
+        self.degreeLevel = degreeLevel
+        self.sourceTier = sourceTier
+        self.originIdentifier = originIdentifier
+        self.sourceURL = sourceURL
+        self.submittedAt = submittedAt
+        self.lastVerifiedAt = lastVerifiedAt
+        self.effectiveTerm = effectiveTerm
+        self.verificationStatus = verificationStatus
+        self.proofDocumentID = proofDocumentID
+        self.confidenceOverride = confidenceOverride
+        self.dedupeKey = dedupeKey
+        self.notes = notes
+        self.isArchived = isArchived
+    }
+}
+
+@Model
+final class TransferProofRecord {
+    @Attribute(.unique) var id: UUID
+    var equivalencyID: UUID
+    var proofDocumentID: UUID
+    var detectedUniversityName: String?
+    var hasRegistrarHeader: Bool
+    var pdfProducer: String?
+    var pdfCreationDate: Date?
+    var signatureDetected: Bool
+    var textExtractionMethod: String
+    var validationScore: Double
+    var createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        equivalencyID: UUID,
+        proofDocumentID: UUID,
+        detectedUniversityName: String? = nil,
+        hasRegistrarHeader: Bool,
+        pdfProducer: String? = nil,
+        pdfCreationDate: Date? = nil,
+        signatureDetected: Bool,
+        textExtractionMethod: String,
+        validationScore: Double,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.equivalencyID = equivalencyID
+        self.proofDocumentID = proofDocumentID
+        self.detectedUniversityName = detectedUniversityName
+        self.hasRegistrarHeader = hasRegistrarHeader
+        self.pdfProducer = pdfProducer
+        self.pdfCreationDate = pdfCreationDate
+        self.signatureDetected = signatureDetected
+        self.textExtractionMethod = textExtractionMethod
+        self.validationScore = validationScore
+        self.createdAt = createdAt
     }
 }

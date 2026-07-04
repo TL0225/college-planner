@@ -46,8 +46,15 @@ struct CollegeApp: App {
     private var isHostedUnitTest: Bool {
         CollegeTestRuntime.isUnitTestProcess && !forceUITestMainUI
     }
+    private let showsMenuBarExtra = !CollegeTestRuntime.isUnitTestProcess || UITestLaunchFlags.forcesMainUI
     private var canLeaveLaunchScreen: Bool {
         forceUITestMainUI || (appContainer.launchPreloadCoordinator.isCompleted && launchMinimumDisplayElapsed)
+    }
+
+    private var usesMainShellSizing: Bool {
+        if isHostedUnitTest { return false }
+        if forceUITestMainUI { return true }
+        return canLeaveLaunchScreen
     }
 
     /// XCTest snapshots were missing the main window entirely until the app was activated
@@ -109,18 +116,21 @@ struct CollegeApp: App {
             return
         }
         UserDefaultsWindowAutosaveCleanup.runAtLaunch()
+        LMSStorageKeys.migrateLegacyDefaultsIfNeeded()
         // Initialize production logger immediately on app launch.
         // Also capture stdout/stderr so print() + runtime warnings are preserved.
         AppLogger.shared.redirectConsoleOutput()
-        RuntimeTelemetryMonitor.shared.startIfNeeded()
         RuntimeTelemetryMonitor.shared.markServiceState("app", state: "initializing")
         LaunchPreloadCoordinator.bootstrapBuiltInFeaturePreloadsIfNeeded()
         CalendarPersistencePortBootstrap.wire()
         CalendarPersistencePortBootstrap.wireReadPorts()
         CalendarPersistencePortBootstrap.wireOverlays()
         CalendarPersistencePortBootstrap.wireIntegrationPorts()
-        ModelMigrationService.runLaunchMigrationsIfNeeded()
-        WidgetRegistry.shared.bootstrapBuiltIns()
+        Task { @MainActor in
+            await BackgroundServiceOnDemand.run(id: "model_migration") {
+                ModelMigrationService.runLaunchMigrationsIfNeeded()
+            }
+        }
 
         let logger = DebugLogger.shared
         logger.app("🚀 App init")
@@ -130,9 +140,12 @@ struct CollegeApp: App {
         logger.app("ProcessInfo: \(ProcessInfo.processInfo.processName)")
         logger.app("OS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         let platform = AppleSiliconPlatform.report
-        logger.app("Platform: \(platform.deviceName) — Apple Silicon supported: \(platform.isSupported)")
+        logger.app("Platform: \(platform.deviceName) — Apple Silicon supported: \(platform.isSupported), MLX compatible: \(platform.isMLXCompatible)")
         if let reason = platform.requirementMessage {
             logger.app("Platform: \(reason)")
+        }
+        if let mlxReason = platform.mlxRequirementMessage {
+            logger.app("Platform MLX: \(mlxReason)")
         }
 
         #if DEBUG
@@ -145,13 +158,6 @@ struct CollegeApp: App {
         UnlockDebugLog.log("os=\(ProcessInfo.processInfo.operatingSystemVersionString)")
         UnlockDebugLog.log("===")
         #endif
-
-        MLXGlobalErrorHandler.installIfNeeded()
-        CrashReportStore.installSignalCrashCaptureIfNeeded()
-        UncaughtExceptionLogger.installIfNeeded()
-        CatalogMenuBarProgressController.shared.startObservingProgressNotifications()
-        CollegeMenuBarStatusModel.shared.startObservingProgressNotifications()
-        MemoryPressureHandler.shared.startIfNeeded()
 
         RuntimeTelemetryMonitor.shared.markServiceState("app", state: "initialized")
     }
@@ -173,31 +179,11 @@ struct CollegeApp: App {
     }
 
     private func applyInactiveServiceThrottle(_ throttled: Bool) {
-        if throttled {
-            StaleFileMonitor.shared.stopMonitoring()
-            VaultScreenshotTriage.shared.stopDailyScan()
-            RuntimeTelemetryMonitor.shared.markServiceState("stale_file_monitor", state: "paused")
-            RuntimeTelemetryMonitor.shared.markServiceState("screenshot_triage", state: "paused")
-        } else {
-            StaleFileMonitor.shared.startMonitoring()
-            VaultScreenshotTriage.shared.scheduleDailyScan()
-            RuntimeTelemetryMonitor.shared.markServiceState("stale_file_monitor", state: "running")
-            RuntimeTelemetryMonitor.shared.markServiceState("screenshot_triage", state: "running")
-        }
-    }
-
-    private func startTrackedServiceTask(
-        _ name: String,
-        priority: TaskPriority = .background,
-        marksCompleted: Bool = true,
-        operation: @escaping @Sendable () async -> Void
-    ) {
-        RuntimeTelemetryMonitor.shared.markServiceState(name, state: "starting")
-        Task.detached(priority: priority) {
-            RuntimeTelemetryMonitor.shared.markServiceState(name, state: "running")
-            await operation()
-            if marksCompleted {
-                RuntimeTelemetryMonitor.shared.markServiceState(name, state: "completed")
+        Task {
+            if throttled {
+                await BackgroundServiceRegistry.shared.pauseAll()
+            } else {
+                await BackgroundServiceRegistry.shared.resumeAll()
             }
         }
     }
@@ -206,6 +192,7 @@ struct CollegeApp: App {
     private func onboardingRoot() -> some View {
         OnboardingRootView {
             onboardingCompleted = true
+            ProductAnalytics.track(.onboardingCompleted)
             if !UserDefaults.standard.bool(forKey: OnboardingPreferenceBridge.deepCatalogScrapeCompletedKey) {
                 UserDefaults.standard.set(true, forKey: OnboardingPreferenceBridge.showDeepCatalogPromptKey)
             }
@@ -213,6 +200,7 @@ struct CollegeApp: App {
         .appContainerEnvironment(appContainer)
         .environment(\.timeZone, selectedTimeZone)
         .environment(\.calendar, selectedCalendar)
+        .environment(NetworkConnectivityMonitor.shared)
     }
 
     @ViewBuilder
@@ -222,9 +210,13 @@ struct CollegeApp: App {
             .environment(\.timeZone, selectedTimeZone)
             .environment(\.calendar, selectedCalendar)
             .environment(WidgetRegistry.shared)
+            .environment(NetworkConnectivityMonitor.shared)
             .onOpenURL { url in
-                _ = CollegeInboundURLDispatcher.handle(url) { _ in
-                }
+                _ = CollegeInboundURLDispatcher.handle(
+                    url,
+                    spotifyHandler: { _ in },
+                    careerJobHandler: { appContainer.careerNavigationRouter.boardJob(id: $0) }
+                )
             }
             .handlesExternalEvents(preferring: ["college"], allowing: ["*"])
             .onAppear {
@@ -235,12 +227,8 @@ struct CollegeApp: App {
                 DebugLogger.shared.lifecycle("WindowGroup ContentView appeared")
                 applyInactiveServiceThrottle(appContainer.appActivity.isResourceThrottled)
                 AppNotificationCenter.shared.requestPermission()
-                CalendarReminderScheduler.shared.registerNotificationCategories()
-                CalendarReminderScheduler.shared.requestAuthorizationIfNeeded()
 
                 applyMacAppearance(from: appAppearanceRaw)
-                CatalogMenuBarProgressController.shared.startObservingProgressNotifications()
-        CollegeMenuBarStatusModel.shared.startObservingProgressNotifications()
                 if UserDefaults.standard.bool(forKey: OnboardingPreferenceBridge.catalogSyncInFlightKey) {
                     CatalogMenuBarProgressNotifier.postInProgress(
                         fraction: 0.02,
@@ -249,30 +237,7 @@ struct CollegeApp: App {
                     )
                 }
 
-                startTrackedServiceTask("model_bootstrap") {
-                    await ModelBootstrapService.ensureModelReady()
-                }
-                startTrackedServiceTask("fs_watchdog", marksCompleted: false) {
-                    await FSWatchdogService.shared.startWatching()
-                    RuntimeTelemetryMonitor.shared.markServiceState("fs_watchdog", state: "running")
-                }
-                startTrackedServiceTask("stale_file_monitor", marksCompleted: false) {
-                    await StaleFileMonitor.shared.startMonitoring()
-                    RuntimeTelemetryMonitor.shared.markServiceState("stale_file_monitor", state: "running")
-                }
-                startTrackedServiceTask("screenshot_triage", marksCompleted: false) {
-                    await VaultScreenshotTriage.shared.scheduleDailyScan()
-                    RuntimeTelemetryMonitor.shared.markServiceState("screenshot_triage", state: "running")
-                }
-                startTrackedServiceTask("weekly_digest", marksCompleted: false) {
-                    await VaultWeeklyDigest.shared.scheduleWeeklyDigest()
-                }
-                startTrackedServiceTask("semester_archive_check") {
-                    await VaultSemesterArchive.shared.checkForSemesterChange()
-                }
-                startTrackedServiceTask("calendar_course_linker", priority: .utility) {
-                    await CalendarCourseLinker.shared.scanAndLink()
-                }
+                Task { await BackgroundServiceRegistry.shared.bootstrap(phase: .atMainUIReady) }
             }
             .onChange(of: appAppearanceRaw) { _, newValue in
                 applyMacAppearance(from: newValue)
@@ -290,35 +255,30 @@ struct CollegeApp: App {
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if canLeaveLaunchScreen {
-                if shouldShowOnboarding {
-                    onboardingRoot()
-                } else {
-                    mainRoot()
+                Group {
+                    if shouldShowOnboarding {
+                        onboardingRoot()
+                    } else {
+                        mainRoot()
+                    }
                 }
             } else {
-                LaunchPreloadView()
-                    .appContainerEnvironment(appContainer)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(.thinMaterial)
-                    .onAppear {
-                        if launchSplashShownAt == nil {
-                            launchSplashShownAt = Date()
-                        }
-                    }
-                    .task {
-                        appContainer.launchPreloadCoordinator.startIfNeeded(
-                            collegePersistence: appContainer.persistence,
-                            calendarManager: appContainer.calendarManager,
-                            brightspaceCoordinator: appContainer.brightspaceCoordinator,
-                            cloudIntegration: CloudIntegrationService.shared
-                        )
-                    }
+                launchSplashRoot()
             }
             }
-            .frame(
-                minWidth: isHostedUnitTest ? 1 : 1080,
-                minHeight: isHostedUnitTest ? 1 : 700
-            )
+            .modifier(MainWindowMinimumSizePolicy(
+                isHostedUnitTest: isHostedUnitTest,
+                usesMainShellSizing: usesMainShellSizing
+            ))
+            .onChange(of: canLeaveLaunchScreen) { _, canLeave in
+                guard canLeave else { return }
+                DispatchQueue.main.async {
+                    guard let window = NSApp.windows.first(where: {
+                        $0.styleMask.contains(.resizable) && !$0.isSheet
+                    }) else { return }
+                    MainWindowFramePolicy.adoptMainShellPlacementIfNeeded(window)
+                }
+            }
             .task(id: launchSplashShownAt) {
                 guard !forceUITestMainUI else { return }
                 guard let shownAt = launchSplashShownAt else { return }
@@ -341,11 +301,32 @@ struct CollegeApp: App {
             }
             .onChange(of: appContainer.persistence.isStoreLoaded) { _, loaded in
                 guard loaded else { return }
-                UITestPersistenceSeeder.seedMinimalPlannerDataIfNeeded()
+                UITestPersistenceSeeder.seedUITestDataIfNeeded()
             }
             .onChange(of: appContainer.launchPreloadCoordinator.isCompleted) { _, completed in
                 guard completed else { return }
+                if let shownAt = launchSplashShownAt {
+                    let durationMs = Int(Date().timeIntervalSince(shownAt) * 1000)
+                    LaunchHistoryStore.recordLaunch(
+                        durationMs: durationMs,
+                        footprintMB: PerformanceDiagnostics.footprintMemoryMB()
+                    )
+                    if LaunchPerformanceAcceptance.pipelineDurationExceedsBudget(durationMs: durationMs) {
+                        DiagnosticsEvent.emit(
+                            subsystem: .launch,
+                            severity: .warning,
+                            code: "LAUNCH_SLOW",
+                            message: "Launch took \(durationMs) ms."
+                        )
+                    }
+                }
                 if SessionTerminationTracker.consumePendingAbruptTerminationPrompt() {
+                    DiagnosticsEvent.emit(
+                        subsystem: .crash,
+                        severity: .warning,
+                        code: "SESSION_ABRUPT_EXIT",
+                        message: "Previous session ended unexpectedly."
+                    )
                     pendingCrashReportURL = CrashReportStore.consumePendingCrashReportURL()
                         ?? CrashReportStore.latestCrashReportURL()
                         ?? CrashReportStore.consumePendingSignalCrashReportURL()
@@ -371,14 +352,20 @@ struct CollegeApp: App {
                     onCopyLogPath: {
                         guard let reportURL = pendingCrashReportURL else { return }
                         CrashReportStore.copyPathToPasteboard(reportURL)
+                    },
+                    onContinue: {
+                        showSessionInterruptedAlert = false
                     }
                 )
                 .dismissOnOutsideClickForSheet()
             }
         }
+        .defaultSize(width: 1100, height: 760)
         .windowToolbarStyle(.unified)
         .commands {
             PlannerMenuCommands()
+            InspectorCommands()
+            TextEditingCommands()
         }
         .handlesExternalEvents(matching: ["college"])
         .onChange(of: scenePhase) { _, newPhase in
@@ -397,6 +384,25 @@ struct CollegeApp: App {
         .onChange(of: appContainer.appActivity.isResourceThrottled) { _, throttled in
             applyInactiveServiceThrottle(throttled)
         }
+        resumeBuilderScene
+
+        WindowGroup(id: "documents-window") {
+            DocumentsWindowRoot()
+                .appContainerEnvironment(appContainer)
+        }
+        .defaultSize(width: 980, height: 720)
+
+        WindowGroup(id: "career-apply", for: CareerApplySessionID.self) { $sessionID in
+            if let sessionID {
+                CareerApplyWindowRoot(sessionID: sessionID)
+                    .appContainerEnvironment(appContainer)
+            } else {
+                ProgressView("Loading apply session…")
+            }
+        }
+        .defaultSize(width: 1100, height: 800)
+        .restorationBehavior(.disabled)
+
         Settings {
             Group {
                 if appContainer.persistence.isStoreLoaded {
@@ -413,6 +419,60 @@ struct CollegeApp: App {
         }
         .defaultSize(width: SettingsMetrics.preferredWindowWidth, height: 760)
         .windowResizability(.automatic)
+
+        MenuBarExtra(isInserted: .constant(showsMenuBarExtra)) {
+            CollegeMenuBarRoot()
+                .appContainerEnvironment(appContainer)
+        } label: {
+            CollegeMenuBarLabel()
+        }
+        // Window style keeps layout in a real panel (not NSMenu rows) so live
+        // background updates don't cross-wire menu item identities in Release.
+        .menuBarExtraStyle(.window)
+    }
+    @SceneBuilder
+    private var resumeBuilderScene: some Scene {
+        WindowGroup(id: "resume-builder", for: UUID.self) { $documentID in
+            ResumeBuilderRoot(restoringDocumentID: documentID)
+                .appContainerEnvironment(appContainer)
+        }
+        .defaultSize(width: 1100, height: 760)
+        .restorationBehavior(.disabled)
+    }
+
+    @ViewBuilder
+    private func launchSplashRoot() -> some View {
+        LaunchPreloadView()
+            .appContainerEnvironment(appContainer)
+            .onAppear {
+                if launchSplashShownAt == nil {
+                    launchSplashShownAt = Date()
+                }
+            }
+            .task {
+                LaunchPreloadBridge.runPipelineIfNeeded(
+                    coordinator: appContainer.launchPreloadCoordinator,
+                    collegePersistence: appContainer.persistence,
+                    calendarManager: appContainer.calendarManager,
+                    lmsCoordinator: appContainer.lmsCoordinator,
+                    cloudIntegration: CloudIntegrationService.shared
+                )
+            }
+    }
+}
+
+private struct MainWindowMinimumSizePolicy: ViewModifier {
+    let isHostedUnitTest: Bool
+    let usesMainShellSizing: Bool
+
+    func body(content: Content) -> some View {
+        if isHostedUnitTest {
+            content.frame(minWidth: 1, minHeight: 1)
+        } else if usesMainShellSizing {
+            content.frame(minWidth: 820, minHeight: 600)
+        } else {
+            content.fixedSize()
+        }
     }
 }
 
@@ -421,8 +481,7 @@ private struct SessionInterruptedSheet: View {
     let onViewCrashLog: () -> Void
     let onRevealInFinder: () -> Void
     let onCopyLogPath: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
+    let onContinue: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -437,7 +496,7 @@ private struct SessionInterruptedSheet: View {
                 Text("Latest report:\n\(reportURL.path)")
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
-                    .padding(10)
+                    .padding(DesignSystem.Spacing.md)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.secondary.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -445,30 +504,30 @@ private struct SessionInterruptedSheet: View {
                 HStack(spacing: 8) {
                     Button("View Crash Log") {
                         onViewCrashLog()
-                        dismiss()
+                        onContinue()
                     }
                     Button("Reveal in Finder") {
                         onRevealInFinder()
-                        dismiss()
+                        onContinue()
                     }
                     Button("Copy Log Path") {
                         onCopyLogPath()
-                        dismiss()
+                        onContinue()
                     }
                 }
             } else {
-                Text("College did not shut down normally last time-for example after a force quit or system shutdown while the app was busy. Your planner data is stored on this Mac. Choose Continue to pick up where you left off.")
+                Text("College did not shut down normally last time—for example after a force quit or system shutdown while the app was busy. Your planner data is stored on this Mac. Choose Continue to pick up where you left off.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
             HStack {
                 Spacer()
-                Button("Continue") { dismiss() }
+                Button("Continue") { onContinue() }
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20)
+        .padding(DesignSystem.Spacing.lg)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 620)
     }
 }

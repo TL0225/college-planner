@@ -12,16 +12,27 @@ struct SettingsAcademicsPanel: View {
         VStack(alignment: .leading, spacing: 24) {
             SettingsCatalogSyncSection()
 
-            SettingsCard(title: "Catalog sources", icon: "checkmark.shield", iconColor: .teal) {
+            SettingsCard(
+                title: String(localized: "settings.academics.catalog_sources", defaultValue: "Catalog sources"),
+                icon: "checkmark.shield",
+                iconColor: DesignSystem.Colors.info
+            ) {
                 SActionRow(
-                    label: "Trusted catalog sources",
-                    subtitle: "Manage which catalog bundles this device trusts",
-                    actionLabel: "MANAGE",
+                    label: String(localized: "settings.academics.trusted_sources", defaultValue: "Trusted catalog sources"),
+                    subtitle: String(
+                        localized: "settings.academics.trusted_sources.help",
+                        defaultValue: "Manage which catalog bundles this device trusts."
+                    ),
+                    actionLabel: String(localized: "settings.academics.trusted_sources.action", defaultValue: "Manage…"),
                     action: { showTrustedSources = true }
                 )
             }
 
-            SettingsCard(title: "Alerts", icon: "bell.badge", iconColor: .orange) {
+            SettingsCard(
+                title: String(localized: "settings.academics.alerts", defaultValue: "Alerts"),
+                icon: "bell.badge",
+                iconColor: DesignSystem.Colors.warning
+            ) {
                 AcademicsNotificationSettingsRows()
             }
         }
@@ -40,14 +51,20 @@ private struct AcademicsNotificationSettingsRows: View {
     var body: some View {
         VStack(spacing: 0) {
             SToggleRow(
-                label: "Assignment due reminders",
-                subtitle: "Notify when assignments are approaching",
+                label: String(localized: "settings.academics.assignment_due", defaultValue: "Assignment due reminders"),
+                subtitle: String(
+                    localized: "settings.academics.assignment_due.help",
+                    defaultValue: "Notify when assignments are approaching."
+                ),
                 isOn: $assignmentDue
             )
-            Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+            Divider().padding(.horizontal, 18)
             SToggleRow(
-                label: "Grade updates",
-                subtitle: "Notify when grades change",
+                label: String(localized: "settings.academics.grade_updates", defaultValue: "Grade updates"),
+                subtitle: String(
+                    localized: "settings.academics.grade_updates.help",
+                    defaultValue: "Notify when grades change."
+                ),
                 isOn: $gradeUpdates
             )
         }

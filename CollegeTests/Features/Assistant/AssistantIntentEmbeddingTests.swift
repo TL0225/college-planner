@@ -1,59 +1,63 @@
 // AssistantIntentEmbeddingTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AssistantIntentEmbeddingTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class AssistantIntentEmbeddingTests: XCTestCase {
+@Suite("Assistant Intent Embedding")
+struct AssistantIntentEmbeddingTests {
 
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.enabledKey)
-        UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.thresholdKey)
-        UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.marginKey)
-        super.tearDown()
-    }
-
-    func testClassifierParaphraseMapsToFafsaIntent() {
+    @Test("Classifier paraphrase maps to FAFSA intent")
+    func classifierParaphraseMapsToFafsaIntent() {
         let hit = AssistantIntentEmbeddingClassifier.classify(
             message: "how do I complete the federal student aid application",
             threshold: 0.55,
             minimumIntentMargin: 0.01
         )
-        XCTAssertEqual(hit?.intentId, "fafsa_help")
+        #expect(hit?.intentId == "fafsa_help")
     }
 
-    func testClassifierMarginRejectsAmbiguousWhenScoresTooClose() {
+    @Test("Classifier margin rejects ambiguous when scores too close")
+    func classifierMarginRejectsAmbiguousWhenScoresTooClose() {
         let hit = AssistantIntentEmbeddingClassifier.classify(
             message: "x",
             threshold: 0.0,
             minimumIntentMargin: 1.0
         )
-        XCTAssertNil(hit)
+        #expect(hit == nil)
     }
 
-    func testKeywordPathStillWorksWhenEmbeddingDisabled() {
+    @Test("Keyword path still works when embedding disabled")
+    func keywordPathStillWorksWhenEmbeddingDisabled() {
+        defer {
+            UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.enabledKey)
+        }
         UserDefaults.standard.set(false, forKey: AssistantIntentEmbeddingSettings.enabledKey)
         let hit = AssistantIntentSemantics.classify(message: "fafsa deadlines", role: .academicAdvisor)
-        XCTAssertEqual(hit?.matchedIntent, "fafsa_help")
+        #expect(hit?.matchedIntent == "fafsa_help")
     }
 
-    func testSemanticsUsesEmbeddingWhenEnabledAndAboveThreshold() {
+    @Test("Semantics uses embedding when enabled and above threshold")
+    func semanticsUsesEmbeddingWhenEnabledAndAboveThreshold() {
+        defer {
+            UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.enabledKey)
+            UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.thresholdKey)
+            UserDefaults.standard.removeObject(forKey: AssistantIntentEmbeddingSettings.marginKey)
+        }
         UserDefaults.standard.set(true, forKey: AssistantIntentEmbeddingSettings.enabledKey)
         UserDefaults.standard.set(0.55, forKey: AssistantIntentEmbeddingSettings.thresholdKey)
         UserDefaults.standard.set(0.01, forKey: AssistantIntentEmbeddingSettings.marginKey)
         let msg = "how do I complete the federal student aid application"
         let suggestion = AssistantIntentSemantics.classify(message: msg, role: .academicAdvisor)
-        XCTAssertEqual(suggestion?.matchedIntent, "fafsa_help")
+        #expect(suggestion?.matchedIntent == "fafsa_help")
     }
 
+    @Test("Planning tool names matches descriptor names")
     @MainActor
-    func testPlanningToolNamesMatchesDescriptorNames() {
+    func planningToolNamesMatchesDescriptorNames() {
         let academic = AIAssistantToolRegistry.planningToolNames(for: .academicAdvisor)
-        XCTAssertTrue(academic.contains("getStudentProfile"))
-        XCTAssertTrue(academic.contains("draftSemesterPlan"))
+        #expect(academic.contains("getStudentProfile"))
+        #expect(academic.contains("draftSemesterPlan"))
         let financial = AIAssistantToolRegistry.planningToolNames(for: .financialAdvisor)
-        XCTAssertTrue(financial.contains("getSAPStatus"))
+        #expect(financial.contains("getSAPStatus"))
     }
 }

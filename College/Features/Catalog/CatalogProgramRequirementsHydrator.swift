@@ -477,6 +477,7 @@ enum CatalogProgramRequirementsHydrator {
         }
 
         hydrationTask?.cancel()
+        let startedAt = Date()
         let toastID = notifications.post(
             kind: .progress,
             title: String(
@@ -502,6 +503,13 @@ enum CatalogProgramRequirementsHydrator {
             ),
             indeterminate: true
         )
+        CatalogSyncProgressReporter.main.reportStage(
+            .evaluatingQuality,
+            detail: String(
+                localized: "catalog.requirements.menubar_starting",
+                defaultValue: "Syncing degree requirements…"
+            )
+        )
 
         let results = await runHydration(items: items, persistence: persistence, force: force)
 
@@ -515,6 +523,30 @@ enum CatalogProgramRequirementsHydrator {
         let savedCategories = results.reduce(0) { $0 + $1.savedRowCount }
         let skipped = results.filter(\.skippedDueToFreshCache).count
         let failures = results.compactMap(\.errorMessage)
+        let attempted = results.filter { !$0.skippedDueToFreshCache }
+        let emptyParsed = attempted.filter { $0.errorMessage == nil && $0.savedRowCount == 0 }.count
+        let emptyFraction = attempted.isEmpty ? 0.0 : Double(emptyParsed) / Double(attempted.count)
+        let partialEmptyThreshold = 0.30
+
+        CatalogIngestObservability.record(
+            CatalogIngestMetricSample(
+                schoolID: persistence.getActiveUniversity()?.id.uuidString ?? "requirements",
+                source: "requirements_hydrator",
+                succeeded: failures.isEmpty,
+                durationMs: Int(Date().timeIntervalSince(startedAt) * 1000),
+                pageCount: items.count,
+                ocrPagesUsed: 0,
+                averageProgramConfidence: nil,
+                timestamp: Date(),
+                programsFound: items.count,
+                requirementsFound: savedCategories,
+                discoveryTelemetry: [
+                    "requirements.failures": failures.count,
+                    "requirements.skipped": skipped,
+                    "requirements.empty_parsed": emptyParsed,
+                ]
+            )
+        )
 
         if !failures.isEmpty {
             notifications.complete(
@@ -526,6 +558,9 @@ enum CatalogProgramRequirementsHydrator {
                 ),
                 message: failures.prefix(2).joined(separator: "\n"),
                 autoDismissAfter: 10
+            )
+            CatalogSyncProgressReporter.main.reportTerminal(
+                .failed(message: failures.prefix(2).joined(separator: " · "))
             )
         } else if savedCategories == 0, skipped == items.count, !force {
             notifications.complete(
@@ -541,6 +576,43 @@ enum CatalogProgramRequirementsHydrator {
                 ),
                 autoDismissAfter: 8
             )
+            CatalogSyncProgressReporter.main.reportTerminal(
+                .skipped(
+                    reason: String(
+                        localized: "catalog.requirements.menubar_no_changes",
+                        defaultValue: "Requirements sync finished with no new data."
+                    )
+                )
+            )
+        } else if emptyFraction > partialEmptyThreshold, failures.isEmpty {
+            let percent = Int((emptyFraction * 100).rounded())
+            notifications.complete(
+                id: toastID,
+                kind: .warning,
+                title: String(
+                    localized: "catalog.requirements.partial_empty_title",
+                    defaultValue: "Many Programs Missing Requirements"
+                ),
+                message: String(
+                    format: String(
+                        localized: "catalog.requirements.partial_empty_body_fmt",
+                        defaultValue: "%d%% of scraped programs returned no requirement categories. Try Force refresh or verify catalog program links."
+                    ),
+                    percent
+                ),
+                autoDismissAfter: 12
+            )
+            CatalogSyncProgressReporter.main.reportTerminal(
+                .succeeded(
+                    summary: String(
+                        format: String(
+                            localized: "catalog.requirements.partial_empty_menubar_fmt",
+                            defaultValue: "Requirements synced with %d%% empty."
+                        ),
+                        percent
+                    )
+                )
+            )
         } else if savedCategories == 0 {
             notifications.complete(
                 id: toastID,
@@ -554,6 +626,14 @@ enum CatalogProgramRequirementsHydrator {
                     defaultValue: "The catalog page returned no requirement categories. Check the program link (skeleton sync) and try Force refresh."
                 ),
                 autoDismissAfter: 10
+            )
+            CatalogSyncProgressReporter.main.reportTerminal(
+                .skipped(
+                    reason: String(
+                        localized: "catalog.requirements.menubar_no_changes",
+                        defaultValue: "Requirements sync finished with no new data."
+                    )
+                )
             )
         } else {
             notifications.complete(
@@ -573,17 +653,22 @@ enum CatalogProgramRequirementsHydrator {
                 ),
                 autoDismissAfter: 8
             )
+            CatalogSyncProgressReporter.main.reportTerminal(
+                .succeeded(
+                    summary: String(
+                        format: String(
+                            localized: "catalog.requirements.menubar_done_fmt",
+                            defaultValue: "Requirements synced for %d program(s)."
+                        ),
+                        items.count
+                    )
+                )
+            )
         }
 
-        CatalogMenuBarProgressNotifier.postSucceeded(
-            title: String(
-                format: String(
-                    localized: "catalog.requirements.menubar_done_fmt",
-                    defaultValue: "Requirements synced for %d program(s)."
-                ),
-                items.count
-            )
-        )
+        if savedCategories > 0 {
+            AcademicCalendarImportPromptBridge.schedulePromptIfAppropriate(persistence: persistence)
+        }
 
         return results
     }

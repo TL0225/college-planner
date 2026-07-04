@@ -42,6 +42,13 @@ struct CourseDashboardView: View {
         case all
     }
 
+    private enum RateMyProfessorDashboardState: Equatable {
+        case idle
+        case loading
+        case match(RateMyProfessorMatch)
+        case notFound
+    }
+
     @State private var tasksFilter: TasksFilter = .incomplete
 
     @State private var tasksCategoryFilter: String? = nil
@@ -51,20 +58,18 @@ struct CourseDashboardView: View {
     @FocusState private var taskSearchFocused: Bool
 
     @State private var showAllTasks: Bool = false
-    @State private var isGPAPopoverPresented: Bool = false
+    @State private var isEditCoursePresented: Bool = false
     @State private var isCatalogSheetPresented: Bool = false
     @State private var prereqMet: Bool? = nil
+    @State private var rateMyProfessorState: RateMyProfessorDashboardState = .idle
 
-    private enum Refined {
-        static let pageBG = Color(hex: "F9F8F6")
-        static let card = Color.white
-        static let border = Color(hex: "E6E4E0")
-        static let hover = Color(hex: "F2F0ED")
-        static let text = Color(hex: "282725")
-        static let muted = Color(hex: "757370")
-        static let dim = Color(hex: "A19F9C")
-        static let primary = Color(hex: "33312E")
-    }
+    @State private var hasAnimatedIn = false
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("ui.reduceMotion") private var prefReduceMotion = false
+    private var motionReduced: Bool { systemReduceMotion || prefReduceMotion }
+
+    @State private var notesText: String = ""
+    @State private var didLoadNotes = false
 
     fileprivate enum Formatters {
         static let monthDay: DateFormatter = {
@@ -207,29 +212,25 @@ struct CourseDashboardView: View {
         }
     }
 
-    private var immediateActionTask: PlannerTask? {
-        let now = Date()
-        return tasks.first(where: { task in
-            guard !task.isCompleted else { return false }
-            guard let due = task.dueDate else { return false }
-            return due >= now
-        })
-    }
-
-    private var immediateActionDuePillText: String? {
-        guard let due = immediateActionTask?.dueDate else { return nil }
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let dueDay = cal.startOfDay(for: due)
-        let days = cal.dateComponents([.day], from: today, to: dueDay).day
-        guard let days else { return nil }
-        if days <= 0 { return "Due Today" }
-        if days == 1 { return "Due Tomorrow" }
-        return "Due in \(days) Days"
-    }
-
     private var professorText: String {
         (course?.professor ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var activeUniversity: University? {
+        collegePersistence.getActiveUniversity()
+    }
+
+    private var rateMyProfessorLookupKey: String {
+        let professor = professorText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !professor.isEmpty, let university = activeUniversity else { return "" }
+
+        return [
+            university.id.uuidString,
+            university.name,
+            university.shortName ?? "",
+            professor,
+            courseCode,
+        ].joined(separator: "|")
     }
 
     private var professorEmailText: String {
@@ -488,13 +489,7 @@ struct CourseDashboardView: View {
     }
 
     private func presentEditCourse() {
-        modalCoordinator.activeModal = .editCourse(
-            ModalCoordinator.CourseEditSelection(
-                courseCode: courseCode,
-                defaultCourseName: defaultCourseName,
-                defaultCreditsText: defaultCreditsText
-            )
-        )
+        isEditCoursePresented = true
     }
 
     private func presentAddCalendarItem() {
@@ -529,17 +524,15 @@ struct CourseDashboardView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
-                        immediateAction
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.bottom, 48)
-
                         gridContent(availableWidth: contentWidth)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .modifier(CourseEntranceModifier(index: 0, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
                     }
                     .padding(.horizontal, sideGutter)
-                    .padding(.vertical, 40)
+                    .padding(.vertical, 24)
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
+                .scrollIndicators(.hidden)
             }
             .background(DesignSystem.Colors.bgMain)
         }
@@ -551,10 +544,22 @@ struct CourseDashboardView: View {
             catalogInfoSheet
                 .dismissOnOutsideClickForSheet()
         }
-        .overlay(alignment: .bottomTrailing) {
-            floatingAddTaskButton
+        .sheet(isPresented: $isEditCoursePresented) {
+            EditCourseDetailsView(
+                courseCode: courseCode,
+                defaultCourseName: defaultCourseName,
+                defaultCreditsText: defaultCreditsText,
+                onClose: { isEditCoursePresented = false }
+            )
+            .dismissOnOutsideClickForSheet()
         }
-        .onAppear { reloadDashboardPayload() }
+        .onAppear {
+            reloadDashboardPayload()
+            loadNotesIfNeeded()
+            if !hasAnimatedIn {
+                DispatchQueue.main.async { hasAnimatedIn = true }
+            }
+        }
         .onChange(of: collegePersistence.profileRevision) { _, _ in
             plannerRefreshToken &+= 1
             reloadDashboardPayload()
@@ -572,6 +577,9 @@ struct CourseDashboardView: View {
             reloadDashboardPayload()
             await computePrereqCheck()
         }
+        .task(id: rateMyProfessorLookupKey) {
+            await loadRateMyProfessorLookup(for: rateMyProfessorLookupKey)
+        }
         .onChange(of: activePage) { _, _ in onClose() }
     }
 
@@ -582,23 +590,34 @@ struct CourseDashboardView: View {
         )
     }
 
-    private var floatingAddTaskButton: some View {
-        Button(action: { presentAddTask() }) {
-            Image(systemName: "plus")
-                .font(.system(size: 22, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.primary)
-                .frame(width: 48, height: 48)
-                .background(.thinMaterial, in: Circle())
-                .overlay {
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-                }
+    @MainActor
+    private func loadRateMyProfessorLookup(for key: String) async {
+        guard !key.isEmpty,
+              !professorText.isEmpty,
+              let university = activeUniversity
+        else {
+            rateMyProfessorState = .idle
+            return
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add task")
-        .padding(.trailing, 24)
-        .padding(.bottom, 24)
+
+        rateMyProfessorState = .loading
+        let result = await RateMyProfessorService.shared.lookup(
+            professorName: professorText,
+            universityName: university.name,
+            universityShortName: university.shortName,
+            courseCode: courseCode
+        )
+
+        guard key == rateMyProfessorLookupKey else { return }
+
+        switch result {
+        case .match(let match):
+            rateMyProfessorState = .match(match)
+        case .notFound:
+            rateMyProfessorState = .notFound
+        case .unavailable:
+            rateMyProfessorState = .idle
+        }
     }
 
     /// Matches `DocumentsView` / shell pages: 22pt title, secondary subtitle, trailing summary chips.
@@ -617,66 +636,121 @@ struct CourseDashboardView: View {
         return tagPills.joined(separator: " · ")
     }
 
-    private func headerStatChip(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title.uppercased())
-                .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
-                .foregroundStyle(.tertiary)
-                .tracking(0.6)
+    // MARK: - Planner-matched design tokens
+    //
+    // The Course Page borrows the Requirements Breakdown's design DNA: flat content
+    // (no raised cards), accent-colored sentence-case section headers, the app's shared
+    // rounded font scheme (`DesignSystem.Fonts.main`) at the planner's sizes, and
+    // credit/meta values right-aligned inline.
+
+    fileprivate enum PlannerType {
+        static let courseTitle = DesignSystem.Fonts.main(size: 20, weight: .semibold)
+        static let section = DesignSystem.Fonts.main(size: 15, weight: .bold)
+        static let subtitle = DesignSystem.Fonts.main(size: 13, weight: .semibold)
+        static let body = DesignSystem.Fonts.main(size: 12, weight: .regular)
+        static let bodySemibold = DesignSystem.Fonts.main(size: 12, weight: .semibold)
+        static let meta = DesignSystem.Fonts.main(size: 12, weight: .medium)
+    }
+
+    @ViewBuilder
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(PlannerType.section)
+            .foregroundStyle(Color.accentColor)
+    }
+
+    private var courseStatusState: AcademicsStatusPalette.State {
+        AcademicsStatusPalette.state(forStatus: course?.status ?? "", isCompleted: course?.isCompleted ?? false)
+    }
+
+    @ViewBuilder
+    private func statusPill(_ state: AcademicsStatusPalette.State) -> some View {
+        Text(AcademicsStatusPalette.label(for: state))
+            .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+            .foregroundStyle(AcademicsStatusPalette.pillForeground(for: state))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(AcademicsStatusPalette.pillBackground(for: state)))
+    }
+
+    private var hasSyllabusGrading: Bool {
+        !(course?.gradingCategories ?? []).isEmpty
+    }
+
+    private var hasLogisticsData: Bool {
+        logisticsMeetingDaysText != nil || !logisticsLocationQuery.isEmpty || logisticsIsHappeningNow
+    }
+
+    /// Inline metric (e.g. "3 cr") shown in the header — no bordered box, planner-style.
+    @ViewBuilder
+    private func inlineMetric(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 5) {
+            Text(label)
+                .font(PlannerType.meta)
+                .foregroundStyle(.secondary)
             Text(value)
-                .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 .foregroundStyle(.primary)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(DesignSystem.Colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
-        )
+    }
+
+    private var headerSubtitleCombined: String {
+        var parts: [String] = []
+        if let s = semesterText, !s.isEmpty { parts.append(s) }
+        let code = courseCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !code.isEmpty { parts.append(code) }
+        parts.append(contentsOf: tagPills)
+        return parts.joined(separator: " · ")
     }
 
     private func header(sideGutter: CGFloat) -> some View {
-        HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Text(displayCourseName)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(PlannerType.courseTitle)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                if !courseHeaderSubtitle.isEmpty {
-                    Text(courseHeaderSubtitle)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
+                statusPill(courseStatusState)
 
-                if let tags = courseHeaderTagsLine {
-                    Text(tags)
-                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                }
+                Spacer(minLength: 12)
             }
 
-            Spacer(minLength: 12)
+            HStack(alignment: .center, spacing: 14) {
+                if !headerSubtitleCombined.isEmpty {
+                    Text(headerSubtitleCombined)
+                        .font(PlannerType.subtitle)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
 
-            HStack(spacing: 8) {
-                headerStatChip(title: "Grade", value: securityManager.isUnlocked ? gradeText : "••")
-                headerStatChip(title: "Credits", value: creditsText)
-                headerStatChip(title: "Progress", value: semesterPlanProgressPercentText)
+                Spacer(minLength: 12)
+
+                inlineMetric("Grade", securityManager.isUnlocked ? gradeText : "••")
+                inlineMetric("Credits", creditsText)
+                if semesterPlanProgressPercentText != "—" {
+                    inlineMetric("Progress", semesterPlanProgressPercentText)
+                }
+
+                Button(action: presentEditCourse) {
+                    Image(systemName: "square.and.pencil")
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .help("Edit course details")
             }
         }
         .padding(.horizontal, sideGutter)
         .padding(.top, 8)
-        .padding(.bottom, 16)
+        .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.clear)
         .overlay(alignment: .bottom) {
-            Rectangle()
-                .frame(height: 1)
-                .foregroundStyle(Color(hex: "f1f5f9"))
+            Divider()
         }
     }
 
@@ -712,49 +786,17 @@ struct CourseDashboardView: View {
             HStack(alignment: .top, spacing: 16) {
                 MiniCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .center, spacing: 8) {
-                            Text("LIVE GRADE")
-                                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
-                                .tracking(1)
-                            Spacer()
-                            Button {
-                                isGPAPopoverPresented = true
-                            } label: {
-                                Image(systemName: "function")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textLight.opacity(0.85))
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $isGPAPopoverPresented) {
-                                GPACalculatorPopoverView(universityID: nil)
-                            }
-                        }
+                        sectionTitle("Grade")
 
                         Text(securityManager.isUnlocked ? gradeText : "••")
                             .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(.primary)
                     }
                 }
-                .frame(minHeight: 128)
 
                 MiniCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top) {
-                            Text("PROFESSOR")
-                                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
-                                .tracking(1)
-
-                            Spacer()
-
-                            Button(action: presentEditCourse) {
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textLight.opacity(0.85))
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        sectionTitle("Professor")
 
                         HStack(spacing: 10) {
                             Circle()
@@ -762,50 +804,53 @@ struct CourseDashboardView: View {
                                 .frame(width: 28, height: 28)
                                 .overlay(
                                     Image(systemName: "person.fill")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                                        .foregroundStyle(DesignSystem.Colors.textLight)
                                 )
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(professorText.isEmpty ? "Not set" : professorText)
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                                     .lineLimit(1)
 
                                 if !professorEmailText.isEmpty {
                                     Button {
-                                        if let url = URL(string: "mailto:\(professorEmailText)") {
-                                            NSWorkspace.shared.open(url)
-                                        }
+                                        container.emailService.composeToProfessor(
+                                            email: professorEmailText,
+                                            professorName: professorText,
+                                            courseCode: courseCode,
+                                            courseName: course?.name
+                                        )
                                     } label: {
                                         HStack(spacing: 4) {
                                             Image(systemName: "envelope")
-                                                .font(.system(size: 10, weight: .semibold))
+                                                .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                                             Text(professorEmailText)
                                                 .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                                 .lineLimit(1)
                                         }
-                                        .foregroundColor(DesignSystem.Colors.primary)
+                                        .foregroundStyle(DesignSystem.Colors.primary)
                                     }
                                     .buttonStyle(.plain)
                                 } else {
                                     Text(professorText.isEmpty ? "Add in course details" : "Add email in course details")
                                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                        .foregroundStyle(DesignSystem.Colors.textLight)
                                 }
+
+                                rateMyProfessorLine
                             }
                         }
                     }
                 }
-                .frame(minHeight: 128)
             }
+
+            notesCard
 
             Card {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("RESOURCES")
-                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                        .tracking(1)
+                    sectionTitle("Resources")
 
                     DashboardResourceRow(
                         title: "Course Syllabus",
@@ -825,6 +870,17 @@ struct CourseDashboardView: View {
                         activePage = .calendar
                     }
 
+                    DashboardResourceRow(
+                        title: "Documents",
+                        subtitle: relatedDocuments.isEmpty
+                            ? "Link & organize files for this course"
+                            : "\(relatedDocuments.count) linked file\(relatedDocuments.count == 1 ? "" : "s")",
+                        icon: "folder",
+                        trailingIcon: "chevron.right"
+                    ) {
+                        openDocumentsForCurrentCourse()
+                    }
+
                     if !externalURLText.isEmpty {
                         DashboardResourceRow(
                             title: "Course Website",
@@ -841,7 +897,7 @@ struct CourseDashboardView: View {
                     if !catalogDescriptionText.isEmpty || !catalogPrerequisitesText.isEmpty {
                         DashboardResourceRow(
                             title: "View in Catalog",
-                            subtitle: course?.catalogCourse?.title ?? courseCode,
+                            subtitle: catalogCourse?.title ?? courseCode,
                             icon: "books.vertical",
                             trailingIcon: "chevron.right"
                         ) {
@@ -863,20 +919,19 @@ struct CourseDashboardView: View {
 
                     if !relatedDocuments.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("Related Documents")
-                                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
-                                .tracking(0.8)
+                            Text("Related documents")
+                                .font(PlannerType.bodySemibold)
+                                .foregroundStyle(.secondary)
 
                             ForEach(relatedDocuments.prefix(6), id: \.id) { document in
                                 HStack(spacing: 8) {
                                     Image(systemName: "doc")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                                        .foregroundStyle(DesignSystem.Colors.textLight)
 
                                     Text(document.fileName)
                                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textMain)
+                                        .foregroundStyle(DesignSystem.Colors.textMain)
                                         .lineLimit(1)
 
                                     Spacer(minLength: 8)
@@ -885,7 +940,7 @@ struct CourseDashboardView: View {
                                         openVaultDocument(document)
                                     } label: {
                                         Image(systemName: "arrow.up.forward.app")
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                     }
                                     .buttonStyle(.plain)
                                     .help("Open document")
@@ -894,7 +949,7 @@ struct CourseDashboardView: View {
                                         revealVaultDocumentInFinder(document)
                                     } label: {
                                         Image(systemName: "folder")
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                     }
                                     .buttonStyle(.plain)
                                     .help("Reveal in Finder")
@@ -903,7 +958,7 @@ struct CourseDashboardView: View {
                                         unlinkVaultDocument(document)
                                     } label: {
                                         Image(systemName: "link.badge.minus")
-                                            .font(.system(size: 11, weight: .semibold))
+                                            .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                     }
                                     .buttonStyle(.plain)
                                     .help("Unlink from this course")
@@ -921,7 +976,7 @@ struct CourseDashboardView: View {
                                         Text("\(relatedDocuments.count - 6) more in Documents")
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                                     }
-                                    .foregroundColor(DesignSystem.Colors.primary)
+                                    .foregroundStyle(DesignSystem.Colors.primary)
                                 }
                                 .buttonStyle(.plain)
                                 .help("Open Documents to view all linked files")
@@ -932,13 +987,11 @@ struct CourseDashboardView: View {
                 }
             }
 
+            if hasLogisticsData {
             Card {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(alignment: .center) {
-                        Text("LOGISTICS")
-                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
-                            .tracking(1)
+                        sectionTitle("Logistics")
 
                         Spacer()
 
@@ -948,20 +1001,13 @@ struct CourseDashboardView: View {
                                     .fill(DesignSystem.Colors.success)
                                     .frame(width: 7, height: 7)
 
-                                Text("Happening Now")
-                                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.success)
+                                Text("Happening now")
+                                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.success)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(DesignSystem.Colors.success.opacity(0.10))
-                            .cornerRadius(999)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 999)
-                                    .stroke(DesignSystem.Colors.success.opacity(0.18), lineWidth: 1)
-                            )
-                        } else {
-                            DashboardStatusBadge(text: statusText, color: statusText == "—" ? DesignSystem.Colors.textLight : DesignSystem.Colors.success)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(DesignSystem.Colors.success.opacity(0.12)))
                         }
                     }
 
@@ -972,18 +1018,18 @@ struct CourseDashboardView: View {
                                     .fill(DesignSystem.Colors.success.opacity(0.10))
                                     .frame(width: 40, height: 40)
                                 Image(systemName: "clock")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.success)
+                                    .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                                    .foregroundStyle(DesignSystem.Colors.success)
                             }
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(days)
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
 
                                 Text(times)
                                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                             }
 
                             Spacer()
@@ -991,25 +1037,8 @@ struct CourseDashboardView: View {
                     } else {
                         Text("No scheduled class meetings yet.")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                     }
-
-                    Button(action: {
-                        notifications.post(kind: .info, title: "Check-in", message: "Check-in is a placeholder for now.", isDismissible: true, autoDismissAfter: 3)
-                    }) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
-                            Text("Check-in to Class")
-                                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(DesignSystem.Colors.success)
-                        .cornerRadius(12)
-                    }
-                    .buttonStyle(.plain)
 
                     if !logisticsLocationQuery.isEmpty {
                         Group {
@@ -1039,41 +1068,22 @@ struct CourseDashboardView: View {
                     }
                 }
             }
+            }
 
-            Card {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("WEIGHTS")
-                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                        .tracking(1)
+            if hasSyllabusGrading {
+                let grading = (course?.gradingCategories ?? []).sorted {
+                    $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                }
+                Card {
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionTitle("Grading weights")
 
-                    let grading = (course?.gradingCategories ?? []).sorted {
-                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                    }
-
-                    if grading.isEmpty {
-                        Text("Weights populate when grading is extracted from a syllabus.")
-                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Button(action: { isSyllabusPresented = true }) {
-                            Label("Analyze Syllabus", systemImage: "sparkles")
-                                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.primary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(DesignSystem.Colors.primary.opacity(0.12))
-                                .cornerRadius(12)
-                        }
-                        .buttonStyle(.plain)
-                    } else {
                         VStack(spacing: 8) {
                             ForEach(grading.prefix(8), id: \.id) { item in
                                 HStack {
                                     Text(item.name.trimmingCharacters(in: .whitespacesAndNewlines))
-                                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textMain)
+                                        .font(PlannerType.bodySemibold)
+                                        .foregroundStyle(.primary)
                                         .lineLimit(1)
 
                                     Spacer()
@@ -1081,27 +1091,17 @@ struct CourseDashboardView: View {
                                     if let w = item.weightPercent, w > 0 {
                                         Text(String(format: "%.0f%%", w))
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                            .foregroundColor(DesignSystem.Colors.info)
+                                            .foregroundStyle(Color.accentColor)
+                                            .monospacedDigit()
                                     } else {
                                         Text("—")
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                            .foregroundColor(DesignSystem.Colors.textLight)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 1)
                             }
                         }
-
-                        Button(action: { isSyllabusPresented = true }) {
-                            Label("Re-scan Syllabus", systemImage: "sparkles")
-                                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.primary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(DesignSystem.Colors.primary.opacity(0.12))
-                                .cornerRadius(12)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -1109,14 +1109,11 @@ struct CourseDashboardView: View {
             if !catalogDescriptionText.isEmpty {
                 Card {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("DESCRIPTION")
-                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
-                            .tracking(1)
+                        sectionTitle("Description")
 
                         Text(catalogDescriptionText)
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                             .lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -1127,23 +1124,20 @@ struct CourseDashboardView: View {
                 Card {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
-                            Text("CATALOG INFO")
-                                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
-                                .tracking(1)
+                            sectionTitle("Catalog info")
                             Spacer()
                             if let met = prereqMet {
                                 HStack(spacing: 4) {
                                     Image(systemName: met ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                        .font(.system(size: 10, weight: .bold))
+                                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                                     Text(met ? "Prerequisites Met" : "Prerequisites Unmet")
                                         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                                 }
-                                .foregroundColor(met ? DesignSystem.Colors.success : Color(hex: "EF4444"))
+                                .foregroundStyle(met ? DesignSystem.Colors.success : Color(hex: "EF4444"))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background((met ? DesignSystem.Colors.success : Color(hex: "EF4444")).opacity(0.10))
-                                .cornerRadius(8)
+                                .clipShape(.rect(cornerRadius: 8))
                             }
                         }
 
@@ -1151,10 +1145,10 @@ struct CourseDashboardView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Prerequisites")
                                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                 Text(catalogPrerequisitesText)
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -1163,10 +1157,10 @@ struct CourseDashboardView: View {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Co-requisites")
                                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                 Text(catalogCorequisitesText)
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -1174,11 +1168,11 @@ struct CourseDashboardView: View {
                         if !catalogTypicallyOfferedText.isEmpty {
                             HStack(spacing: 6) {
                                 Image(systemName: "calendar.circle")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                 Text("Typically offered: \(catalogTypicallyOfferedText)")
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                             }
                         }
                     }
@@ -1187,102 +1181,56 @@ struct CourseDashboardView: View {
         }
     }
 
-    private var immediateAction: some View {
-        HStack(alignment: .center, spacing: 18) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Text("Immediate Action")
-                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                        .foregroundColor(Color.white)
-                        .textCase(.uppercase)
-                        .tracking(1)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(hex: "DC2626"))
-                        .cornerRadius(6)
-
-                    if let pill = immediateActionDuePillText {
-                        HStack(spacing: 6) {
-                            Image(systemName: "clock")
-                                .font(.system(size: 12, weight: .semibold))
-                            Text(pill)
-                                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                        }
-                        .foregroundColor(Color(hex: "B91C1C"))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(hex: "FAF2F2"))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color(hex: "F2E4E4"), lineWidth: 1)
-                        )
-                    }
+    @ViewBuilder
+    private var rateMyProfessorLine: some View {
+        if !professorText.isEmpty {
+            switch rateMyProfessorState {
+            case .idle:
+                EmptyView()
+            case .loading:
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("Looking up RateMyProfessors…")
                 }
-
-                Text(immediateActionTitle)
-                    .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
-                    .foregroundColor(Color(hex: "33312E"))
-                    .lineLimit(2)
-
-                Text(immediateActionSubtitle)
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                    .foregroundColor(Color(hex: "757370"))
-                    .lineLimit(3)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack(spacing: 12) {
-                Button(action: {
-                    if let t = immediateActionTask {
-                        presentEditTask(taskID: t.id)
+                .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textLight)
+            case .notFound:
+                Label("No RateMyProfessors match", systemImage: "magnifyingglass")
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
+                    .lineLimit(1)
+            case .match(let match):
+                if let url = match.profileURL {
+                    Link(destination: url) {
+                        rateMyProfessorMatchLabel(match)
                     }
-                }) {
-                    Text("View Rubric")
-                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                        .foregroundColor(Color(hex: "757370"))
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 12)
-                        .background(DesignSystem.Colors.bgMain)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
-                        )
+                    .buttonStyle(.plain)
+                    .help("Open RateMyProfessors profile")
+                } else {
+                    rateMyProfessorMatchLabel(match)
                 }
-                .buttonStyle(.plain)
-                .disabled(immediateActionTask == nil)
-
-                Button(action: {
-                    if let t = immediateActionTask {
-                        presentEditTask(taskID: t.id)
-                    }
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("Submit Now")
-                            .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                    }
-                    .foregroundColor(Color.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .background(Color(hex: "DC2626"))
-                    .cornerRadius(12)
-                    .shadow(color: Color(hex: "FECACA").opacity(0.85), radius: 10, x: 0, y: 6)
-                }
-                .buttonStyle(.plain)
-                .disabled(immediateActionTask == nil)
             }
         }
-        .padding(22)
-        .background(DesignSystem.Colors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 5)
+    }
+
+    private func rateMyProfessorMatchLabel(_ match: RateMyProfessorMatch) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "star.fill")
+                .font(DesignSystem.Fonts.main(size: 9, weight: .semibold))
+            Text(rateMyProfessorSummaryText(match))
+                .lineLimit(1)
+            Image(systemName: "arrow.up.right")
+                .font(DesignSystem.Fonts.main(size: 8, weight: .bold))
+        }
+        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
+        .foregroundStyle(Color.accentColor)
+    }
+
+    private func rateMyProfessorSummaryText(_ match: RateMyProfessorMatch) -> String {
+        let rating = String(format: "%.1f", match.averageRating)
+        let difficulty = String(format: "%.1f", match.averageDifficulty)
+        return "RMP \(rating) · Difficulty \(difficulty) · \(match.ratingCount) ratings"
     }
 
     private var tasksAndDeadlines: some View {
@@ -1291,31 +1239,29 @@ struct CourseDashboardView: View {
                 HStack(alignment: .center, spacing: 10) {
                     HStack(spacing: 8) {
                         Image(systemName: "checklist")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
-                        Text("Tasks & Deadlines")
-                            .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .font(DesignSystem.Fonts.main(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                        sectionTitle("Tasks & deadlines")
                     }
                     .layoutPriority(1)
 
                     if isTaskSearchActive {
                         HStack(spacing: 8) {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textLight.opacity(0.9))
+                                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.9))
 
                             TextField("Search tasks & deadlines", text: $taskSearchText)
                                 .textFieldStyle(.plain)
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                                 .focused($taskSearchFocused)
 
                             if !taskSearchText.isEmpty {
                                 Button(action: { taskSearchText = "" }) {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textLight.opacity(0.65))
+                                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                        .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.65))
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Clear search")
@@ -1324,7 +1270,7 @@ struct CourseDashboardView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(DesignSystem.Colors.surface)
-                        .cornerRadius(12)
+                        .clipShape(.rect(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -1345,11 +1291,11 @@ struct CourseDashboardView: View {
                             )
                         }) {
                             Image(systemName: "calendar.badge.plus")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                                 .frame(width: 32, height: 32)
                                 .background(DesignSystem.Colors.surface)
-                                .cornerRadius(10)
+                                .clipShape(.rect(cornerRadius: 10))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
                                         .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -1372,11 +1318,11 @@ struct CourseDashboardView: View {
                             }
                         }) {
                             Image(systemName: "magnifyingglass")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                                 .frame(width: 32, height: 32)
                                 .background(isTaskSearchActive ? DesignSystem.Colors.primary.opacity(0.12) : DesignSystem.Colors.surface)
-                                .cornerRadius(10)
+                                .clipShape(.rect(cornerRadius: 10))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
                                         .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -1388,11 +1334,11 @@ struct CourseDashboardView: View {
                         Button(action: { tasksFilter = .incomplete }) {
                             Text("Incomplete")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                                 .background(tasksFilter == .incomplete ? DesignSystem.Colors.primary.opacity(0.10) : DesignSystem.Colors.surface.opacity(0.6))
-                                .cornerRadius(10)
+                                .clipShape(.rect(cornerRadius: 10))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
                                         .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -1405,7 +1351,7 @@ struct CourseDashboardView: View {
                         Button(action: { tasksFilter = .all }) {
                             Text("All Tasks")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
                         }
@@ -1424,11 +1370,11 @@ struct CourseDashboardView: View {
                                 let isSelected = (tasksCategoryFilter == nil)
                                 Text("All")
                                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                                    .foregroundColor(isSelected ? DesignSystem.Colors.textMain : DesignSystem.Colors.textMain.opacity(0.7))
+                                    .foregroundStyle(isSelected ? DesignSystem.Colors.textMain : DesignSystem.Colors.textMain.opacity(0.7))
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
                                     .background(isSelected ? DesignSystem.Colors.primary.opacity(0.10) : DesignSystem.Colors.surface.opacity(0.6))
-                                    .cornerRadius(999)
+                                    .clipShape(.capsule)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 999)
                                             .stroke(isSelected ? DesignSystem.Colors.primary.opacity(0.25) : DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -1447,11 +1393,11 @@ struct CourseDashboardView: View {
                                 }) {
                                     Text(category)
                                         .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                                        .foregroundColor(isSelected ? DesignSystem.Colors.textMain : DesignSystem.Colors.textMain.opacity(0.7))
+                                        .foregroundStyle(isSelected ? DesignSystem.Colors.textMain : DesignSystem.Colors.textMain.opacity(0.7))
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
                                         .background(isSelected ? DesignSystem.Colors.primary.opacity(0.10) : DesignSystem.Colors.surface.opacity(0.6))
-                                        .cornerRadius(999)
+                                        .clipShape(.capsule)
                                         .overlay(
                                             RoundedRectangle(cornerRadius: 999)
                                                 .stroke(isSelected ? DesignSystem.Colors.primary.opacity(0.25) : DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -1465,16 +1411,25 @@ struct CourseDashboardView: View {
                 }
 
                 if tasks.isEmpty && events.isEmpty {
-                    Text("No tasks or course events yet.")
-                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                        .padding(.vertical, 8)
+                    HStack(spacing: 10) {
+                        Text("No tasks yet.")
+                            .font(PlannerType.body)
+                            .foregroundStyle(.secondary)
+                        Button { presentAddTask() } label: {
+                            Text("Add task")
+                                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                    }
+                    .padding(.vertical, 6)
                 } else {
                     VStack(spacing: 12) {
                         if upcomingItems.isEmpty {
                             Text("No tasks match the current filters.")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                                 .padding(.vertical, 8)
                         } else {
                             ForEach(showAllTasks ? Array(upcomingItems) : Array(upcomingItems.prefix(12)), id: \.id) { item in
@@ -1501,9 +1456,9 @@ struct CourseDashboardView: View {
                                         Text(showAllTasks ? "Show Less" : "Show \(upcomingItems.count - 12) More")
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                                         Image(systemName: showAllTasks ? "chevron.up" : "chevron.down")
-                                            .font(.system(size: 11, weight: .bold))
+                                            .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                                     }
-                                    .foregroundColor(DesignSystem.Colors.primary)
+                                    .foregroundStyle(DesignSystem.Colors.primary)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                 }
@@ -1591,12 +1546,68 @@ struct CourseDashboardView: View {
     }
 
     private func openDocumentsForCurrentCourse() {
-        NotificationCenter.default.post(
-            name: .plannerOpenDocumentsForCourse,
-            object: nil,
-            userInfo: ["courseCode": courseCode]
-        )
+        AppTypedNavigationRouter.openDocuments(forCourseCode: courseCode)
         activePage = .documents
+    }
+
+    private var notesCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    sectionTitle("Notes")
+                    Spacer()
+                    if !notesText.isEmpty {
+                        Button {
+                            notesText = ""
+                            CourseNotesStore.set("", forCourseCode: courseCode)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                                .foregroundStyle(DesignSystem.Colors.textLight)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Clear notes")
+                    }
+                }
+
+                ZStack(alignment: .topLeading) {
+                    if notesText.isEmpty {
+                        Text("Jot down anything about this course — reminders, links, professor preferences, study plans…")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
+                            .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.7))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $notesText)
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
+                        .foregroundStyle(DesignSystem.Colors.textMain)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 96, maxHeight: 220)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 8)
+                        .onChange(of: notesText) { _, newValue in
+                            guard didLoadNotes else { return }
+                            CourseNotesStore.set(newValue, forCourseCode: courseCode)
+                        }
+                }
+                .padding(4)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.primary.opacity(0.03))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private func loadNotesIfNeeded() {
+        guard !didLoadNotes else { return }
+        notesText = CourseNotesStore.get(forCourseCode: courseCode)
+        didLoadNotes = true
     }
 
     @MainActor
@@ -1620,16 +1631,16 @@ struct CourseDashboardView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(courseCode)
                             .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                         Text(displayCourseName)
                             .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                     }
                     Spacer()
                     Button(action: { isCatalogSheetPresented = false }) {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(DesignSystem.Colors.textLight.opacity(0.6))
+                            .font(DesignSystem.Fonts.main(size: 22))
+                            .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.6))
                     }
                     .buttonStyle(.plain)
                 }
@@ -1638,12 +1649,12 @@ struct CourseDashboardView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Description")
                             .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                             .textCase(.uppercase)
                             .tracking(1)
                         Text(catalogDescriptionText)
                             .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                             .lineSpacing(4)
                     }
                 }
@@ -1653,18 +1664,18 @@ struct CourseDashboardView: View {
                         HStack(spacing: 6) {
                             Text("Prerequisites")
                                 .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                                 .textCase(.uppercase)
                                 .tracking(1)
                             if let met = prereqMet {
                                 Image(systemName: met ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(met ? DesignSystem.Colors.success : Color(hex: "EF4444"))
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                                    .foregroundStyle(met ? DesignSystem.Colors.success : Color(hex: "EF4444"))
                             }
                         }
                         Text(catalogPrerequisitesText)
                             .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                     }
                 }
 
@@ -1672,26 +1683,26 @@ struct CourseDashboardView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Co-requisites")
                             .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                             .textCase(.uppercase)
                             .tracking(1)
                         Text(catalogCorequisitesText)
                             .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                     }
                 }
 
                 if !catalogTypicallyOfferedText.isEmpty {
                     HStack(spacing: 6) {
                         Image(systemName: "calendar.circle")
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                         Text("Typically offered: \(catalogTypicallyOfferedText)")
                             .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                     }
                 }
             }
-            .padding(24)
+            .padding(DesignSystem.Spacing.xl)
         }
         .frame(minWidth: 440, minHeight: 300)
     }
@@ -1708,21 +1719,6 @@ struct CourseDashboardView: View {
             onClose: { isSyllabusPresented = false }
         )
         }
-
-    private var immediateActionTitle: String {
-        if let t = immediateActionTask {
-            let title = t.title.trimmingCharacters(in: .whitespacesAndNewlines)
-            return title.isEmpty ? "Upcoming Task" : title
-        }
-        return "No upcoming tasks"
-    }
-
-    private var immediateActionSubtitle: String {
-        if let t = immediateActionTask, let due = t.dueDate {
-            return "Due \(Formatters.dateTime.string(from: due))"
-        }
-        return "Add tasks or import syllabus dates to populate this card."
-    }
 
     // MARK: - Upcoming Items
 
@@ -1969,10 +1965,12 @@ private struct Card<Content: View>: View {
     }
 
     var body: some View {
-        content()
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardBoxStyle()
+        VStack(alignment: .leading, spacing: 12) {
+            content()
+            Divider()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 2)
     }
 }
 
@@ -1985,107 +1983,7 @@ private struct MiniCard<Content: View>: View {
 
     var body: some View {
         content()
-            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .dashboardBoxStyle(cornerRadius: 16)
-    }
-}
-
-private struct SmallStatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let iconColor: Color
-
-    var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-                    .tracking(1)
-
-                Text(value)
-                    .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-            }
-
-            Spacer(minLength: 10)
-
-            ZStack {
-                Circle()
-                    .fill(iconColor.opacity(0.14))
-                    .frame(width: 30, height: 30)
-                Image(systemName: icon)
-                    .foregroundColor(iconColor)
-                    .font(.system(size: 14, weight: .bold))
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .frame(minWidth: 160)
-        .dashboardBoxStyle()
-    }
-}
-
-private struct StatsStrip: View {
-    struct Item: Identifiable {
-        let id = UUID()
-        let title: String
-        let value: String
-        let icon: String
-        let iconColor: Color
-    }
-
-    let items: [Item]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.title)
-                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                            .foregroundColor(Color(hex: "A19F9C"))
-                            .textCase(.uppercase)
-                            .tracking(1)
-
-                        Text(item.value)
-                            .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                            .foregroundColor(Color(hex: "33312E"))
-                    }
-
-                    Spacer(minLength: 12)
-
-                    ZStack {
-                        Circle()
-                            .fill(item.iconColor.opacity(0.12))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: item.icon)
-                            .foregroundColor(item.iconColor)
-                            .font(.system(size: 16, weight: .bold))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-
-                if idx < items.count - 1 {
-                    Rectangle()
-                        .fill(Color(hex: "F2F0ED"))
-                        .frame(width: 1)
-                        .padding(.vertical, 8)
-                }
-            }
-        }
-        .padding(8)
-        .background(Color.white)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(hex: "E6E4E0"), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.02), radius: 6, x: 0, y: 2)
-        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -2106,19 +2004,19 @@ private struct DashboardMapPreview: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                     .lineLimit(1)
                 Text("Campus")
                     .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
-            .padding(10)
+            .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.surface.opacity(0.92))
-            .cornerRadius(12)
-            .padding(10)
+            .clipShape(.rect(cornerRadius: 12))
+            .padding(DesignSystem.Spacing.md)
         }
         .frame(height: 86)
-        .cornerRadius(14)
+        .clipShape(.rect(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(DesignSystem.Colors.textLight.opacity(0.10), lineWidth: 1)
@@ -2148,8 +2046,8 @@ private struct DashboardFixedMapPreview: View {
             Map(position: $position, interactionModes: []) {
                 Annotation(location.title, coordinate: location.coordinate) {
                     Image(systemName: "mappin.circle.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Color(hex: "EF4444"))
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                        .foregroundStyle(Color(hex: "EF4444"))
                         .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 2)
                 }
             }
@@ -2159,43 +2057,24 @@ private struct DashboardFixedMapPreview: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(location.title)
                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                     .lineLimit(1)
                 if !location.subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(location.subtitle)
                         .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .lineLimit(1)
                 }
             }
-            .padding(10)
+            .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.surface.opacity(0.92))
-            .cornerRadius(12)
-            .padding(10)
+            .clipShape(.rect(cornerRadius: 12))
+            .padding(DesignSystem.Spacing.md)
         }
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color.black.opacity(0.08), lineWidth: 1)
         )
-    }
-}
-
-private struct DashboardStatusBadge: View {
-    let text: String
-    let color: Color
-
-    var body: some View {
-        Text(text)
-            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-            .foregroundColor(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(color.opacity(0.12))
-            .cornerRadius(999)
-            .overlay(
-                RoundedRectangle(cornerRadius: 999)
-                    .stroke(color.opacity(0.18), lineWidth: 1)
-            )
     }
 }
 
@@ -2210,24 +2089,24 @@ private struct DashboardResourceRow: View {
         Button(action: onTap) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(width: 26)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
 
                     Text(subtitle)
                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
 
                 Spacer()
 
                 Image(systemName: trailingIcon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight.opacity(0.6))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.6))
             }
             .padding(.vertical, 8)
         }
@@ -2243,13 +2122,13 @@ private struct DashboardKeyValueRow: View {
         HStack {
             Text(label)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             Spacer()
 
             Text(value)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
         }
     }
 }
@@ -2331,8 +2210,8 @@ private struct DashboardTaskRow: View {
 
                         if item.isCompleted {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(Color.black.opacity(0.40))
+                                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                                .foregroundStyle(Color.black.opacity(0.40))
                         }
                     }
                 }
@@ -2345,21 +2224,21 @@ private struct DashboardTaskRow: View {
                     HStack(spacing: 8) {
                         Text(item.badgeText)
                             .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                            .foregroundColor(item.badgeColor)
+                            .foregroundStyle(item.badgeColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(item.badgeColor.opacity(0.12))
-                            .cornerRadius(6)
+                            .clipShape(.rect(cornerRadius: 6))
 
                         Spacer(minLength: 0)
 
                         Button(action: onEdit) {
                             Image(systemName: "pencil")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                                 .frame(width: 28, height: 28)
                                 .background(DesignSystem.Colors.surface.opacity(item.isCompleted ? 0.6 : 1.0))
-                                .cornerRadius(10)
+                                .clipShape(.rect(cornerRadius: 10))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10)
                                         .stroke(Color(hex: "E6E4E0"), lineWidth: 1)
@@ -2371,14 +2250,14 @@ private struct DashboardTaskRow: View {
 
                     Text(item.title)
                         .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain.opacity(item.isCompleted ? 0.38 : 1))
+                        .foregroundStyle(DesignSystem.Colors.textMain.opacity(item.isCompleted ? 0.38 : 1))
                         .strikethrough(item.isCompleted, color: DesignSystem.Colors.textLight.opacity(0.55))
                         .lineLimit(1)
 
                     if !item.subtitle.isEmpty {
                         Text(item.subtitle)
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 1))
+                            .foregroundStyle(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 1))
                             .lineLimit(2)
                     }
 
@@ -2387,32 +2266,32 @@ private struct DashboardTaskRow: View {
                             if let weight = taskWeightText {
                                 HStack(spacing: 4) {
                                     Image(systemName: "percent")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.info.opacity(item.isCompleted ? 0.28 : 0.8))
+                                        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
+                                        .foregroundStyle(DesignSystem.Colors.info.opacity(item.isCompleted ? 0.28 : 0.8))
                                     Text(weight)
                                         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                        .foregroundColor(DesignSystem.Colors.info.opacity(item.isCompleted ? 0.28 : 1))
+                                        .foregroundStyle(DesignSystem.Colors.info.opacity(item.isCompleted ? 0.28 : 1))
                                 }
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
                                 .background(DesignSystem.Colors.info.opacity(0.08))
-                                .cornerRadius(999)
+                                .clipShape(.capsule)
                                 .overlay(RoundedRectangle(cornerRadius: 999).stroke(DesignSystem.Colors.info.opacity(0.18), lineWidth: 1))
                             }
                             Spacer()
                             if let effort = item.effortText, !effort.isEmpty {
                                 HStack(spacing: 6) {
                                     Image(systemName: "clock")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 0.7))
+                                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                                        .foregroundStyle(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 0.7))
                                     Text(effort)
                                         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                        .foregroundColor(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 0.85))
+                                        .foregroundStyle(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 0.85))
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
                                 .background(Color(hex: "F9F8F6"))
-                                .cornerRadius(999)
+                                .clipShape(.capsule)
                                 .overlay(RoundedRectangle(cornerRadius: 999).stroke(Color(hex: "E6E4E0"), lineWidth: 1))
                             }
                         }
@@ -2420,22 +2299,22 @@ private struct DashboardTaskRow: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(DesignSystem.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .center, spacing: 4) {
                 Text(dueLabelText)
                     .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                    .foregroundColor(accentColor.opacity(item.isCompleted ? 0.45 : 1))
+                    .foregroundStyle(accentColor.opacity(item.isCompleted ? 0.45 : 1))
                     .kerning(0.6)
 
                 Text(dueDateBlock.date)
                     .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                    .foregroundColor(accentColor.opacity(item.isCompleted ? 0.38 : 1))
+                    .foregroundStyle(accentColor.opacity(item.isCompleted ? 0.38 : 1))
 
                 Text(dueDateBlock.weekday)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 1))
+                    .foregroundStyle(DesignSystem.Colors.textLight.opacity(item.isCompleted ? 0.28 : 1))
             }
             .frame(width: 128)
             .padding(.vertical, 16)
@@ -2448,7 +2327,7 @@ private struct DashboardTaskRow: View {
             )
         }
         .background(item.isCompleted ? Color(hex: "F2F0ED").opacity(0.55) : Color.white)
-        .cornerRadius(16)
+        .clipShape(.rect(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color(hex: "E6E4E0"), lineWidth: 1)
@@ -2458,20 +2337,47 @@ private struct DashboardTaskRow: View {
     }
 }
 
-private extension View {
-    func dashboardBoxStyle(cornerRadius: CGFloat = 18) -> some View {
-        self
-            .background(DesignSystem.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
-            )
-            .shadow(
-                color: Color.black.opacity(0.10),
-                radius: 12,
-                x: 0,
-                y: 5
+/// Persists free-form per-course notes in UserDefaults, keyed by normalized course code.
+/// Mirrors the lightweight `AuditSpecializationStore` preference pattern (no schema migration).
+enum CourseNotesStore {
+    private static let prefix = "course.notes."
+
+    private static func key(for courseCode: String) -> String {
+        prefix + courseCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    static func get(forCourseCode courseCode: String) -> String {
+        UserDefaults.standard.string(forKey: key(for: courseCode)) ?? ""
+    }
+
+    static func set(_ value: String, forCourseCode courseCode: String) {
+        let k = key(for: courseCode)
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: k)
+        } else {
+            UserDefaults.standard.set(value, forKey: k)
+        }
+    }
+}
+
+/// Staggered fade/slide/blur reveal mirroring the Academics detail sheets.
+private struct CourseEntranceModifier: ViewModifier {
+    let index: Int
+    let isVisible: Bool
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isVisible ? 1 : 0)
+            .offset(y: isVisible ? 0 : (reduceMotion ? 0 : 16))
+            .blur(radius: isVisible ? 0 : (reduceMotion ? 0 : 5))
+            .animation(
+                reduceMotion
+                    ? .easeOut(duration: 0.12)
+                    : .spring(response: 0.42, dampingFraction: 0.85).delay(Double(index) * 0.08),
+                value: isVisible
             )
     }
 }
+

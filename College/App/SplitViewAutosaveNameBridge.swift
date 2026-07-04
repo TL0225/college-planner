@@ -9,49 +9,75 @@ import SwiftUI
 /// Applies autosave naming and transparent split/toolbar column chrome for the main `NavigationSplitView`.
 struct SplitViewAutosaveNameBridge: NSViewRepresentable {
     let autosaveName: String
+    @Binding var resolvedColumnWidth: CGFloat
 
     func makeNSView(context: Context) -> NSView {
         let view = SplitViewAutosaveNameView()
         view.autosaveName = autosaveName
+        view.onResolvedColumnWidth = { width in
+            guard abs(resolvedColumnWidth - width) > 0.5 else { return }
+            resolvedColumnWidth = width
+        }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
         guard let view = nsView as? SplitViewAutosaveNameView else { return }
         view.autosaveName = autosaveName
+        view.onResolvedColumnWidth = { width in
+            guard abs(resolvedColumnWidth - width) > 0.5 else { return }
+            resolvedColumnWidth = width
+        }
         view.applyChromeIfPossible()
     }
 
     private final class SplitViewAutosaveNameView: NSView {
         var autosaveName: String = ""
+        var onResolvedColumnWidth: ((CGFloat) -> Void)?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             applyChromeIfPossible()
         }
 
+        func applyChromeIfPossible() {
+            applySplitDividerChromeIfPossible()
+            NavigationSplitChromeCoordinator.scheduleReapply(to: window)
+        }
+
         override func layout() {
             super.layout()
-            // Defer chrome work so we never call into subview property setters
-            // (isHidden, wantsLayer, etc.) while the layout pass is still running —
-            // that would re-invalidate layout and trigger the "layoutSubtreeIfNeeded
-            // on a view which is already being laid out" AppKit warning.
+            // Divider neutralization only — avoid re-pinning sidebar width every layout pass.
             DispatchQueue.main.async { [weak self] in
-                self?.applyChromeIfPossible()
+                guard let self, let splitView = self.findEnclosingSplitView() ?? self.findSplitViewInWindow() else { return }
+                NavigationSplitChrome.applyTransparentDividers(to: splitView)
+                self.reapplyFixedSidebarWidthIfDrifted(on: splitView)
             }
         }
 
-        func applyChromeIfPossible() {
+        private func reapplyFixedSidebarWidthIfDrifted(on splitView: NSSplitView) {
+            guard autosaveName == MainSidebarSplitAutosave.autosaveName else { return }
+            guard splitView.isVertical, let leadingColumn = splitView.subviews.first else { return }
+            let target = MainSidebarSplitAutosave.resolvedLeadingColumnWidth(in: window)
+            guard abs(leadingColumn.frame.width - target) > 1 else { return }
+            MainSidebarSplitAutosave.applyFixedPosition(to: splitView, width: target)
+        }
+
+        private func applySplitDividerChromeIfPossible() {
             guard !autosaveName.isEmpty else { return }
 
             if let splitView = findEnclosingSplitView() ?? findSplitViewInWindow() {
-                if splitView.autosaveName != autosaveName {
+                if autosaveName == MainSidebarSplitAutosave.autosaveName {
+                    MainActor.assumeIsolated {
+                        MainSidebarSplitAutosave.applyFixedPositionIfNeeded(to: splitView)
+                        let width = MainSidebarSplitAutosave.resolvedLeadingColumnWidth(in: window)
+                        onResolvedColumnWidth?(width)
+                    }
+                } else if splitView.autosaveName != autosaveName {
                     splitView.autosaveName = autosaveName
                 }
                 NavigationSplitChrome.applyTransparentDividers(to: splitView)
             }
-
-            NavigationSplitChromeCoordinator.scheduleReapply(to: window)
         }
 
         private func findEnclosingSplitView() -> NSSplitView? {

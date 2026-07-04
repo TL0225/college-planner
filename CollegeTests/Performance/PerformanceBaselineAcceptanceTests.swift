@@ -80,4 +80,30 @@ final class PerformanceBaselineAcceptanceTests: XCTestCase {
         )
         #endif
     }
+
+    // MARK: - Shell navigation
+
+    func testShellPageSwitchBudget_notExceededAtThreshold() {
+        XCTAssertFalse(
+            LaunchPerformanceAcceptance.shellPageSwitchExceedsBudget(
+                durationMs: LaunchPerformanceAcceptance.shellPageSwitchWarnThresholdMs
+            )
+        )
+    }
+
+    func testShellPageSwitchBudget_exceededBeyondThreshold() {
+        XCTAssertTrue(
+            LaunchPerformanceAcceptance.shellPageSwitchExceedsBudget(
+                durationMs: LaunchPerformanceAcceptance.shellPageSwitchWarnThresholdMs + 1
+            )
+        )
+    }
+
+    func testShellInspectorToggleBudget_matchesDebugOrReleaseExpectation() {
+        #if DEBUG
+        XCTAssertEqual(LaunchPerformanceAcceptance.shellInspectorToggleWarnThresholdMs, 1_000)
+        #else
+        XCTAssertEqual(LaunchPerformanceAcceptance.shellInspectorToggleWarnThresholdMs, 350)
+        #endif
+    }
 }

@@ -8,14 +8,7 @@ import XCTest
 
 final class CatalogIngestParityDiffTests: XCTestCase {
     func testFordhamFixture_legacyAndIRParity() throws {
-        let xmlURL = try XCTUnwrap(
-            Bundle(for: type(of: self)).url(
-                forResource: "fordham_aast_courses",
-                withExtension: "xml",
-                subdirectory: "Fixtures/CourseLeaf"
-            )
-        )
-        let xml = try String(contentsOf: xmlURL, encoding: .utf8)
+        let xml = try TestFixturePaths.courseLeafString(named: "fordham_aast_courses.xml")
         let pageURL = URL(string: "https://bulletin.fordham.edu/undergraduate/african-american-studies/courses/")!
         let report = CatalogIngestParityDiff.compareFixture(
             xml: xml,

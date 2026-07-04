@@ -24,18 +24,24 @@ import SwiftData
     func detectDuplicates(collegePersistence: CollegePersistence = .shared) async -> [DuplicateGroup] {
         let docs = VaultReadBridge.allVaultDocuments(collegePersistence: collegePersistence)
             .filter { !$0.isFolder }
-        var groups: [DuplicateGroup] = []
 
-        var hashMap: [String: [VaultDocument]] = [:]
-        for doc in docs {
-            if let fileURL = VaultDocumentAccess.urlForDocument(id: doc.id, collegePersistence: collegePersistence),
-               let hash = sha256(of: fileURL) {
-                hashMap[hash, default: []].append(doc)
+        let docURLs: [(UUID, URL)] = docs.compactMap { doc in
+            guard let url = VaultDocumentAccess.urlForDocument(id: doc.id, collegePersistence: collegePersistence) else {
+                return nil
             }
+            return (doc.id, url)
         }
 
+        let hashToIDs = await Task.detached(priority: .utility) { () -> [String: [UUID]] in
+            Self.hashDocumentIDs(docURLs)
+        }.value
+
+        let docsByID = Dictionary(uniqueKeysWithValues: docs.map { ($0.id, $0) })
+        var groups: [DuplicateGroup] = []
         var usedIDs: Set<UUID> = []
-        for (_, groupDocs) in hashMap where groupDocs.count >= 2 {
+        for (_, ids) in hashToIDs where ids.count >= 2 {
+            let groupDocs = ids.compactMap { docsByID[$0] }
+            guard groupDocs.count >= 2 else { continue }
             let primaryID = groupDocs.first?.id ?? UUID()
             groups.append(DuplicateGroup(files: groupDocs, primaryID: primaryID))
             groupDocs.forEach { usedIDs.insert($0.id) }
@@ -87,7 +93,17 @@ import SwiftData
         VaultDocumentMetadataAccess.markDuplicate(id: documentID, versionOf: primaryID)
     }
 
-    func sha256(of url: URL) -> String? {
+    private nonisolated static func hashDocumentIDs(_ docURLs: [(UUID, URL)]) -> [String: [UUID]] {
+        var hashMap: [String: [UUID]] = [:]
+        for (id, url) in docURLs {
+            if let hash = sha256(of: url) {
+                hashMap[hash, default: []].append(id)
+            }
+        }
+        return hashMap
+    }
+
+    private nonisolated static func sha256(of url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         let digest = SHA256.hash(data: data)
         return digest.map { String(format: "%02x", $0) }.joined()

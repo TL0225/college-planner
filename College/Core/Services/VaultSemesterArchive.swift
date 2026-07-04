@@ -25,7 +25,7 @@ actor VaultSemesterArchive {
     /// Reads the current and last-archived semester labels from UserDefaults.
     /// If they differ and a previous semester exists, archives the old semester.
     func checkForSemesterChange() async {
-        let current = UserDefaults.standard.string(forKey: "currentSemesterLabel") ?? "Current Semester"
+        let current = VaultFileOrganizer.currentSemesterLabel()
         guard let lastArchived = UserDefaults.standard.string(forKey: "lastArchivedSemester") else {
             // Nothing archived yet — just record current as the baseline.
             UserDefaults.standard.set(current, forKey: "lastArchivedSemester")
@@ -48,6 +48,12 @@ actor VaultSemesterArchive {
     /// Creates a zip of the semester folder under ~/Documents/College/{semesterLabel}/,
     /// saves it to the archive folder, removes the source, and posts a success notification.
     func archiveSemester(_ semesterLabel: String) async throws {
+        try await BackgroundServiceOnDemand.runThrowing(id: "vault_semester_archive") {
+            try await VaultSemesterArchive.shared.archiveSemesterImpl(semesterLabel)
+        }
+    }
+
+    private func archiveSemesterImpl(_ semesterLabel: String) async throws {
         let collegeRoot = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/College", isDirectory: true)
         let sourceFolder = collegeRoot.appendingPathComponent(semesterLabel, isDirectory: true)

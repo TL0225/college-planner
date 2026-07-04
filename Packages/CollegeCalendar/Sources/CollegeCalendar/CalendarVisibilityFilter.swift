@@ -43,9 +43,26 @@ public struct CalendarVisibilityFilter: Sendable {
 
     private static let googleRemoteKeySeparator = "||"
 
+    public static func academicToggleID(from providerSource: String?) -> String? {
+        guard let source = providerSource, source.hasPrefix("academic:") else { return nil }
+        let remainder = String(source.dropFirst("academic:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !remainder.isEmpty else { return nil }
+        if remainder.contains(":") {
+            return "Academic:\(remainder)"
+        }
+        return "Academic:\(remainder):university_wide"
+    }
+
     public func shouldDisplay(_ event: CalendarVisibilityEventInput) -> Bool {
         let localID = event.localID
         let normalizedCourseCode = event.courseCode?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if let academicID = CalendarVisibilityFilter.academicToggleID(from: event.providerSource) {
+            if connectedCalendarIDs.contains(academicID) {
+                return enabledCalendarIDs.contains(academicID)
+            }
+            return true
+        }
 
         if event.providerSource == "CollegeApp" {
             let appleID = academicsToggleID(courseCode: normalizedCourseCode)

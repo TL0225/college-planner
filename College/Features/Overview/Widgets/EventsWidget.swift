@@ -52,12 +52,12 @@ struct EventsWidget: View {
         OverviewCard {
             HStack {
                 Text("Upcoming Events")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .bold, design: .serif))
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
                 Button(action: { activePage.wrappedValue = .calendar }) {
                     Image(systemName: "calendar")
-                        .font(.system(size: 12)).foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 12)).foregroundStyle(DesignSystem.Colors.textLight)
                 }
                 .buttonStyle(.plain)
             }
@@ -66,7 +66,7 @@ struct EventsWidget: View {
 
             if upcomingEvents.isEmpty {
                 Label("No upcoming events", systemImage: "calendar.badge.plus")
-                    .font(.system(size: 12)).foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12)).foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(maxWidth: .infinity, alignment: .center).padding(.vertical, 12)
             } else {
                 VStack(spacing: 14) {
@@ -93,25 +93,25 @@ struct EventsWidget: View {
         }()
         return HStack(spacing: 12) {
             VStack(spacing: 0) {
-                Text(monthStr).font(.system(size: 9, weight: .bold)).foregroundColor(color)
-                Text(dayStr).font(.system(size: 18, weight: .bold, design: .rounded)).foregroundColor(color).lineLimit(1)
+                Text(monthStr).font(DesignSystem.Fonts.main(size: 9, weight: .bold)).foregroundStyle(color)
+                Text(dayStr).font(DesignSystem.Fonts.main(size: 18, weight: .bold, design: .rounded)).foregroundStyle(color).lineLimit(1)
             }
             .frame(width: 44, height: 44).background(bg).clipShape(RoundedRectangle(cornerRadius: 10))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title)
-                    .font(.system(size: 12, weight: .bold)).foregroundColor(DesignSystem.Colors.textMain).lineLimit(1)
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold)).foregroundStyle(DesignSystem.Colors.textMain).lineLimit(1)
                 let detail = [event.location, formatShortTime(event.startDate)]
                     .compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " • ")
                 if !detail.isEmpty {
-                    Text(detail).font(.system(size: 10)).foregroundColor(DesignSystem.Colors.textLight).lineLimit(1)
+                    Text(detail).font(DesignSystem.Fonts.main(size: 10)).foregroundStyle(DesignSystem.Colors.textLight).lineLimit(1)
                 }
             }
             Spacer()
             if daysUntil >= 0 {
                 Text(daysUntil == 0 ? "Today" : daysUntil == 1 ? "Tomorrow" : "in \(daysUntil)d")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(daysUntil == 0 ? Color(hex: "059669") : Color(hex: "6366F1"))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                    .foregroundStyle(daysUntil == 0 ? Color(hex: "059669") : Color(hex: "6366F1"))
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(daysUntil == 0 ? Color(hex: "D1FAE5") : Color(hex: "EEF2FF"))
                     .clipShape(Capsule())
@@ -166,19 +166,19 @@ private struct EventsWidgetPreview: View {
     var body: some View {
         OverviewCard {
             Text("Upcoming Events")
-                .font(.system(size: 14, weight: .bold, design: .serif))
-                .foregroundColor(DesignSystem.Colors.textMain).padding(.bottom, 10)
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold, design: .serif))
+                .foregroundStyle(DesignSystem.Colors.textMain).padding(.bottom, 10)
             VStack(spacing: 10) {
                 ForEach(events.indices, id: \.self) { i in
                     let e = events[i]
                     HStack(spacing: 10) {
                         VStack(spacing: 0) {
-                            Text(e.0).font(.system(size: 8, weight: .bold)).foregroundColor(e.2)
-                            Text(e.1).font(.system(size: 16, weight: .bold)).foregroundColor(e.2)
+                            Text(e.0).font(DesignSystem.Fonts.main(size: 8, weight: .bold)).foregroundStyle(e.2)
+                            Text(e.1).font(DesignSystem.Fonts.main(size: 16, weight: .bold)).foregroundStyle(e.2)
                         }
                         .frame(width: 36, height: 36).background(e.3).clipShape(RoundedRectangle(cornerRadius: 8))
-                        Text(e.4).font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                        Text(e.4).font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                         Spacer()
                     }
                 }

@@ -11,6 +11,8 @@
     "programPositivePatterns": [
       "(?i)\\b(bachelor|master|associate)\\b",
       "(?i)\\b(B\\.?A\\.?|B\\.?S\\.?|M\\.?A\\.?|M\\.?S\\.?)\\b",
+      "(?i)\\bmajor(s)?\\b",
+      "(?i)\\bminor(s)?\\b",
       "(?i)\\bminor in\\b",
       "(?i)\\bconcentration in\\b"
     ],

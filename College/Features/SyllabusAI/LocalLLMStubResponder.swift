@@ -68,8 +68,45 @@ enum LocalLLMStubResponder {
         return #"{"reply":"\#(escapeJSON(body))"}"#
     }
 
+    private static func isCareerExplorationPrompt(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("career")
+            || lower.contains("job path")
+            || lower.contains("what can i do with")
+            || lower.contains("uitest_stub career")
+    }
+
+    private static func isDegreePolicyPrompt(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("residency")
+            || lower.contains("pass/fail")
+            || lower.contains("pass fail")
+            || lower.contains("degree policy")
+            || lower.contains("uitest_stub policy")
+    }
+
+    private static func isSemesterBreakdownPrompt(_ message: String) -> Bool {
+        let lower = message.lowercased()
+        return lower.contains("semester-by-semester")
+            || lower.contains("semester by semester")
+            || lower.contains("uitest_stub semester breakdown")
+    }
+
     private static func planningJSON(for prompt: String) -> String {
         if hasPriorToolResults(prompt) {
+            let msg = extractUserMessage(from: prompt)
+            if isCareerExplorationPrompt(msg) || prompt.localizedCaseInsensitiveContains("getStudentLearningProfile") {
+                let summary = """
+                Stub career guidance: based on your learning profile, paths like software engineering, data analysis, and product engineering are common next steps. These are planning ideas, not placement advice.
+                """
+                return #"{"action":"final_answer","reply":"\#(escapeJSON(summary))"}"#
+            }
+            if isDegreePolicyPrompt(msg) || prompt.localizedCaseInsensitiveContains("semanticCatalogSearch") {
+                let summary = """
+                Stub policy answer: residency typically requires 30 in-residence credits. I relied on your catalog/registrar evidence — confirm with your school before changing enrollment.
+                """
+                return #"{"action":"final_answer","reply":"\#(escapeJSON(summary))"}"#
+            }
             let summary = """
             Stub summary: tool results are in your context. Programs show remaining credits; follow your advisor for official rules.
             """
@@ -90,11 +127,30 @@ enum LocalLLMStubResponder {
             """#
         }
 
+        if isCareerExplorationPrompt(msg) {
+            return #"""
+            {"action":"tool_call","tool":"getStudentLearningProfile","arguments":{}}
+            """#
+        }
+
+        if isDegreePolicyPrompt(msg) {
+            return #"""
+            {"action":"tool_call","tool":"semanticCatalogSearch","arguments":{"query":"residency requirement"}}
+            """#
+        }
+
+        if isSemesterBreakdownPrompt(msg) {
+            let summary = """
+            Stub semester breakdown: Year 1 — foundations and intro major courses; Year 2 — core requirements; Year 3–4 — electives and capstone. I'll refine this once your catalog and plan are complete.
+            """
+            return #"{"action":"final_answer","reply":"\#(escapeJSON(summary))"}"#
+        }
+
         if msg.localizedCaseInsensitiveContains("UITEST_STUB decode salvage") {
             return "```json\n{\"action\":\"final_answer\",\"reply\":\"Salvaged from fences\"}\n```"
         }
 
-        let fallback = "Stub planner: use UITEST_STUB get program progress or UITEST_CONFIRM create task for scripted flows."
+        let fallback = "Stub planner: use UITEST_STUB get program progress, UITEST_STUB career, UITEST_STUB policy, or UITEST_CONFIRM create task for scripted flows."
         return #"{"action":"final_answer","reply":"\#(escapeJSON(fallback))"}"#
     }
 

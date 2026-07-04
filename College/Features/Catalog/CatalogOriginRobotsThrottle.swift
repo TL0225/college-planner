@@ -28,6 +28,13 @@ enum CatalogOriginRobotsThrottle: Sendable {
         return URLSession(configuration: c)
     }()
 
+    /// Declared `Crawl-delay` from cached robots.txt for the URL's host (0 when none).
+    static func declaredCrawlDelaySeconds(for url: URL) async -> TimeInterval {
+        guard let host = url.host?.lowercased(), !host.isEmpty else { return 0 }
+        let policy = await loadPolicy(for: host)
+        return max(0, policy.crawlDelaySecondsDeclared)
+    }
+
     /// Before an HTTP GET to a catalog origin, wait according to crawl-delay and serialized per-host spacing.
     static func applyPoliteDelayBeforeFetch(url: URL, politeness: CatalogFetchPoliteness) async {
         guard let host = url.host?.lowercased(), !host.isEmpty else { return }

@@ -92,6 +92,33 @@ class GitHubDataService {
         return try decoder.decode(SchoolProfile.self, from: data)
     }
     
+    /// Fetch community/official transfer equivalencies for a source→target pairing.
+    /// Reads `transfer/{targetSchoolID}/{sourceSchoolID}.json` from the hosted data repo.
+    func fetchTransferEquivalencies(
+        sourceSchoolID: String,
+        targetSchoolID: String
+    ) async throws -> [TransferEquivalencyDTO] {
+        let source = sourceSchoolID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let target = targetSchoolID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty, !target.isEmpty else { throw GitHubError.invalidURL }
+        let path = "transfer/\(target)/\(source).json"
+        guard let primaryURL = URL(string: "\(fullBaseURL)/\(path)"),
+              let fallbackURL = URL(string: "\(fallbackBaseURL)/\(path)") else {
+            throw GitHubError.invalidURL
+        }
+        let (data, httpResponse, usedURL) = try await fetchDataWithFallback(primaryURL: primaryURL, fallbackURL: fallbackURL)
+        guard httpResponse.statusCode == 200 else {
+            throw GitHubError.fetchFailed(statusCode: httpResponse.statusCode, url: usedURL)
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let payload = try? decoder.decode(TransferCommunityPayload.self, from: data) {
+            return payload.equivalencies
+        }
+        return try decoder.decode([TransferEquivalencyDTO].self, from: data)
+    }
+
     /// Fetch scraper recipe for a specific format (Only when user manually scrapes)
     func fetchScraperRecipe(format: String) async throws -> ScraperRecipe {
         guard let primaryURL = URL(string: "\(fullBaseURL)/recipes/\(format)_scraper.json"),
@@ -193,13 +220,13 @@ class GitHubDataService {
     
     /// Bundled `schools.json` merged with cached GitHub manifest (canonical picker list).
     func loadResolvedSchoolsList() -> [SchoolManifest] {
-        SchoolManifestCatalog.resolved(mergingRemote: loadCachedSchoolsList() ?? [])
+        SchoolManifestCatalog.resolvedApplyingOverrides(mergingRemote: loadCachedSchoolsList() ?? [])
     }
 
     /// Fetch GitHub `manifests/schools.json`, merge with bundled catalog, and refresh cache.
     func refreshResolvedSchoolsList() async throws -> [SchoolManifest] {
         let remote = try await fetchSchoolsList()
-        let resolved = SchoolManifestCatalog.resolved(mergingRemote: remote)
+        let resolved = SchoolManifestCatalog.resolvedApplyingOverrides(mergingRemote: remote)
         try? cacheSchoolsList(resolved)
         return resolved
     }

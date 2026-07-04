@@ -53,6 +53,9 @@ public struct CalendarCalEvent: Identifiable, Hashable, Sendable {
     }
 
     public var cacheKey: String {
+        if let calendarEventID {
+            return calendarEventID.uuidString
+        }
         let titleKey = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let startKey = Int(startDate?.timeIntervalSince1970 ?? 0)
         let endKey = Int(endDate?.timeIntervalSince1970 ?? 0)

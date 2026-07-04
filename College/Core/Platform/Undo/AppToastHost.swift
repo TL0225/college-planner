@@ -12,6 +12,7 @@ struct AppToast: Identifiable {
     var message: String?
     var undoLabel: String?
     var onUndo: (() -> Void)?
+    var accessibilityIdentifier: String?
 }
 
 /// Phase 6: queued toast banner with optional undo action.
@@ -62,8 +63,9 @@ struct AppToastOverlay: View {
                     }
                     .buttonStyle(.borderless)
                 }
-                .padding(12)
+                .padding(DesignSystem.Spacing.md)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .accessibilityIdentifier(toast.accessibilityIdentifier ?? "app.toast.banner")
             }
         }
         .padding()

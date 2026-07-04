@@ -22,14 +22,19 @@ enum CatalogPDFCourseExtractor {
         options: [.caseInsensitive]
     )
 
+    private static let falsePositiveSubjects: Set<String> = [
+        "ROOM", "FALL", "SPRING", "SUMMER", "WINTER", "CHAPTER", "PAGE", "SECTION", "VOLUME", "ISSUE", "STEP"
+    ]
+
     static func extract(
         from classifiedBlocks: [CatalogPDFClassifiedBlock],
-        minConfidence: Float
+        minConfidence: Float,
+        profile: CatalogPDFProfileData
     ) -> [CatalogCourse] {
         var byCode: [String: CatalogCourse] = [:]
 
         for classified in classifiedBlocks where classified.type == .course && classified.confidence >= minConfidence {
-            let courses = parseCourses(from: classified.block.text)
+            let courses = parseCourses(from: classified.block.text, profile: profile)
             for course in courses {
                 if let existing = byCode[course.courseCode] {
                     if course.title.count > existing.title.count {
@@ -44,11 +49,12 @@ enum CatalogPDFCourseExtractor {
         return byCode.values.sorted { $0.courseCode < $1.courseCode }
     }
 
-  static func extractCourses(fromText text: String) -> [CatalogCourse] {
+    static func extractCourses(fromText text: String, profile: CatalogPDFProfileData) -> [CatalogCourse] {
         guard let codeRe = courseCodeRegex else { return [] }
         let normalized = text.replacingOccurrences(of: "\u{00A0}", with: " ")
         var byCode: [String: CatalogCourse] = [:]
         let lines = normalized.components(separatedBy: .newlines)
+        let useCMUStyle = CatalogPDFProfileLoader.supportsCMUStyleCourseCodes(profile)
 
         for rawLine in lines {
             let line = rawLine
@@ -66,12 +72,15 @@ enum CatalogPDFCourseExtractor {
                 }
             }
 
-            if let cmuRe = cmuCourseCodeRegex {
+            if useCMUStyle, let cmuRe = cmuCourseCodeRegex {
                 for m in cmuRe.matches(in: line, range: nsRange) {
                     guard m.numberOfRanges >= 3,
                           let deptRange = Range(m.range(at: 1), in: line),
                           let numRange = Range(m.range(at: 2), in: line) else { continue }
-                    let code = "\(line[deptRange])-\(line[numRange])"
+                    let dept = String(line[deptRange])
+                    let number = String(line[numRange])
+                    guard !isLikelyFalsePositive(subject: dept, number: number, line: line) else { continue }
+                    let code = "\(dept)-\(number)"
                     let (title, credits) = parseTitleAndCredits(afterCode: {
                         guard let codeRange = Range(m.range, in: line) else { return Substring(line) }
                         return line[codeRange.upperBound...]
@@ -81,7 +90,7 @@ enum CatalogPDFCourseExtractor {
                         title: title.isEmpty ? code : title,
                         description: nil,
                         credits: credits,
-                        department: String(line[deptRange]),
+                        department: dept,
                         prerequisites: nil,
                         prerequisiteText: nil,
                         corequisites: nil,
@@ -99,8 +108,8 @@ enum CatalogPDFCourseExtractor {
         return byCode.values.sorted { $0.courseCode < $1.courseCode }
     }
 
-    private static func parseCourses(from text: String) -> [CatalogCourse] {
-        extractCourses(fromText: text)
+    private static func parseCourses(from text: String, profile: CatalogPDFProfileData) -> [CatalogCourse] {
+        extractCourses(fromText: text, profile: profile)
     }
 
     private static func courseFromMatch(_ m: NSTextCheckingResult, line: String) -> CatalogCourse? {
@@ -111,6 +120,8 @@ enum CatalogPDFCourseExtractor {
         }
         let subject = String(line[subjectRange])
         let number = String(line[numberRange])
+        guard !isLikelyFalsePositive(subject: subject, number: number, line: line) else { return nil }
+
         let normalizedCode = "\(subject) \(number)".uppercased()
         let afterCode: Substring = {
             guard let codeRange = Range(m.range, in: line) else { return Substring(line) }
@@ -130,6 +141,17 @@ enum CatalogPDFCourseExtractor {
         )
     }
 
+    private static func isLikelyFalsePositive(subject: String, number: String, line: String) -> Bool {
+        let upperSubject = subject.uppercased()
+        if falsePositiveSubjects.contains(upperSubject) { return true }
+        if number.count == 4, let year = Int(number), (1900...2100).contains(year) { return true }
+        let lower = line.lowercased()
+        if lower.contains("chapter \(number.lowercased())") || lower.contains("page \(number.lowercased())") {
+            return true
+        }
+        return false
+    }
+
     private static func parseTitleAndCredits(afterCode: Substring) -> (title: String, credits: Int) {
         let cleaned = String(afterCode).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return ("", 0) }
@@ -140,6 +162,7 @@ enum CatalogPDFCourseExtractor {
                m.numberOfRanges >= 2,
                let creditValueRange = Range(m.range(at: 1), in: cleaned) {
                 let creditDouble = Double(String(cleaned[creditValueRange])) ?? 0
+                // CatalogCourse stores credits as Int; fractional values are rounded conservatively.
                 let creditInt = Int(creditDouble.rounded())
                 let titlePart = cleaned[..<(Range(m.range, in: cleaned)?.lowerBound ?? cleaned.startIndex)]
                     .trimmingCharacters(in: .whitespacesAndNewlines)

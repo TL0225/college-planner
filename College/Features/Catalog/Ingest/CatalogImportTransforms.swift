@@ -157,4 +157,68 @@ enum CatalogImportTransforms {
         }
         return Array(incomingByCode.values)
     }
+
+    private static let prerequisiteEncoder = JSONEncoder()
+
+    static func buildCourseImportInputs(
+        from courses: [CatalogCourse],
+        departmentIDByKey: [String: UUID]
+    ) -> [CatalogRepository.CourseImportInput] {
+        let dedupedCourses = deduplicatedCourses(courses)
+        var inputs: [CatalogRepository.CourseImportInput] = []
+        inputs.reserveCapacity(dedupedCourses.count)
+
+        for catalogCourse in dedupedCourses {
+            let courseKey = normalizeCourseCode(catalogCourse.courseCode)
+            let extracted = extractCreditsFromTitleAndClean(catalogCourse.title)
+            let incomingTitle = normalize(extracted.cleanTitle)
+            let incomingDescriptionRaw = normalize(catalogCourse.description)
+            let incomingDescription = sanitizeCatalogDescription(
+                incomingDescriptionRaw,
+                courseCode: catalogCourse.courseCode,
+                title: catalogCourse.title
+            )
+            let incomingDepartment = normalize(catalogCourse.department)
+            let incomingCredits = catalogCourse.credits
+            let finalTitle: String = {
+                if !incomingTitle.isEmpty, incomingTitle.caseInsensitiveCompare(courseKey) != .orderedSame {
+                    return incomingTitle
+                }
+                return courseKey
+            }()
+            let descriptionIsInvalid = isInvalidCatalogDescription(incomingDescription)
+            let finalDescription = descriptionIsInvalid ? nil : incomingDescription
+            let finalDepartment = incomingDepartment.isEmpty ? nil : incomingDepartment
+            let finalCredits = Int16(max(0, incomingCredits))
+
+            var departmentID: UUID?
+            if let finalDepartment {
+                departmentID = departmentIDByKey[finalDepartment.lowercased()]
+            }
+
+            inputs.append(
+                CatalogRepository.CourseImportInput(
+                    courseCode: courseKey,
+                    title: finalTitle,
+                    credits: finalCredits > 0 ? finalCredits : 3,
+                    descriptionText: finalDescription,
+                    department: finalDepartment,
+                    departmentID: departmentID,
+                    isArchived: false,
+                    catalogStableID: nil,
+                    provenanceJSON: nil,
+                    prerequisiteRulesJSON: {
+                        guard let rule = catalogCourse.prerequisites,
+                              let data = try? prerequisiteEncoder.encode(rule) else { return nil }
+                        return String(data: data, encoding: .utf8)
+                    }(),
+                    extractionConfidence: nil,
+                    signalSource: nil,
+                    parserVersion: CatalogParserCapability.version,
+                    departmentLinkConfidence: nil
+                )
+            )
+        }
+        return inputs
+    }
 }

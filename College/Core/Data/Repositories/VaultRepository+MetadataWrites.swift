@@ -28,6 +28,18 @@ extension VaultRepository {
         ModelMergeCoalescer.scheduleSave(context)
     }
 
+    func linkVaultDocumentToCalendarEvent(id: UUID, eventID: UUID) throws {
+        guard let document = try fetchDocument(id: id) else { return }
+        document.linkedCalendarEventID = eventID
+        ModelMergeCoalescer.scheduleSave(context)
+    }
+
+    func unlinkVaultDocumentFromCalendarEvent(id: UUID) throws {
+        guard let document = try fetchDocument(id: id) else { return }
+        document.linkedCalendarEventID = nil
+        ModelMergeCoalescer.scheduleSave(context)
+    }
+
     func updateVaultReadingProgress(id: UUID, page: Int, totalPages: Int) throws {
         guard let document = try fetchDocument(id: id) else { return }
         document.readingProgress = Int16(max(0, page))

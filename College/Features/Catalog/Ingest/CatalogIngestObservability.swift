@@ -18,6 +18,11 @@ struct CatalogIngestMetricSample: Codable, Sendable {
     let coursesFound: Int?
     let requirementsFound: Int?
     let layoutProfileID: String?
+    let discoveryTelemetry: [String: Int]?
+    let retryCount: Int?
+    let layoutProfileCounts: [String: Int]?
+    let wafFallbackUsed: Bool?
+    let signatureVersion: String?
 
     init(
         schoolID: String,
@@ -31,7 +36,12 @@ struct CatalogIngestMetricSample: Codable, Sendable {
         programsFound: Int? = nil,
         coursesFound: Int? = nil,
         requirementsFound: Int? = nil,
-        layoutProfileID: String? = nil
+        layoutProfileID: String? = nil,
+        discoveryTelemetry: [String: Int]? = nil,
+        retryCount: Int? = nil,
+        layoutProfileCounts: [String: Int]? = nil,
+        wafFallbackUsed: Bool? = nil,
+        signatureVersion: String? = nil
     ) {
         self.schoolID = schoolID
         self.source = source
@@ -45,6 +55,11 @@ struct CatalogIngestMetricSample: Codable, Sendable {
         self.coursesFound = coursesFound
         self.requirementsFound = requirementsFound
         self.layoutProfileID = layoutProfileID
+        self.discoveryTelemetry = discoveryTelemetry
+        self.retryCount = retryCount
+        self.layoutProfileCounts = layoutProfileCounts
+        self.wafFallbackUsed = wafFallbackUsed
+        self.signatureVersion = signatureVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -61,6 +76,11 @@ struct CatalogIngestMetricSample: Codable, Sendable {
         coursesFound = try container.decodeIfPresent(Int.self, forKey: .coursesFound)
         requirementsFound = try container.decodeIfPresent(Int.self, forKey: .requirementsFound)
         layoutProfileID = try container.decodeIfPresent(String.self, forKey: .layoutProfileID)
+        discoveryTelemetry = try container.decodeIfPresent([String: Int].self, forKey: .discoveryTelemetry)
+        retryCount = try container.decodeIfPresent(Int.self, forKey: .retryCount)
+        layoutProfileCounts = try container.decodeIfPresent([String: Int].self, forKey: .layoutProfileCounts)
+        wafFallbackUsed = try container.decodeIfPresent(Bool.self, forKey: .wafFallbackUsed)
+        signatureVersion = try container.decodeIfPresent(String.self, forKey: .signatureVersion)
     }
 }
 
@@ -87,9 +107,14 @@ enum CatalogIngestObservability {
         return decoded
     }
 
-    static func summarizeRecent(limit: Int = 30) -> (failureRate: Double, avgDurationMs: Double, avgOCRRate: Double) {
+    static func summarizeRecent(limit: Int = 30) -> (
+        failureRate: Double,
+        avgDurationMs: Double,
+        avgOCRRate: Double,
+        discoveryTelemetryCounts: [String: Int]
+    ) {
         let recent = Array(loadAll().suffix(max(1, limit)))
-        guard !recent.isEmpty else { return (0, 0, 0) }
+        guard !recent.isEmpty else { return (0, 0, 0, [:]) }
         let failures = recent.filter { !$0.succeeded }.count
         let avgDuration = Double(recent.reduce(0) { $0 + $1.durationMs }) / Double(recent.count)
         let ocrRateParts = recent.map { sample -> Double in
@@ -97,6 +122,13 @@ enum CatalogIngestObservability {
             return Double(sample.ocrPagesUsed) / Double(sample.pageCount)
         }
         let avgOCRRate = ocrRateParts.reduce(0, +) / Double(ocrRateParts.count)
-        return (Double(failures) / Double(recent.count), avgDuration, avgOCRRate)
+        var discoveryCounts: [String: Int] = [:]
+        for sample in recent {
+            guard let telemetry = sample.discoveryTelemetry else { continue }
+            for (key, value) in telemetry {
+                discoveryCounts[key, default: 0] += value
+            }
+        }
+        return (Double(failures) / Double(recent.count), avgDuration, avgOCRRate, discoveryCounts)
     }
 }

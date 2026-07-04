@@ -5,7 +5,7 @@
 
 import Foundation
 
-/// Per-session limits for SearXNG + page fetch tools (no PII in telemetry).
+/// Per-session limits for DeGoog web search + page fetch tools (no PII in telemetry).
 actor AssistantWebSearchRateLimiter {
 
     static let shared = AssistantWebSearchRateLimiter()

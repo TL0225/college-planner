@@ -149,13 +149,8 @@ final class CatalogMenuBarProgressController: NSObject, NSMenuDelegate {
     }
 
     private func ensurePersistentStatusItem() {
-        guard statusItem == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem = item
-        item.menu = catalogStatusMenu
-        item.button?.image = NSImage(systemSymbolName: "graduationcap.fill", accessibilityDescription: "College")
-        item.button?.toolTip = catalogMenuHeaderStatusText()
-        rebuildMenu()
+        // Menu bar UI is provided by SwiftUI `MenuBarExtra` + `CollegeMenuBarRoot`.
+        // Keep this controller for legacy notification bridging only.
     }
 
     private func catalogMenuHeaderStatusText() -> String {

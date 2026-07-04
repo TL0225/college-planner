@@ -17,7 +17,7 @@ struct AchievementsView: View {
             HStack {
                 Label("Awards & Scholarships", systemImage: "trophy.fill")
                     .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
 
                 AddButton {
@@ -28,7 +28,7 @@ struct AchievementsView: View {
             if profile.achievementsArray.isEmpty {
                 Text("No awards or scholarships added yet.")
                     .font(DesignSystem.Fonts.main(size: 14))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding()
             } else {
                 ForEach(profile.achievementsArray) { achievement in
@@ -36,10 +36,8 @@ struct AchievementsView: View {
                 }
             }
         }
-        .padding(24)
-        .background(Color.white)
-        .cornerRadius(24)
-        .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .profileCardSurface(padding: 24)
     }
 }
 
@@ -60,30 +58,30 @@ struct AchievementCard: View {
                     .frame(width: 40, height: 40)
                     .overlay(
                         Image(systemName: "trophy.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(hex: "f59e0b"))
+                            .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                            .foregroundStyle(DesignSystem.Colors.warning)
                     )
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(achievement.name ?? "Unknown Award")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
                     HStack(spacing: 4) {
                         Text(achievement.organization ?? "Unknown Organization")
                             .font(DesignSystem.Fonts.main(size: 12))
-                            .foregroundColor(Color(hex: "64748b"))
+                            .foregroundStyle(DesignSystem.Colors.careerLaneInterested)
                         
                         if let date = achievement.dateReceived {
                             Text("•")
                                 .font(DesignSystem.Fonts.main(size: 12))
-                                .foregroundColor(Color(hex: "64748b"))
+                                .foregroundStyle(DesignSystem.Colors.careerLaneInterested)
                             
                             Text(yearFormatter.string(from: date))
                                 .font(DesignSystem.Fonts.main(size: 12))
-                                .foregroundColor(Color(hex: "64748b"))
+                                .foregroundStyle(DesignSystem.Colors.careerLaneInterested)
                         }
                     }
                     .padding(.top, 2)
@@ -91,21 +89,31 @@ struct AchievementCard: View {
                 
                 Spacer()
             }
-            .padding(12)
-            .background(Color.white)
+            .padding(DesignSystem.Spacing.md)
+            .background(DesignSystem.Colors.surface)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(isHovering ? Color(hex: "e2e8f0") : Color(hex: "f1f5f9"), lineWidth: 1)
+                    .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
             )
             .shadow(color: Color.black.opacity(isHovering ? 0.05 : 0.02), radius: isHovering ? 8 : 4, x: 0, y: isHovering ? 4 : 2)
-            .scaleEffect(isHovering ? 1.01 : 1.0)
-            .animation(.easeInOut(duration: 0.2), value: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(achievementAccessibilityLabel)
+        .accessibilityHint("Opens award editor")
         .onHover { hovering in
             isHovering = hovering
         }
+    }
+
+    private var achievementAccessibilityLabel: String {
+        let name = achievement.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let organization = achievement.organization?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = (name?.isEmpty == false ? name! : "Award")
+        if let organization, !organization.isEmpty {
+            return "Edit award, \(title) from \(organization)"
+        }
+        return "Edit award, \(title)"
     }
 
     private var yearFormatter: DateFormatter {
@@ -127,6 +135,7 @@ struct AddAchievementOverlay: View {
     private var collegePersistence: CollegePersistence { container.persistence }
         @Binding var isPresented: Bool
     let achievement: Achievement?
+    var embedInSheet: Bool = false
     
     var isEditMode: Bool {
         achievement != nil
@@ -150,38 +159,23 @@ struct AddAchievementOverlay: View {
     }
 
     var body: some View {
-        ZStack {
-            // Match Experience modal backdrop (covers entire app when hosted globally)
-            Color(hex: "0f172a")
-                .opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture { isPresented = false }
+        Group {
+            if embedInSheet {
+                achievementEditorCard
+            } else {
+                ZStack {
+                    Color(hex: "0f172a")
+                        .opacity(0.4)
+                        .ignoresSafeArea()
+                        .onTapGesture { isPresented = false }
 
-            VStack(spacing: 0) {
-                header
-
-                Divider().foregroundColor(Color(hex: "e2e8f0"))
-
-                form
-
-                Divider().foregroundColor(Color(hex: "eef2f7"))
-
-                footer
+                    achievementEditorCard
+                }
             }
-            .frame(maxWidth: 640)
-            .background(Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.18), radius: 30, x: 0, y: 20)
-            .padding(24)
         }
         .transition(.opacity)
-        .animation(.easeInOut(duration: 0.2), value: isPresented)
+        .animation(embedInSheet ? nil : .easeInOut(duration: 0.2), value: isPresented)
         .onAppear {
-            // Populate fields when editing an existing achievement
             if let ach = achievement {
                 name = ach.name ?? ""
                 organization = ach.organization ?? ""
@@ -193,6 +187,31 @@ struct AddAchievementOverlay: View {
         }
     }
 
+    private var achievementEditorCard: some View {
+        VStack(spacing: 0) {
+                header
+
+                Divider().foregroundStyle(Color(hex: "e2e8f0"))
+
+                form
+
+                Divider().foregroundStyle(Color(hex: "eef2f7"))
+
+                footer
+            }
+            .frame(maxWidth: embedInSheet ? .infinity : 640)
+            .background(DesignSystem.Colors.surface)
+            .clipShape(RoundedRectangle(cornerRadius: embedInSheet ? 0 : 28, style: .continuous))
+            .overlay {
+                if !embedInSheet {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
+                }
+            }
+            .shadow(color: Color.black.opacity(embedInSheet ? 0 : 0.18), radius: embedInSheet ? 0 : 30, x: 0, y: embedInSheet ? 0 : 20)
+            .padding(embedInSheet ? 0 : DesignSystem.Spacing.xl)
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             Circle()
@@ -200,17 +219,17 @@ struct AddAchievementOverlay: View {
                 .frame(width: 44, height: 44)
                 .overlay(
                     Image(systemName: "trophy.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.warning)
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.warning)
                 )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(isEditMode ? "Edit Achievement" : "Add Achievement")
                     .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Text(isEditMode ? "Update award or scholarship details" : "Record a new award or scholarship")
                     .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
 
             Spacer()
@@ -219,15 +238,15 @@ struct AddAchievementOverlay: View {
                 isPresented = false
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(width: 36, height: 36)
                     .background(DesignSystem.Colors.bgMain)
                     .clipShape(Circle())
             }
             .buttonStyle(.plain)
         }
-        .padding(24)
+        .padding(DesignSystem.Spacing.xl)
     }
 
     private var form: some View {
@@ -259,7 +278,7 @@ struct AddAchievementOverlay: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Date Received")
                             .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
 
                         ZStack {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -269,14 +288,14 @@ struct AddAchievementOverlay: View {
                                 TextField("---------- ----", text: .constant(""))
                                     .disabled(true)
                                     .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                     .opacity(0) // keeps layout stable
 
                                 Spacer()
 
                                 Image(systemName: "calendar")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                             }
                             .padding(.horizontal, 14)
 
@@ -310,14 +329,14 @@ struct AddAchievementOverlay: View {
                         if description.isEmpty {
                             Text("Briefly describe the criteria or significance of this award...")
                                 .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 14)
                         }
 
                         TextEditor(text: $description)
                             .font(DesignSystem.Fonts.main(size: 14))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                             .frame(height: 120)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 10)
@@ -346,10 +365,10 @@ struct AddAchievementOverlay: View {
                     HStack(spacing: 6) {
                         Text("Upload Supporting Documents")
                             .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                         Text("(Optional)")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                     }
 
                     UploadDropzone()
@@ -371,7 +390,28 @@ struct AddAchievementOverlay: View {
             // Delete button (only show in edit mode)
             if isEditMode, let ach = achievement {
                 Button {
-                    collegePersistence.deleteAchievement(ach)
+                    let snapshot = (
+                        name: ach.name,
+                        organization: ach.organization,
+                        dateReceived: ach.dateReceived,
+                        amount: ach.amount,
+                        description: ach.descriptionText,
+                        url: ach.url
+                    )
+                    AppUndoCoordinator.shared.performUndoable(
+                        label: "Delete Award",
+                        forward: { collegePersistence.deleteAchievement(ach) },
+                        backward: {
+                            collegePersistence.addAchievement(
+                                name: snapshot.name ?? "",
+                                organization: snapshot.organization ?? "",
+                                dateReceived: snapshot.dateReceived,
+                                amount: snapshot.amount,
+                                description: snapshot.description,
+                                url: snapshot.url
+                            )
+                        }
+                    )
 
                     notifications.post(
                         kind: .success,
@@ -387,7 +427,7 @@ struct AddAchievementOverlay: View {
                         Text("Delete")
                     }
                     .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 22)
                     .padding(.vertical, 12)
                     .background(Color.red)
@@ -403,7 +443,7 @@ struct AddAchievementOverlay: View {
             }
             .buttonStyle(.plain)
             .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
-            .foregroundColor(DesignSystem.Colors.textLight)
+            .foregroundStyle(DesignSystem.Colors.textLight)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
 
@@ -451,7 +491,7 @@ struct AddAchievementOverlay: View {
                     Text("Save Award")
                 }
                 .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .padding(.horizontal, 22)
                 .padding(.vertical, 12)
                 .background(DesignSystem.Colors.primary)
@@ -475,7 +515,7 @@ private struct LabeledField<Content: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
 
             content
         }
@@ -491,10 +531,10 @@ private struct RequiredLabeledField<Content: View>: View {
             HStack(spacing: 4) {
                 Text(title)
                     .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Text("*")
                     .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                    .foregroundColor(Color.red.opacity(0.75))
+                    .foregroundStyle(Color.red.opacity(0.75))
             }
 
             content
@@ -510,14 +550,14 @@ private struct IconTextField: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .frame(width: 18)
 
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -550,17 +590,17 @@ private struct UploadDropzone: View {
                         .frame(width: 44, height: 44)
                         .overlay(
                             Image(systemName: "doc")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.primary)
+                                .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                                .foregroundStyle(DesignSystem.Colors.primary)
                         )
 
                     Text("Click to upload files")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
 
                     Text("PDF, JPG, or PNG (max 5MB) Upload award letters or certificates.")
                         .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 10)
                 }

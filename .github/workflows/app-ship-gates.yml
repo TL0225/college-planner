@@ -1,0 +1,155 @@
+name: App ship gates (Tier A)
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tier-a-static-gates:
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Career target membership (flat vs subfolder)
+        run: bash scripts/check-target-membership.sh
+
+      - name: Dead-code manifest
+        run: bash scripts/check-dead-code-manifest.sh
+
+      - name: Blocking pattern grep
+        run: bash scripts/check-blocking-patterns.sh
+
+      - name: Skipped-test registry
+        run: bash scripts/check-skipped-tests.sh
+
+      - name: View persistence freeze (Phase 5)
+        run: bash scripts/check-no-view-persistence.sh
+
+      - name: Share extension app group entitlements
+        run: bash scripts/check-share-extension-entitlements.sh
+
+      - name: Toolbar menu parity
+        run: bash scripts/check-toolbar-menu-parity.sh
+
+      - name: Wave 1 regression gate
+        run: bash scripts/check-wave1-regression.sh
+
+      - name: Background service lifecycle audit
+        run: bash scripts/audit-background-services.sh
+
+      - name: xcodebuild test parallelism audit
+        run: bash scripts/audit-xcodebuild-test-parallelism.sh
+
+      - name: Spatial surfaces gate
+        run: bash scripts/check-spatial-surfaces.sh
+
+      - name: Motion token parity
+        run: bash scripts/check-motion-tokens.sh
+
+      - name: Shell performance instrumentation
+        run: bash scripts/check-shell-performance-gates.sh
+
+      - name: Perf manifest and baselines
+        run: bash scripts/check-perf-manifest.sh
+
+      - name: Accessibility depth
+        run: bash scripts/check-a11y-depth.sh
+
+      - name: FTUE and empty states
+        run: bash scripts/check-ftue-empty-states.sh
+
+      - name: No Core Data symbols
+        run: bash scripts/check-no-coredata.sh
+
+      - name: Neutral persistence labels
+        run: bash scripts/check-neutral-persistence-labels.sh
+
+      - name: Platform boundary
+        run: bash scripts/check-platform-boundary.sh
+
+      - name: No vision LLM symbols
+        run: bash scripts/check-no-vision-llm.sh
+
+      - name: No Gemma 4 symbols
+        run: bash scripts/check-no-gemma4.sh
+
+      - name: Cross-feature import boundary
+        run: bash scripts/check-feature-imports.sh fail
+
+  tier-a-release-build:
+    runs-on: macos-26
+    needs: tier-a-static-gates
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage DeGoog sidecar
+        run: bash scripts/fetch-degoog-sidecar.sh
+
+      - name: Release build (compile integrity)
+        run: |
+          xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO
+
+  tier-a-test-gates:
+    runs-on: macos-26
+    needs: tier-a-release-build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package tests (CollegeCalendar, CollegeAcademics, CollegeCareer)
+        run: |
+          set -euo pipefail
+          for pkg in CollegeCalendar CollegeAcademics CollegeCareer; do
+            echo "== swift test: $pkg =="
+            (cd "Packages/$pkg" && swift test)
+          done
+
+      - name: College unit test shard (Snow Leopard PR gate)
+        run: bash scripts/run-college-unit-tests.sh
+
+      - name: Schema migration verification
+        run: |
+          bash scripts/college-xcodebuild-test.sh -project "College.xcodeproj" -scheme "College" -destination 'platform=macOS' \
+            -only-testing:CollegeTests/SchemaMigrationPlanTests test
+
+      - name: Snow Leopard verification shard
+        run: |
+          set -euo pipefail
+          for suite in VaultHierarchyIntegrityTests DataWipeCompletenessTests CollegePersistenceSavePathTests MenuBarStatusPayloadTests CollegeSchemaLegacyStoreRepairTests ScoreboardGeneratorTests JobBoardRelationshipIntegrityTests; do
+            bash scripts/college-xcodebuild-test.sh -project "College.xcodeproj" -scheme "College" -destination 'platform=macOS' \
+              -only-testing:"CollegeTests/$suite" test
+          done
+
+      - name: Snow Leopard scoreboard
+        run: bash scripts/generate-snow-leopard-scoreboard.sh --baseline
+
+      - name: HIG completion gate
+        run: bash scripts/generate-hig-completion-gate.sh
+
+      - name: Performance gates (Release)
+        run: bash scripts/run-performance-gates.sh Release
+
+      - name: Toolbar architecture tests
+        run: bash scripts/run_toolbar_tests.sh
+
+      - name: Catalog unit tests
+        run: bash scripts/run_catalog_tests.sh
+
+      - name: Catalog export compare (Python)
+        run: python3 scripts/test_compare_catalog_exports.py
+
+      - name: Career Apply accuracy smoke (Swift Testing)
+        run: |
+          set -euo pipefail
+          bash scripts/college-xcodebuild-test.sh -project "College.xcodeproj" -scheme "College" -destination 'platform=macOS' \
+            -only-testing:CollegeTests/CareerApplyAccuracyGateTests \
+            -only-testing:CollegeTests/CareerApplyWorkdayURLTests \
+            -only-testing:CollegeTests/CareerApplyTierRegistryTests \
+            -only-testing:CollegeTests/CareerApplyFieldMapLoaderTests \
+            -only-testing:CollegeTests/CareerApplyGreenhouseFixtureTests \
+            -only-testing:CollegeTests/CareerApplyCompletionTests test

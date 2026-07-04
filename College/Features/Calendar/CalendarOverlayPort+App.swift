@@ -17,6 +17,7 @@ final class CalendarOverlayBuilder: CalendarOverlayBuilding {
         let presentation: AddCalendarItemOverlay.PresentationStyle = switch style {
         case .anchoredPanel: .anchoredPanel
         case .fullScreenOverlay: .fullScreenOverlay
+        case .inspectorSidebar: .inspectorSidebar
         }
         return AnyView(
             AddCalendarItemOverlay(

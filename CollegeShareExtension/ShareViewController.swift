@@ -27,13 +27,23 @@ final class ShareViewController: NSViewController {
         extensionContext?.completeRequest(returningItems: nil)
     }
 
+    private func presentError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Could Not Save to College"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+        finish()
+    }
+
     private func handleSave(_ request: CareerSaveRequest) {
         Task { @MainActor in
             do {
                 try await CareerIngestCoordinator.shared.writeSaveRequest(request)
                 finish()
             } catch {
-                finish()
+                presentError(error.localizedDescription)
             }
         }
     }
@@ -52,6 +62,15 @@ final class ShareViewController: NSViewController {
             applicationDeadline: Date()
         )
         guard let item = extensionContext?.inputItems.first as? NSExtensionItem else { return fallback }
+
+        if let pdfRequestId = await extractSharedResumePDF(from: item) {
+            if let openURL = URL(string: "college://resume/import?requestId=\(pdfRequestId.uuidString)") {
+                NSWorkspace.shared.open(openURL)
+            }
+            finish()
+            return fallback
+        }
+
         var urlText = ""
         var bodyText = ""
 
@@ -80,10 +99,11 @@ final class ShareViewController: NSViewController {
                 text: payload.rawText,
                 requestId: payload.requestId
             )
-            if let openURL = URL(string: "liquidglass://ingest?requestId=\(written.requestId.uuidString)") {
+            if let openURL = URL(string: "college://ingest?requestId=\(written.requestId.uuidString)") {
                 NSWorkspace.shared.open(openURL)
             }
         } catch {
+            presentError(error.localizedDescription)
             return fallback
         }
         if let parsed = await CareerIngestCoordinator.shared.readParseResult() {
@@ -100,6 +120,28 @@ final class ShareViewController: NSViewController {
             )
         }
         return fallback
+    }
+
+    @MainActor
+    private func extractSharedResumePDF(from item: NSExtensionItem) async -> UUID? {
+        guard let attachments = item.attachments else { return nil }
+        for provider in attachments {
+            guard provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) else { continue }
+            if let url = try? await provider.loadItem(forTypeIdentifier: UTType.pdf.identifier) as? URL,
+               let data = try? Data(contentsOf: url) {
+                return try? CareerIngestCoordinator.shared.writeSharedResumeImport(
+                    data: data,
+                    fileName: url.lastPathComponent
+                )
+            }
+            if let data = try? await provider.loadItem(forTypeIdentifier: UTType.pdf.identifier) as? Data {
+                return try? CareerIngestCoordinator.shared.writeSharedResumeImport(
+                    data: data,
+                    fileName: "Shared-Resume.pdf"
+                )
+            }
+        }
+        return nil
     }
 }
 
@@ -149,7 +191,7 @@ private struct ShareRootView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .frame(width: 420)
         .background(.ultraThinMaterial)
     }

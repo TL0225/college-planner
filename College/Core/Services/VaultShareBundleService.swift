@@ -8,7 +8,7 @@ import AppKit
 
 // MARK: - VaultBundleItem
 
-public struct VaultBundleItem {
+public struct VaultBundleItem: Sendable {
     public let url: URL
     public let displayName: String
 
@@ -27,6 +27,12 @@ enum VaultShareBundleService {
     /// Copies all items into a temp folder and zips it with ditto.
     /// Returns the URL of the resulting zip file.
     static func createBundle(items: [VaultBundleItem], bundleName: String) async throws -> URL {
+        try await BackgroundServiceOnDemand.runThrowing(id: "vault_share_bundle") {
+            try await createBundleImpl(items: items, bundleName: bundleName)
+        }
+    }
+
+    private static func createBundleImpl(items: [VaultBundleItem], bundleName: String) async throws -> URL {
         let fm = FileManager.default
         let bundleFolder = fm.temporaryDirectory
             .appendingPathComponent("College-Bundle-\(UUID().uuidString)", isDirectory: true)

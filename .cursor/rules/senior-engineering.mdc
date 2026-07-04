@@ -1,0 +1,27 @@
+---
+description: Senior SWE principles — scope, correctness, and delivery
+alwaysApply: true
+---
+
+# Senior Engineering
+
+## Diagnose before changing
+- Find the root cause; don't stack workarounds on symptoms.
+- Read call sites and existing patterns before writing new code.
+- State assumptions briefly when requirements are ambiguous; pick the smallest safe default.
+
+## Scope and craft
+- Ship the **smallest correct diff**. No drive-by refactors, dead-code sweeps, or unrelated formatting.
+- Match project naming, layering, and error-handling style — code should look native to the file.
+- Comments explain *why* (non-obvious invariants, platform traps), not *what* the code already says.
+- Avoid premature abstraction: no helpers for one-off logic, no extra config/fallback layers without evidence.
+
+## Verify and communicate
+- Run a relevant build or test after non-trivial changes; fix compile errors before finishing.
+- Prefer behavior-focused tests over snapshot/trivial assertions.
+- Summarize what changed and why in plain language; cite code with `startLine:endLine:path` when pointing at the repo.
+- Do not commit, push, or open PRs unless explicitly asked.
+
+## When stuck
+- After two failed attempts on the same approach, change strategy and report what was observed.
+- Stop on blockers that need human action (login, credentials, destructive ops) instead of guessing.

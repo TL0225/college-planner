@@ -62,7 +62,7 @@ struct AppPageHeader<Actions: View>: View {
             // ── Title ───────────────────────────────────────────────────────
             Text(title)
                 .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
 
             Spacer()
 
@@ -73,8 +73,8 @@ struct AppPageHeader<Actions: View>: View {
             if showSearch {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                     TextField(searchPlaceholder, text: $searchText)
                         .font(DesignSystem.Fonts.main(size: 13))
                         .textFieldStyle(.plain)
@@ -82,15 +82,15 @@ struct AppPageHeader<Actions: View>: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Color(NSColor.underPageBackgroundColor))
-                .cornerRadius(9)
+                .clipShape(.rect(cornerRadius: 9))
                 .frame(width: 210)
             }
 
             // ── Notification bell ─────────────────────────────────────────────
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "bell")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .font(DesignSystem.Fonts.main(size: 15, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                     .frame(width: 34, height: 34)
                     .background(Color(NSColor.underPageBackgroundColor))
                     .clipShape(Circle())
@@ -113,7 +113,7 @@ struct AppPageHeader<Actions: View>: View {
         .overlay(
             Rectangle()
                 .frame(height: 1)
-                .foregroundColor(Color(hex: "f1f5f9")),
+                .foregroundStyle(Color(hex: "f1f5f9")),
             alignment: .bottom
         )
     }
@@ -133,8 +133,8 @@ struct AppPageHeader<Actions: View>: View {
             ZStack {
                 Circle().fill(DesignSystem.Colors.primary.opacity(0.12))
                 Image(systemName: "person.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .medium))
+                    .foregroundStyle(DesignSystem.Colors.primary)
             }
         }
     }

@@ -10,6 +10,7 @@ import Combine
 final class AIAssistantViewModel: ObservableObject {
     @Published var isResponding: Bool = false
     @Published var streamingMessageID: UUID?
+    @Published var activeAssistantToolName: String?
 
     private var activeGenerationTask: Task<Void, Never>?
     private var requestCounter: Int = 0
@@ -24,9 +25,10 @@ final class AIAssistantViewModel: ObservableObject {
         activeGenerationTask = nil
         streamingMessageID = nil
         isResponding = false
+        activeAssistantToolName = nil
     }
 
-    func startGeneration(_ operation: @escaping @MainActor @Sendable () async -> Void) {
+    func startGeneration(_ operation: @escaping @MainActor () async -> Void) {
         activeGenerationTask?.cancel()
         isResponding = true
         activeGenerationTask = Task { @MainActor in
@@ -34,6 +36,7 @@ final class AIAssistantViewModel: ObservableObject {
                 self.isResponding = false
                 self.activeGenerationTask = nil
                 self.streamingMessageID = nil
+                self.activeAssistantToolName = nil
             }
             await operation()
         }

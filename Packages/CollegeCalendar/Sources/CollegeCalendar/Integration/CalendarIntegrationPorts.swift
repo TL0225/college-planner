@@ -11,6 +11,7 @@ public struct CalendarAppleIngestSnapshot: Sendable {
     public let urlString: String?
     public let calendarIdentifier: String?
     public let localUUIDFromURL: UUID?
+    public let recurrenceRule: String?
 
     public init(
         externalID: String,
@@ -22,7 +23,8 @@ public struct CalendarAppleIngestSnapshot: Sendable {
         notes: String?,
         urlString: String?,
         calendarIdentifier: String?,
-        localUUIDFromURL: UUID?
+        localUUIDFromURL: UUID?,
+        recurrenceRule: String? = nil
     ) {
         self.externalID = externalID
         self.title = title
@@ -34,6 +36,7 @@ public struct CalendarAppleIngestSnapshot: Sendable {
         self.urlString = urlString
         self.calendarIdentifier = calendarIdentifier
         self.localUUIDFromURL = localUUIDFromURL
+        self.recurrenceRule = recurrenceRule
     }
 }
 
@@ -142,6 +145,7 @@ public struct CalendarICloudIngestSnapshot: Sendable {
     public let isAllDay: Bool
     public let location: String?
     public let notes: String?
+    public let localUUIDFromICal: UUID?
 
     public init(
         mapKey: String,
@@ -151,7 +155,8 @@ public struct CalendarICloudIngestSnapshot: Sendable {
         end: Date,
         isAllDay: Bool,
         location: String?,
-        notes: String?
+        notes: String?,
+        localUUIDFromICal: UUID? = nil
     ) {
         self.mapKey = mapKey
         self.providerEventId = providerEventId
@@ -161,6 +166,7 @@ public struct CalendarICloudIngestSnapshot: Sendable {
         self.isAllDay = isAllDay
         self.location = location
         self.notes = notes
+        self.localUUIDFromICal = localUUIDFromICal
     }
 }
 
@@ -170,7 +176,7 @@ public protocol CalendarSyncIngestPort: AnyObject {
         snapshots: [CalendarAppleIngestSnapshot],
         currentMap: [String: String],
         mappedLocalIDsLower: Set<String>
-    ) throws -> [String: String]
+    ) async throws -> [String: String]
 
     func ingestGoogleSnapshots(
         snapshots: [CalendarGoogleIngestSnapshot],
@@ -178,18 +184,18 @@ public protocol CalendarSyncIngestPort: AnyObject {
         currentMap: [String: String],
         mappedLocalIDsLower: Set<String>,
         deletedTombstones: Set<String>
-    ) throws -> CalendarGoogleIngestResult
+    ) async throws -> CalendarGoogleIngestResult
 
     func ingestOutlookSnapshots(
         snapshots: [CalendarOutlookIngestSnapshot],
         calendarID: String,
         currentMap: [String: String]
-    ) throws -> [String: String]
+    ) async throws -> [String: String]
 
     func ingestICloudSnapshots(
         snapshots: [CalendarICloudIngestSnapshot],
         currentMap: [String: String]
-    ) throws -> [String: String]
+    ) async throws -> [String: String]
 }
 
 public enum CalendarSyncIngestNotes {

@@ -14,6 +14,7 @@
 //     posts `Notification.Name.graduationPlanChanged` so the rest of the app
 //     refreshes immediately.
 
+@preconcurrency import AppKit
 import CollegeAcademics
 import SwiftUI
 
@@ -36,6 +37,31 @@ struct GraduationTimelineConfigSheet: View {
     @State private var targetSeason: String = ""
     @State private var showConfirm: Bool = false
     @State private var didLoadInitialState: Bool = false
+    /// Index of the target-term pill currently centered by keyboard/scroll-wheel navigation.
+    @State private var termScrollAnchor: Int = 0
+    /// Drives the staggered entrance reveal of the sheet's cards.
+    @State private var hasAnimatedIn: Bool = false
+
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @AppStorage("ui.reduceMotion") private var prefReduceMotion = false
+    private var motionReduced: Bool { systemReduceMotion || prefReduceMotion }
+
+    /// Shared spring used for in-place content changes (numbers, rows, banners).
+    private var contentAnimation: Animation {
+        motionReduced ? .easeOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.86)
+    }
+
+    // MARK: - Degree readiness
+
+    /// Whether the active profile has at least one declared major/degree.
+    private var hasSelectedDegree: Bool {
+        guard let academicProfile else { return false }
+        return !collegePersistence.resolvedMajorNames(for: academicProfile).isEmpty
+    }
+
+    /// A degree with zero required credits means the catalog scraper has not produced
+    /// requirement data yet — there is nothing to pace against.
+    private var hasDegreeRequirementData: Bool { requiredCredits > 0 }
 
     // MARK: - Computed properties
 
@@ -103,14 +129,26 @@ struct GraduationTimelineConfigSheet: View {
             VStack(spacing: 0) {
                 titleBar
                 Divider()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        pacingHeader
-                        targetTermPicker
-                        termList
-                        constraintsFooter
+                if hasDegreeRequirementData {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            pacingHeader
+                                .modifier(TimelineEntranceModifier(index: 0, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                            targetTermPicker
+                                .modifier(TimelineEntranceModifier(index: 1, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                            termList
+                                .modifier(TimelineEntranceModifier(index: 2, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                            constraintsFooter
+                                .modifier(TimelineEntranceModifier(index: 3, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                        }
+                        .padding(DesignSystem.Spacing.lg)
                     }
-                    .padding(20)
+                    .scrollIndicators(.hidden)
+                    .transition(.opacity)
+                } else {
+                    degreeEmptyState
+                        .modifier(TimelineEntranceModifier(index: 0, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                        .transition(.opacity)
                 }
             }
         }
@@ -119,7 +157,12 @@ struct GraduationTimelineConfigSheet: View {
             minHeight: 720, idealHeight: 820, maxHeight: 960
         )
         .dismissOnOutsideClickForSheet()
-        .onAppear { loadInitialStateIfNeeded() }
+        .onAppear {
+            loadInitialStateIfNeeded()
+            guard !hasAnimatedIn else { return }
+            // Defer one runloop so the pre-reveal state renders before animating in.
+            DispatchQueue.main.async { hasAnimatedIn = true }
+        }
         .confirmationDialog(
             "Save Graduation Timeline?",
             isPresented: $showConfirm,
@@ -142,13 +185,13 @@ struct GraduationTimelineConfigSheet: View {
 
             Spacer()
             Text("Graduation Timeline")
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
             Spacer()
 
             Button("Save") { showConfirm = true }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(!summary.isAchievable || futureTerms.isEmpty)
+                .disabled(!hasDegreeRequirementData || !summary.isAchievable || futureTerms.isEmpty)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -161,24 +204,30 @@ struct GraduationTimelineConfigSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text("\(summary.remainingNeeded)")
-                    .font(.system(size: 36, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 36, weight: .bold))
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(summary.remainingNeeded)))
+                    .animation(contentAnimation, value: summary.remainingNeeded)
                 Text("credits left to graduate")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
                 Spacer()
                 if !futureTerms.isEmpty {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text("AVG PACE NEEDED")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                             .tracking(0.6)
                             .foregroundStyle(.secondary)
                         Text(String(format: "%.1f cr/term", summary.avgPaceNeeded))
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                             .monospacedDigit()
+                            .contentTransition(.numericText(value: summary.avgPaceNeeded))
+                            .animation(contentAnimation, value: summary.avgPaceNeeded)
                     }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .animation(contentAnimation, value: futureTerms.isEmpty)
 
             HStack(spacing: 14) {
                 pacingChip(label: "Completed", value: summary.completed, state: .completed)
@@ -188,7 +237,7 @@ struct GraduationTimelineConfigSheet: View {
 
             stackedProgress
         }
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(DesignSystem.Colors.glassCardBase)
@@ -206,40 +255,39 @@ struct GraduationTimelineConfigSheet: View {
                 .fill(AcademicsStatusPalette.dot(for: state))
                 .frame(width: 7, height: 7)
             Text("\(value) cr")
-                .font(.system(size: 12, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 .monospacedDigit()
+                .contentTransition(.numericText(value: Double(value)))
+                .animation(contentAnimation, value: value)
             Text(label)
-                .font(.system(size: 11))
+                .font(DesignSystem.Fonts.main(size: 11))
                 .foregroundStyle(.secondary)
         }
     }
 
     private var stackedProgress: some View {
         GeometryReader { geo in
+            let total = max(Double(requiredCredits), 1.0)
+            let cFrac = min(Double(summary.completed) / total, 1.0)
+            let iFrac = min(Double(summary.inProgress) / total, 1.0 - cFrac)
+            let pFrac = min(Double(summary.planned) / total, 1.0 - cFrac - iFrac)
+            let rFrac = max(0.0, 1.0 - cFrac - iFrac - pFrac)
+            // Always render every segment (width 0 when empty) so the bar grows/shrinks
+            // smoothly instead of popping segments in and out.
             HStack(spacing: 2) {
-                let total = max(Double(requiredCredits), 1.0)
-                let cFrac = min(Double(summary.completed) / total, 1.0)
-                let iFrac = min(Double(summary.inProgress) / total, 1.0 - cFrac)
-                let pFrac = min(Double(summary.planned) / total, 1.0 - cFrac - iFrac)
-                let rFrac = max(0.0, 1.0 - cFrac - iFrac - pFrac)
-                if cFrac > 0 {
-                    Rectangle().fill(AcademicsStatusPalette.completedDot)
-                        .frame(width: geo.size.width * CGFloat(cFrac))
-                }
-                if iFrac > 0 {
-                    Rectangle().fill(AcademicsStatusPalette.inProgressDot)
-                        .frame(width: geo.size.width * CGFloat(iFrac))
-                }
-                if pFrac > 0 {
-                    Rectangle().fill(AcademicsStatusPalette.plannedDot)
-                        .frame(width: geo.size.width * CGFloat(pFrac))
-                }
-                if rFrac > 0 {
-                    Rectangle().fill(AcademicsStatusPalette.remainingDot)
-                        .frame(width: geo.size.width * CGFloat(rFrac))
-                }
+                Rectangle().fill(AcademicsStatusPalette.completedDot)
+                    .frame(width: geo.size.width * CGFloat(cFrac))
+                Rectangle().fill(AcademicsStatusPalette.inProgressDot)
+                    .frame(width: geo.size.width * CGFloat(iFrac))
+                Rectangle().fill(AcademicsStatusPalette.plannedDot)
+                    .frame(width: geo.size.width * CGFloat(pFrac))
+                Rectangle().fill(AcademicsStatusPalette.remainingDot)
+                    .frame(width: geo.size.width * CGFloat(rFrac))
             }
             .clipShape(RoundedRectangle(cornerRadius: 5))
+            .animation(motionReduced ? nil : .spring(response: 0.5, dampingFraction: 0.9), value: cFrac)
+            .animation(motionReduced ? nil : .spring(response: 0.5, dampingFraction: 0.9), value: iFrac)
+            .animation(motionReduced ? nil : .spring(response: 0.5, dampingFraction: 0.9), value: pFrac)
         }
         .frame(height: 10)
     }
@@ -247,25 +295,52 @@ struct GraduationTimelineConfigSheet: View {
     // MARK: - Target term picker
 
     private var targetTermPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let candidates = GraduationTimelineEngine.suggestTargetTerms(from: currentTerm)
+        return VStack(alignment: .leading, spacing: 10) {
             sectionHeader("TARGET GRADUATION TERM")
 
-            let candidates = GraduationTimelineEngine.suggestTargetTerms(from: currentTerm)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(candidates.enumerated()), id: \.offset) { _, term in
-                        targetPill(year: term.year, season: term.season)
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(candidates.enumerated()), id: \.offset) { idx, term in
+                            targetPill(year: term.year, season: term.season)
+                                .id(idx)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 8)
+                }
+                .scrollIndicators(.hidden)
+                .focusable()
+                .onKeyPress(.leftArrow) {
+                    moveTermScroll(-1, count: candidates.count, proxy: proxy)
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    moveTermScroll(1, count: candidates.count, proxy: proxy)
+                    return .handled
+                }
+                .background(
+                    HorizontalWheelScrollRedirector { direction in
+                        moveTermScroll(direction, count: candidates.count, proxy: proxy)
+                    }
+                )
+                .onAppear {
+                    if let selected = selectedCandidateIndex(in: candidates) {
+                        termScrollAnchor = selected
+                        proxy.scrollTo(selected, anchor: .center)
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
             }
 
             Text(targetSummaryLine)
-                .font(.system(size: 11))
+                .font(DesignSystem.Fonts.main(size: 11))
                 .foregroundStyle(.secondary)
+                .id(targetSummaryLine)
+                .transition(.opacity)
+                .animation(contentAnimation, value: targetSummaryLine)
         }
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(DesignSystem.Colors.glassCardBase)
@@ -280,20 +355,29 @@ struct GraduationTimelineConfigSheet: View {
     private func targetPill(year: Int, season: String) -> some View {
         let isSelected = (year == targetYear && season.caseInsensitiveCompare(targetSeason) == .orderedSame)
         Button {
-            targetYear = year
-            targetSeason = season
-            hydrateCapsForFutureTerms()
+            withAnimation(contentAnimation) {
+                targetYear = year
+                targetSeason = season
+                hydrateCapsForFutureTerms()
+            }
         } label: {
-            Text("\(season) \(year)")
-                .font(.system(size: 12, weight: .semibold))
+            Text(verbatim: "\(season) \(year)")
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
                 .foregroundStyle(isSelected ? .white : Color.accentColor)
                 .background(
                     Capsule().fill(isSelected ? Color.accentColor : Color.accentColor.opacity(0.10))
                 )
+                .scaleEffect(isSelected && !motionReduced ? 1.04 : 1.0)
+                .shadow(
+                    color: Color.accentColor.opacity(isSelected && !motionReduced ? 0.35 : 0),
+                    radius: 6, y: 2
+                )
+                .animation(.spring(response: 0.30, dampingFraction: 0.7), value: isSelected)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TimelinePillButtonStyle(reduceMotion: motionReduced))
+        .sensoryFeedback(.selection, trigger: isSelected)
     }
 
     private var targetSummaryLine: String {
@@ -302,6 +386,68 @@ struct GraduationTimelineConfigSheet: View {
         }
         let active = max(0, futureTerms.count)
         return "Choose graduation: \(targetSeason) \(targetYear) → \(active) active term\(active == 1 ? "" : "s") ahead"
+    }
+
+    /// Index of the currently selected target term within the candidate list.
+    private func selectedCandidateIndex(in candidates: [(year: Int, season: String)]) -> Int? {
+        candidates.firstIndex {
+            $0.year == targetYear && $0.season.caseInsensitiveCompare(targetSeason) == .orderedSame
+        }
+    }
+
+    /// Moves the horizontally-scrolled target-term row by one pill in `direction`
+    /// (−1 = left, +1 = right) and animates the new anchor into view. Used by both
+    /// arrow keys and the mouse scroll wheel.
+    private func moveTermScroll(_ direction: Int, count: Int, proxy: ScrollViewProxy) {
+        guard count > 0 else { return }
+        let next = max(0, min(termScrollAnchor + direction, count - 1))
+        guard next != termScrollAnchor else { return }
+        termScrollAnchor = next
+        withAnimation(.easeOut(duration: 0.18)) {
+            proxy.scrollTo(next, anchor: .center)
+        }
+    }
+
+    // MARK: - Degree empty state
+
+    private var degreeEmptyState: some View {
+        ContentUnavailableView {
+            Label(
+                hasSelectedDegree ? "No degree requirements found" : "No degree selected",
+                systemImage: hasSelectedDegree ? "doc.text.magnifyingglass" : "graduationcap"
+            )
+        } description: {
+            Text(degreeEmptyStateMessage)
+        } actions: {
+            Button(degreeEmptyStateActionTitle) { handleDegreeEmptyStateAction() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(DesignSystem.Spacing.xl)
+    }
+
+    private var degreeEmptyStateMessage: String {
+        if hasSelectedDegree {
+            return "We couldn't find any credit requirements for your degree. Run the catalog scraper to import your program's required courses and credits, then come back to plan your graduation timeline."
+        }
+        return "Add your major in your profile so we can build a graduation plan. Every degree needs declared programs to calculate the credits required to graduate."
+    }
+
+    private var degreeEmptyStateActionTitle: String {
+        hasSelectedDegree ? "Open Catalog Settings" : "Select a Degree"
+    }
+
+    private func handleDegreeEmptyStateAction() {
+        let routeToSettings = hasSelectedDegree
+        dismiss()
+        Task { @MainActor in
+            if routeToSettings {
+                _ = AskCollegeCoordinator.openSettingsSection(.academics)
+            } else {
+                _ = AskCollegeCoordinator.navigateToPage(.profile)
+            }
+        }
     }
 
     // MARK: - Per-term list
@@ -313,26 +459,35 @@ struct GraduationTimelineConfigSheet: View {
                 Spacer()
                 Button("Reset to Recommended", action: resetToRecommended)
                     .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .disabled(futureTerms.isEmpty)
             }
 
-            if futureTerms.isEmpty {
-                Text("Select a target term above to plan term-by-term credit loads.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 16)
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(Array(futureTerms.enumerated()), id: \.offset) { _, term in
-                        termRow(year: term.year, season: term.season)
+            Group {
+                if futureTerms.isEmpty {
+                    Text("Select a target term above to plan term-by-term credit loads.")
+                        .font(DesignSystem.Fonts.main(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 16)
+                        .transition(.opacity)
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(Array(futureTerms.enumerated()), id: \.offset) { _, term in
+                            termRow(year: term.year, season: term.season)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .move(edge: .top)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.96))
+                                ))
+                        }
                     }
                 }
             }
+            .animation(contentAnimation, value: targetYear)
+            .animation(contentAnimation, value: targetSeason)
         }
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(DesignSystem.Colors.glassCardBase)
@@ -356,8 +511,8 @@ struct GraduationTimelineConfigSheet: View {
         let stateColor = palette(for: status.state)
 
         HStack(spacing: 12) {
-            Text("\(season) \(year)")
-                .font(.system(size: 12, weight: .semibold))
+            Text(verbatim: "\(season) \(year)")
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 100, alignment: .leading)
 
@@ -368,20 +523,25 @@ struct GraduationTimelineConfigSheet: View {
             Stepper(
                 value: Binding(
                     get: { caps[key] ?? policyBand.minFullTime },
-                    set: { caps[key] = max(0, min($0, 24)) }
+                    set: { newValue in
+                        withAnimation(contentAnimation) {
+                            caps[key] = max(0, min(newValue, 24))
+                        }
+                    }
                 ),
                 in: 0...24
             ) {
                 Text("\(cap) cr")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                     .monospacedDigit()
                     .frame(minWidth: 56, alignment: .trailing)
             }
             .labelsHidden()
             Text("\(cap) cr")
-                .font(.system(size: 13, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 .monospacedDigit()
                 .frame(minWidth: 56, alignment: .trailing)
+                .contentTransition(.numericText(value: Double(cap)))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -393,6 +553,7 @@ struct GraduationTimelineConfigSheet: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(stateColor.opacity(0.35), lineWidth: 1)
         )
+        .animation(contentAnimation, value: cap)
     }
 
     private func palette(for state: GraduationTimelineEngine.CreditState) -> Color {
@@ -417,7 +578,7 @@ struct GraduationTimelineConfigSheet: View {
             }
         }()
         Text(label)
-            .font(.system(size: 10, weight: .semibold))
+            .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
             .foregroundStyle(AcademicsStatusPalette.pillForeground(for: palette))
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -440,29 +601,39 @@ struct GraduationTimelineConfigSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: balanced ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(balanced ? AcademicsStatusPalette.completedDot : Color.red)
+                    .contentTransition(.symbolEffect(.replace))
                 Text(banner)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                     .foregroundStyle(.primary)
+                    .id(banner)
+                    .transition(.opacity)
                 Spacer()
             }
 
             // Cap-level warnings.
             ForEach(Array(termWarnings.enumerated()), id: \.offset) { _, message in
                 warningRow(symbol: "exclamationmark.bubble.fill", text: message)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             // Prerequisite warnings.
             ForEach(prereqWarnings) { w in
                 warningRow(symbol: "link.circle.fill", text: w.message)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             if termWarnings.isEmpty && prereqWarnings.isEmpty && balanced {
                 Text("No constraint issues detected.")
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
                     .foregroundStyle(.secondary)
+                    .transition(.opacity)
             }
         }
-        .padding(16)
+        .animation(contentAnimation, value: summary.allocatedAcrossFutureTerms)
+        .animation(contentAnimation, value: summary.remainingNeeded)
+        .animation(contentAnimation, value: termWarnings)
+        .animation(contentAnimation, value: prereqWarnings.map(\.id))
+        .padding(DesignSystem.Spacing.lg)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(DesignSystem.Colors.glassCardBase)
@@ -495,10 +666,10 @@ struct GraduationTimelineConfigSheet: View {
     private func warningRow(symbol: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 .foregroundStyle(Color.orange)
             Text(text)
-                .font(.system(size: 11))
+                .font(DesignSystem.Fonts.main(size: 11))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -510,7 +681,7 @@ struct GraduationTimelineConfigSheet: View {
     @ViewBuilder
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 10, weight: .bold))
+            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
             .foregroundStyle(.secondary)
             .tracking(0.8)
     }
@@ -579,8 +750,10 @@ struct GraduationTimelineConfigSheet: View {
             futureTermCount: futureTerms.count,
             band: policyBand
         )
-        for (idx, term) in futureTerms.enumerated() where idx < recommended.count {
-            caps[capKey(year: term.year, season: term.season)] = recommended[idx]
+        withAnimation(contentAnimation) {
+            for (idx, term) in futureTerms.enumerated() where idx < recommended.count {
+                caps[capKey(year: term.year, season: term.season)] = recommended[idx]
+            }
         }
     }
 
@@ -620,4 +793,127 @@ struct GraduationTimelineConfigSheet: View {
         NotificationCenter.default.post(name: .graduationPlanChanged, object: nil)
         dismiss()
     }
+}
+
+/// Staggered fade/slide/blur reveal for the sheet's cards. Honors Reduce Motion by
+/// dropping the offset/blur and shortening the timing.
+private struct TimelineEntranceModifier: ViewModifier {
+    let index: Int
+    let isVisible: Bool
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isVisible ? 1 : 0)
+            .offset(y: isVisible ? 0 : (reduceMotion ? 0 : 16))
+            .blur(radius: isVisible ? 0 : (reduceMotion ? 0 : 5))
+            .animation(
+                reduceMotion
+                    ? .easeOut(duration: 0.12)
+                    : .spring(response: 0.42, dampingFraction: 0.85).delay(Double(index) * 0.07),
+                value: isVisible
+            )
+    }
+}
+
+/// Button style for the target-term pills: a springy press scale (suppressed under
+/// Reduce Motion) so taps feel responsive.
+private struct TimelinePillButtonStyle: ButtonStyle {
+    let reduceMotion: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.92 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// Translates plain mouse scroll-wheel events that occur over a horizontal scroll
+/// region into discrete left/right steps, so mouse users (not just trackpad users)
+/// can move through the target-term row. Trackpad gestures keep their native
+/// horizontal scrolling because precise-delta events are passed straight through.
+private struct HorizontalWheelScrollRedirector: NSViewRepresentable {
+    /// Called with −1 (scroll left) or +1 (scroll right) per wheel notch.
+    let onStep: (Int) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onStep: onStep) }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        context.coordinator.attach(to: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onStep = onStep
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class Coordinator {
+        var onStep: (Int) -> Void
+        private weak var hostView: NSView?
+        private var monitor: Any?
+
+        init(onStep: @escaping (Int) -> Void) { self.onStep = onStep }
+
+        func attach(to view: NSView) {
+            hostView = view
+            let host = SendableViewBox(view)
+            let stepHandler = SendableStepHandler(onStep)
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+                let boxedEvent = SendableEventBox(event)
+                let consumed = MainActor.assumeIsolated {
+                    HorizontalWheelScrollRedirector.shouldConsumeScrollWheel(
+                        event: boxedEvent.event,
+                        host: host.view,
+                        onStep: stepHandler.call
+                    )
+                }
+                return consumed ? nil : event
+            }
+        }
+
+        func detach() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            monitor = nil
+        }
+    }
+
+    @MainActor
+    static func shouldConsumeScrollWheel(
+        event: NSEvent,
+        host: NSView,
+        onStep: (Int) -> Void
+    ) -> Bool {
+        guard let window = host.window, event.window === window else { return false }
+        if event.hasPreciseScrollingDeltas { return false }
+
+        let frameInWindow = host.convert(host.bounds, to: nil)
+        guard frameInWindow.contains(event.locationInWindow) else { return false }
+
+        let delta = event.scrollingDeltaY != 0 ? event.scrollingDeltaY : event.scrollingDeltaX
+        guard delta != 0 else { return false }
+        onStep(delta > 0 ? -1 : 1)
+        return true
+    }
+}
+
+private struct SendableEventBox: @unchecked Sendable {
+    let event: NSEvent
+    init(_ event: NSEvent) { self.event = event }
+}
+
+private struct SendableViewBox: @unchecked Sendable {
+    let view: NSView
+    init(_ view: NSView) { self.view = view }
+}
+
+private struct SendableStepHandler: @unchecked Sendable {
+    let call: (Int) -> Void
+    init(_ call: @escaping (Int) -> Void) { self.call = call }
 }

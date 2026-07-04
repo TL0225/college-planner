@@ -32,8 +32,14 @@ import Combine
     // MARK: - Computed Properties
 
     var screenshotsFolder: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/College/Screenshots", isDirectory: true)
+        if let vaultRoot = VaultLocationManager.shared.resolvedVaultRootURL {
+            return vaultRoot.appendingPathComponent("Screenshots", isDirectory: true)
+        }
+        if let vaultParent = try? VaultRepository.documentVaultDirectoryURL() {
+            return vaultParent.appendingPathComponent("Screenshots", isDirectory: true)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("College/Screenshots", isDirectory: true)
     }
 
     private var desktopURL: URL {

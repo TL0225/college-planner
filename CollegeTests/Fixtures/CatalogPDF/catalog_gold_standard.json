@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "description": "Seed gold-standard requirement labels used for precision/recall/F1 benchmarking. Expand this file with manually verified program/category labels over time.",
+  "fixtures": [
+    {
+      "id": "fordham",
+      "programs": [
+        {
+          "name": "Accounting",
+          "requirementCategories": [
+            "Major Requirements"
+          ]
+        },
+        {
+          "name": "Biology",
+          "requirementCategories": [
+            "Major Requirements"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cmu_undergrad",
+      "programs": [
+        {
+          "name": "Computer Science",
+          "requirementCategories": [
+            "Major Requirements"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "brooklyn_undergrad",
+      "programs": [
+        {
+          "name": "Accounting",
+          "requirementCategories": [
+            "Program Requirements"
+          ]
+        },
+        {
+          "name": "Computer Science",
+          "requirementCategories": [
+            "Program Requirements"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "brooklyn_grad",
+      "programs": [
+        {
+          "name": "Computer and Information Science",
+          "requirementCategories": [
+            "Program Requirements"
+          ]
+        }
+      ]
+    }
+  ]
+}

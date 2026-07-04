@@ -1,0 +1,7 @@
+{
+  "minimumAccuracy": 0.95,
+  "minimumToolAccuracy": 0.90,
+  "minimumCaseCount": 100,
+  "recordedAt": "2026-06-19",
+  "notes": "Full 102-case corpus with classifier labels; regenerate via RoutingCorpusExportTests"
+}

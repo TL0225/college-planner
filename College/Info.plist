@@ -11,7 +11,19 @@
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
 	<string>College needs write-only calendar access to add and update events in Apple Calendar.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>College uses your location to estimate travel time to event locations.</string>
+	<string>College uses your location to estimate travel time to events and show nearby employers on the Career map.</string>
+	<key>GitCommitHash</key>
+	<string>unknown</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.college.calendar.ics-refresh</string>
+		<string>com.college.calendar.academic-refresh</string>
+		<string>com.college.calendar.google-provider-sync</string>
+		<string>com.college.calendar.outlook-provider-sync</string>
+		<string>com.college.calendar.icloud-provider-sync</string>
+		<string>com.college.jobboard.refresh</string>
+		<string>com.college.workday.refresh</string>
+	</array>
 	<key>GOOGLE_CLIENT_ID</key>
 	<string>500851720974-2lii4f45uhk46u3iegp1e0v96d2ie9st.apps.googleusercontent.com</string>
 	<key>GOOGLE_REDIRECT_URI</key>
@@ -70,6 +82,16 @@
 				</array>
 			</dict>
 		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Resume Builder Section</string>
+			<key>UTTypeIdentifier</key>
+			<string>Timothy.College.resume-section</string>
+		</dict>
 	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -94,6 +116,16 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.timothy.college.catalogbundle</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Academic Vault Backup</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.timothy.college.portal</string>
 			</array>
 		</dict>
 	</array>

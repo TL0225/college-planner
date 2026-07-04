@@ -79,8 +79,10 @@ enum CatalogProgramReadBridge {
             return []
         }
 
+        let queryLevel = DegreeConfiguration.canonicalLevel(degreeLevel)
         let filtered = majors.filter { major in
-            guard major.degreeLevel == degreeLevel, major.isMinor == includeMinors else {
+            guard DegreeConfiguration.canonicalLevel(major.degreeLevel) == queryLevel,
+                  major.isMinor == includeMinors else {
                 return false
             }
             if !matchesDepartment(major, department: department) {
@@ -102,14 +104,7 @@ enum CatalogProgramReadBridge {
         universityName: String,
         appDataStore: AppDataStore
     ) -> (CatalogRepository, UUID)? {
-        guard let repo = appDataStore.catalogRepository else { return nil }
-        let trimmedName = universityName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return nil }
-        guard let active = try? repo.fetchActiveUniversity(),
-              active.name.caseInsensitiveCompare(trimmedName) == .orderedSame else {
-            return nil
-        }
-        return (repo, active.id)
+        CatalogStoreSnapshotBridge.attachUniversity(named: universityName, appDataStore: appDataStore)
     }
 
     private static func matchesDepartment(_ major: Major, department: String?) -> Bool {

@@ -12,20 +12,29 @@ enum CatalogStorePortableBridge {
         for universityName: String,
         appDataStore: AppDataStore = .shared
     ) throws -> URL {
-        CatalogStoreSnapshotBridge.materializePerSchoolCatalogSnapshot(
-            universityName: universityName,
-            appDataStore: appDataStore
-        )
-        let schoolID = CatalogStoreCoordinator.shared.schoolID(for: universityName)
-        let sqliteURL = CatalogStoreCoordinator.shared.localStoreStoreURL(for: schoolID)
-        guard FileManager.default.fileExists(atPath: sqliteURL.path) else {
+        guard let (_, universityID) = CatalogStoreSnapshotBridge.attachUniversity(
+            named: universityName,
+            appDataStore: appDataStore,
+            activate: true
+        ) else {
             throw NSError(
                 domain: "CatalogStore",
                 code: 404,
-                userInfo: [NSLocalizedDescriptionKey: "No local store catalog store on disk for \(universityName)."]
+                userInfo: [NSLocalizedDescriptionKey: "No catalog data found for \(universityName)."]
             )
         }
-        let sqliteData = try Data(contentsOf: sqliteURL, options: [.mappedIfSafe])
+
+        let schoolID = CatalogStoreCoordinator.shared.schoolID(for: universityName)
+        let tempSQLite = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(schoolID)-catalog-export-\(Int(Date().timeIntervalSince1970)).sqlite")
+        try CollegeUnifiedCatalogStoreMigration.materializeCatalogExtract(
+            universityID: universityID,
+            from: appDataStore.profileContext,
+            to: tempSQLite
+        )
+
+        let sqliteData = try Data(contentsOf: tempSQLite, options: [.mappedIfSafe])
+        defer { ModelStoreMaintenance.removeSQLiteBundle(at: tempSQLite) }
         let signedData = try CatalogStoreSecurity.createSignedFile(schoolID: schoolID, sqliteData: sqliteData)
 
         let canonical = CatalogFileStore.catalogsDirectory
@@ -46,11 +55,24 @@ enum CatalogStorePortableBridge {
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
         let verified = try CatalogStoreSecurity.verifySignedFile(data)
         let schoolID = verified.envelope.schoolID
-        try CatalogStoreCoordinator.shared.ensureStoreDirectory(for: schoolID)
-        let sqliteURL = CatalogStoreCoordinator.shared.localStoreStoreURL(for: schoolID)
-        try verified.sqliteData.write(to: sqliteURL, options: .atomic)
 
-        if let meta = try? inspectCatalogStoreMetadata(sqliteURL: sqliteURL) {
+        let tempSQLite = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(schoolID)-catalog-import-\(Int(Date().timeIntervalSince1970)).sqlite")
+        defer { ModelStoreMaintenance.removeSQLiteBundle(at: tempSQLite) }
+        try verified.sqliteData.write(to: tempSQLite, options: .atomic)
+
+        guard let universityID = CollegeUnifiedCatalogStoreMigration.importCatalogSQLite(
+            at: tempSQLite,
+            into: appDataStore.profileContext
+        ) else {
+            throw NSError(
+                domain: "CatalogStore",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No university found in signed catalog store."]
+            )
+        }
+
+        if let meta = try? inspectCatalogStoreMetadata(sqliteURL: tempSQLite) {
             CatalogStoreCoordinator.shared.upsertRegistryRecord(
                 schoolID: schoolID,
                 universityID: meta.id,
@@ -58,13 +80,16 @@ enum CatalogStorePortableBridge {
             )
             try appDataStore.setActiveCatalogSchoolID(schoolID)
             if let repo = appDataStore.catalogRepository {
-                try repo.activateUniversity(id: meta.id, name: meta.name)
+                try repo.activateUniversity(id: universityID, name: meta.name)
                 try appDataStore.catalogSave()
             }
             AppDataStoreBridge.syncActiveCatalogSchool(universityName: meta.name)
             CatalogIngestPipeline.postCatalogDataDidCommit(
                 universityID: meta.id,
-                reason: "signed catalog sqlite import committed"
+                reason: "signed catalog sqlite import committed",
+                commitPhase: .profile,
+                programCount: 0,
+                schoolID: schoolID
             )
         }
     }

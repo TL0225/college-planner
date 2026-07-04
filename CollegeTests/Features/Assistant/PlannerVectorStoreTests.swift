@@ -1,13 +1,13 @@
 // PlannerVectorStoreTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — PlannerVectorStoreTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class PlannerVectorStoreTests: XCTestCase {
-    func testUpsertAndSearch() async throws {
+@Suite("Planner Vector Store")
+struct PlannerVectorStoreTests {
+
+    @Test("Upsert and search")
+    func upsertAndSearch() async throws {
         let store = PlannerVectorStore(inMemory: true)
         try await store.upsert(
             chunkId: "c1",
@@ -28,13 +28,14 @@ final class PlannerVectorStoreTests: XCTestCase {
             queryVector: nil,
             semanticEnabled: false
         )
-        XCTAssertFalse(hits.isEmpty)
-        XCTAssertEqual(hits.first?.row.sourceId, "e1")
+        #expect(!hits.isEmpty)
+        #expect(hits.first?.row.sourceId == "e1")
     }
 
-    func testChunkCount() async throws {
+    @Test("Chunk count")
+    func chunkCount() async throws {
         let store = PlannerVectorStore(inMemory: true)
         let count = try await store.chunkCount()
-        XCTAssertEqual(count, 0)
+        #expect(count == 0)
     }
 }

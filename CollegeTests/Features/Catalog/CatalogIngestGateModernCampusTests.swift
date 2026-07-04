@@ -15,6 +15,8 @@ final class CatalogIngestGateModernCampusTests: XCTestCase {
             opeID: nil,
             profileURL: "https://www.buffalo.edu/profile.json",
             catalogURL: "https://catalogs.buffalo.edu/",
+            academicCalendarURL: nil,
+            timeZoneID: nil,
             countryCode: "US",
             stateCode: "NY",
             officialWebsiteURL: nil,

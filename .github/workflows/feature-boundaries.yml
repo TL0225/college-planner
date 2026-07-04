@@ -8,6 +8,10 @@ on:
       - "Packages/**"
       - "CollegePlatform/**"
       - "scripts/check-feature-imports.sh"
+      - "scripts/generate-cursor-feature-rules.py"
+      - "scripts/feature-touch-manifest.json"
+      - ".cursor/rules/feature-boundaries-master.mdc"
+      - ".cursor/rules/features/**"
       - ".github/workflows/feature-boundaries.yml"
   pull_request:
     paths:
@@ -16,6 +20,10 @@ on:
       - "Packages/**"
       - "CollegePlatform/**"
       - "scripts/check-feature-imports.sh"
+      - "scripts/generate-cursor-feature-rules.py"
+      - "scripts/feature-touch-manifest.json"
+      - ".cursor/rules/feature-boundaries-master.mdc"
+      - ".cursor/rules/features/**"
       - ".github/workflows/feature-boundaries.yml"
 
 permissions:
@@ -30,3 +38,6 @@ jobs:
 
       - name: Cross-feature import gate (fail mode)
         run: bash scripts/check-feature-imports.sh fail
+
+      - name: Cursor feature rules up to date
+        run: python3 scripts/generate-cursor-feature-rules.py --check

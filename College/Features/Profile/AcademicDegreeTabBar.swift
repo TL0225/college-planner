@@ -45,12 +45,13 @@ struct AcademicDegreeTabBar: View {
                 }
             }
         }
-        .alert(
+        .confirmationDialog(
             String(localized: "academic.profile.delete.confirm.title"),
             isPresented: Binding(
                 get: { profilePendingDelete != nil },
                 set: { if !$0 { profilePendingDelete = nil } }
             ),
+            titleVisibility: .visible,
             presenting: profilePendingDelete
         ) { profile in
             Button(String(localized: "academic.profile.delete.confirm.action"), role: .destructive) {
@@ -184,13 +185,8 @@ struct AcademicDegreeTabBar: View {
                 )
         }
 
-        if toolbarHosted {
-            Button(action: action) { label }
-                .buttonStyle(.glass)
-        } else {
-            Button(action: action) { label }
-                .buttonStyle(.plain)
-        }
+        Button(action: action) { label }
+            .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -201,7 +197,7 @@ struct AcademicDegreeTabBar: View {
                 .frame(width: 7, height: 7)
             if completed {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 5, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 5, weight: .bold))
                     .foregroundStyle(.white)
             }
         }

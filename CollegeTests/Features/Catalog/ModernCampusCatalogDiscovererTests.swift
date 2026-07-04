@@ -15,6 +15,8 @@ final class ModernCampusCatalogDiscovererTests: XCTestCase {
             opeID: "00283700",
             profileURL: "https://www.buffalo.edu/profile.json",
             catalogURL: "https://catalogs.buffalo.edu/",
+            academicCalendarURL: nil,
+            timeZoneID: nil,
             countryCode: "US",
             stateCode: "NY",
             officialWebsiteURL: "https://www.buffalo.edu/",
@@ -138,10 +140,29 @@ final class ModernCampusCatalogDiscovererTests: XCTestCase {
         )
     }
 
-    func testModernCampusProfileConfig_buffaloUsesEntityDiscovery() {
-        let config = ModernCampusProfileConfig.forHost("catalogs.buffalo.edu")
-        XCTAssertTrue(config.prefersEntityPageProgramDiscovery)
+    func testResolve_buffaloHostEnablesEntityDiscovery() {
+        XCTAssertTrue(ModernCampusHostProfiles.resolve(host: "catalogs.buffalo.edu")?.prefersEntityPageProgramDiscovery == true)
         let generic = ModernCampusProfileConfig.forHost("catalog.example.edu")
         XCTAssertFalse(generic.prefersEntityPageProgramDiscovery)
+    }
+
+    func testNavLabelSynonyms_includesGlobalDefaultsForUnknownHost() {
+        let synonyms = ModernCampusHostProfiles.navLabelSynonyms(host: "catalog.dsu.edu")
+        XCTAssertTrue(synonyms.contains(where: { $0.contains("programs of study") }))
+    }
+
+    func testReclassifyUnknown_promotesHighProgramLinkDensity() {
+        let html = """
+        <a href="preview_program.php?poid=1">A</a>
+        <a href="preview_program.php?poid=2">B</a>
+        <a href="preview_entity.php?entoid=1">C</a>
+        """
+        let kind = ModernCampusCatalogDiscoverer.reclassifyUnknownPageKind(
+            url: "https://catalog.dsu.edu/content.php?catoid=7&navoid=500",
+            linkLabel: "Departments",
+            host: "catalog.dsu.edu",
+            listingHTML: html
+        )
+        XCTAssertEqual(kind, .programListing)
     }
 }

@@ -11,6 +11,12 @@ enum CatalogSessionWarmup {
     private static let minInterval: TimeInterval = 6 * 3600
 
     static func prefetchIfNeeded(normalizedCatalogBase: String) async {
+        await BackgroundServiceOnDemand.run(id: "catalog_session_warmup") {
+            await prefetchIfNeededImpl(normalizedCatalogBase: normalizedCatalogBase)
+        }
+    }
+
+    private static func prefetchIfNeededImpl(normalizedCatalogBase: String) async {
         let base = normalizedCatalogBase.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !base.isEmpty else { return }
 

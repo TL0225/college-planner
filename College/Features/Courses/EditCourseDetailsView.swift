@@ -136,7 +136,7 @@ struct EditCourseDetailsView: View {
 				.padding(.top, 18)
 		}
 		.fixedSize(horizontal: false, vertical: true)
-		.padding(24)
+		.padding(DesignSystem.Spacing.xl)
 		.frame(maxWidth: 600)
 		.background(
 			RoundedRectangle(cornerRadius: 24)
@@ -167,7 +167,7 @@ struct EditCourseDetailsView: View {
 			)
 			.dismissOnOutsideClickForSheet()
 		}
-		.alert("Hide Course?", isPresented: $isDeleteConfirmationPresented) {
+		.confirmationDialog("Hide Course?", isPresented: $isDeleteConfirmationPresented, titleVisibility: .visible) {
 			Button("Delete", role: .destructive) {
 				archivePlannedCourseFromVisibility()
 			}
@@ -185,31 +185,31 @@ struct EditCourseDetailsView: View {
 						.fill(DesignSystem.Colors.info.opacity(0.12))
 						.frame(width: 56, height: 56)
 					Image(systemName: "doc.text.fill")
-						.font(.system(size: 20, weight: .bold))
-						.foregroundColor(DesignSystem.Colors.info)
+						.font(DesignSystem.Fonts.main(size: 20, weight: .bold))
+						.foregroundStyle(DesignSystem.Colors.info)
 				}
 
 				VStack(alignment: .leading, spacing: 6) {
 					Text("Edit Course Details")
 						.font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-						.foregroundColor(DesignSystem.Colors.textMain)
+						.foregroundStyle(DesignSystem.Colors.textMain)
 
 					HStack(spacing: 4) {
 						Text("Update information for")
 							.font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-							.foregroundColor(DesignSystem.Colors.textLight)
+							.foregroundStyle(DesignSystem.Colors.textLight)
 						Text(normalizedCourseCode)
 							.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-							.foregroundColor(DesignSystem.Colors.info)
+							.foregroundStyle(DesignSystem.Colors.info)
 					}
 
 					HStack(spacing: 6) {
 						Text("Last Updated:")
 							.font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-							.foregroundColor(DesignSystem.Colors.textLight)
+							.foregroundStyle(DesignSystem.Colors.textLight)
 						Text(lastUpdatedDisplayText)
 							.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-							.foregroundColor(DesignSystem.Colors.textMain)
+							.foregroundStyle(DesignSystem.Colors.textMain)
 					}
 				}
 
@@ -217,11 +217,11 @@ struct EditCourseDetailsView: View {
 
 				Button(action: { onClose() }) {
 					Image(systemName: "xmark")
-						.font(.system(size: 12, weight: .bold))
-						.foregroundColor(DesignSystem.Colors.textLight)
+						.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+						.foregroundStyle(DesignSystem.Colors.textLight)
 						.frame(width: 34, height: 34)
 						.background(DesignSystem.Colors.surface)
-						.cornerRadius(999)
+						.clipShape(.capsule)
 						.overlay(
 							RoundedRectangle(cornerRadius: 999)
 								.stroke(DesignSystem.Colors.textLight.opacity(0.18), lineWidth: 1)
@@ -324,19 +324,19 @@ struct EditCourseDetailsView: View {
 									.stroke(DesignSystem.Colors.textLight.opacity(0.18), lineWidth: 1)
 							)
 						Image(systemName: "doc.richtext")
-							.font(.system(size: 16, weight: .bold))
-							.foregroundColor(DesignSystem.Colors.error)
+							.font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+							.foregroundStyle(DesignSystem.Colors.error)
 					}
 
 					VStack(alignment: .leading, spacing: 2) {
 						Text(syllabusFileName)
 							.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-							.foregroundColor(DesignSystem.Colors.textMain)
+							.foregroundStyle(DesignSystem.Colors.textMain)
 
 						if !syllabusSubtitle.isEmpty {
 							Text(syllabusSubtitle)
 								.font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.foregroundStyle(DesignSystem.Colors.textLight)
 						}
 					}
 
@@ -345,11 +345,11 @@ struct EditCourseDetailsView: View {
 					HStack(spacing: 8) {
 						Button(action: { openSyllabus() }) {
 							Image(systemName: "eye")
-								.font(.system(size: 14, weight: .bold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+								.foregroundStyle(DesignSystem.Colors.textLight)
 								.frame(width: 34, height: 34)
 								.background(DesignSystem.Colors.surface)
-								.cornerRadius(10)
+								.clipShape(.rect(cornerRadius: 10))
 								.overlay(
 									RoundedRectangle(cornerRadius: 10)
 										.stroke(DesignSystem.Colors.textLight.opacity(0.18), lineWidth: 1)
@@ -359,11 +359,11 @@ struct EditCourseDetailsView: View {
 
 						Button(action: { deleteSyllabus() }) {
 							Image(systemName: "trash")
-								.font(.system(size: 14, weight: .bold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+								.foregroundStyle(DesignSystem.Colors.textLight)
 								.frame(width: 34, height: 34)
 								.background(DesignSystem.Colors.surface)
-								.cornerRadius(10)
+								.clipShape(.rect(cornerRadius: 10))
 								.overlay(
 									RoundedRectangle(cornerRadius: 10)
 										.stroke(DesignSystem.Colors.textLight.opacity(0.18), lineWidth: 1)
@@ -381,11 +381,11 @@ struct EditCourseDetailsView: View {
 					Button(action: { isPickingSyllabus = true }) {
 						HStack(spacing: 6) {
 							Image(systemName: "square.and.arrow.up")
-								.font(.system(size: 12, weight: .bold))
+								.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
 							Text("Upload New Version")
 								.font(DesignSystem.Fonts.main(size: 11, weight: .bold))
 						}
-						.foregroundColor(DesignSystem.Colors.info)
+						.foregroundStyle(DesignSystem.Colors.info)
 						.frame(maxWidth: .infinity)
 						.padding(.vertical, 6)
 					}
@@ -394,15 +394,15 @@ struct EditCourseDetailsView: View {
 					Button(action: { isSyllabusAnalysisPresented = true }) {
 						HStack(spacing: 6) {
 							Image(systemName: "sparkles")
-								.font(.system(size: 12, weight: .bold))
+								.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
 							Text("Analyze Syllabus")
 								.font(DesignSystem.Fonts.main(size: 11, weight: .bold))
 						}
-						.foregroundColor(.white)
+						.foregroundStyle(.white)
 						.frame(maxWidth: .infinity)
 						.padding(.vertical, 6)
 						.background(DesignSystem.Colors.info)
-						.cornerRadius(10)
+						.clipShape(.rect(cornerRadius: 10))
 					}
 					.buttonStyle(PlainButtonStyle())
 				}
@@ -418,26 +418,26 @@ struct EditCourseDetailsView: View {
 										.stroke(DesignSystem.Colors.textLight.opacity(0.18), lineWidth: 1)
 								)
 							Image(systemName: "doc")
-								.font(.system(size: 16, weight: .bold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+								.foregroundStyle(DesignSystem.Colors.textLight)
 						}
 
 						VStack(alignment: .leading, spacing: 2) {
 							Text("Upload Syllabus")
 								.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-								.foregroundColor(DesignSystem.Colors.textMain)
+								.foregroundStyle(DesignSystem.Colors.textMain)
 							Text("PDF")
 								.font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.foregroundStyle(DesignSystem.Colors.textLight)
 						}
 
 						Spacer()
 
 						Image(systemName: "plus.app.fill")
-							.font(.system(size: 12, weight: .bold))
-							.foregroundColor(DesignSystem.Colors.textLight)
+							.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+							.foregroundStyle(DesignSystem.Colors.textLight)
 					}
-					.padding(14)
+					.padding(DesignSystem.Spacing.md)
 					.frame(maxWidth: .infinity)
 					.background(DesignSystem.Colors.bgMain.opacity(0.45))
 					.overlay(
@@ -447,14 +447,14 @@ struct EditCourseDetailsView: View {
 								style: StrokeStyle(lineWidth: 1, dash: [6])
 							)
 					)
-					.cornerRadius(14)
+					.clipShape(.rect(cornerRadius: 14))
 				}
 				.buttonStyle(PlainButtonStyle())
 			}
 		}
-		.padding(14)
+		.padding(DesignSystem.Spacing.md)
 		.background(DesignSystem.Colors.bgMain.opacity(0.35))
-		.cornerRadius(14)
+		.clipShape(.rect(cornerRadius: 14))
 		.overlay(
 			RoundedRectangle(cornerRadius: 14)
 				.stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -466,11 +466,11 @@ struct EditCourseDetailsView: View {
 			Button(action: { isDeleteConfirmationPresented = true }) {
 				Text("Delete")
 					.font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-					.foregroundColor(DesignSystem.Colors.error)
+					.foregroundStyle(DesignSystem.Colors.error)
 					.frame(maxWidth: .infinity)
 					.padding(.vertical, 12)
 					.background(DesignSystem.Colors.error.opacity(0.10))
-					.cornerRadius(14)
+					.clipShape(.rect(cornerRadius: 14))
 			}
 			.disabled(plannedCourse == nil)
 			.help("Hide this course without removing stored details")
@@ -479,11 +479,11 @@ struct EditCourseDetailsView: View {
 			Button(action: { save() }) {
 				Text("Save Changes")
 					.font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-					.foregroundColor(.white)
+					.foregroundStyle(.white)
 					.frame(maxWidth: .infinity)
 					.padding(.vertical, 12)
 					.background(DesignSystem.Colors.info)
-					.cornerRadius(14)
+					.clipShape(.rect(cornerRadius: 14))
 			}
 			.buttonStyle(PlainButtonStyle())
 		}
@@ -501,7 +501,12 @@ struct EditCourseDetailsView: View {
 			return
 		}
 
-		collegePersistence.archiveCourse(plannedCourse)
+		let previousStatus = plannedCourse.status
+		AppUndoCoordinator.shared.performUndoable(
+			label: "Hide Course",
+			forward: { collegePersistence.archiveCourse(plannedCourse) },
+			backward: { collegePersistence.unarchiveCourse(plannedCourse, restoringStatus: previousStatus) }
+		)
 		notifications.post(
 			kind: .success,
 			title: "Course Hidden",
@@ -525,7 +530,7 @@ struct EditCourseDetailsView: View {
 		VStack(alignment: .leading, spacing: 6) {
 			Text(title.uppercased())
 				.font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-				.foregroundColor(DesignSystem.Colors.textLight)
+				.foregroundStyle(DesignSystem.Colors.textLight)
 
 			content()
 		}
@@ -535,11 +540,11 @@ struct EditCourseDetailsView: View {
 		TextField(placeholder, text: text)
 			.textFieldStyle(.plain)
 			.font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-			.foregroundColor(DesignSystem.Colors.textMain)
+			.foregroundStyle(DesignSystem.Colors.textMain)
 			.padding(.horizontal, 12)
 			.padding(.vertical, 10)
 			.background(DesignSystem.Colors.bgMain)
-			.cornerRadius(12)
+			.clipShape(.rect(cornerRadius: 12))
 			.overlay(
 				RoundedRectangle(cornerRadius: 12)
 					.stroke(DesignSystem.Colors.textLight.opacity(0.22), lineWidth: 1)
@@ -549,18 +554,18 @@ struct EditCourseDetailsView: View {
 	private func iconTextField(systemImage: String, text: Binding<String>, placeholder: String) -> some View {
 		HStack(spacing: 10) {
 			Image(systemName: systemImage)
-				.font(.system(size: 14, weight: .bold))
-				.foregroundColor(DesignSystem.Colors.textLight)
+				.font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+				.foregroundStyle(DesignSystem.Colors.textLight)
 
 			TextField(placeholder, text: text)
 				.textFieldStyle(.plain)
 				.font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-				.foregroundColor(DesignSystem.Colors.textMain)
+				.foregroundStyle(DesignSystem.Colors.textMain)
 		}
 		.padding(.horizontal, 12)
 		.padding(.vertical, 10)
 		.background(DesignSystem.Colors.bgMain)
-		.cornerRadius(12)
+		.clipShape(.rect(cornerRadius: 12))
 		.overlay(
 			RoundedRectangle(cornerRadius: 12)
 				.stroke(DesignSystem.Colors.textLight.opacity(0.22), lineWidth: 1)
@@ -576,16 +581,16 @@ struct EditCourseDetailsView: View {
 			HStack {
 				Text(selection.wrappedValue)
 					.font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-					.foregroundColor(DesignSystem.Colors.textMain)
+					.foregroundStyle(DesignSystem.Colors.textMain)
 				Spacer()
 				Image(systemName: "chevron.down")
-					.font(.system(size: 12, weight: .bold))
-					.foregroundColor(DesignSystem.Colors.textLight)
+					.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+					.foregroundStyle(DesignSystem.Colors.textLight)
 			}
 			.padding(.horizontal, 12)
 			.padding(.vertical, 10)
 			.background(DesignSystem.Colors.bgMain)
-			.cornerRadius(12)
+			.clipShape(.rect(cornerRadius: 12))
 			.overlay(
 				RoundedRectangle(cornerRadius: 12)
 					.stroke(DesignSystem.Colors.textLight.opacity(0.22), lineWidth: 1)
@@ -608,12 +613,12 @@ struct EditCourseDetailsView: View {
 			} else if gradingType == "Audit" {
 				Text("AU")
 					.font(DesignSystem.Fonts.main(size: 13))
-					.foregroundColor(DesignSystem.Colors.textLight)
+					.foregroundStyle(DesignSystem.Colors.textLight)
 					.padding(.horizontal, 12)
 					.padding(.vertical, 10)
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.background(DesignSystem.Colors.bgMain)
-					.cornerRadius(12)
+					.clipShape(.rect(cornerRadius: 12))
 					.overlay(RoundedRectangle(cornerRadius: 12).stroke(DesignSystem.Colors.textLight.opacity(0.22), lineWidth: 1))
 			} else {
 				let letterGrades = ["", "A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F", "W", "I", "P", "NC"]
@@ -650,16 +655,16 @@ struct EditCourseDetailsView: View {
 					.frame(width: 10, height: 10)
 				Text(current)
 					.font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-					.foregroundColor(DesignSystem.Colors.textMain)
+					.foregroundStyle(DesignSystem.Colors.textMain)
 				Spacer()
 				Image(systemName: "chevron.down")
-					.font(.system(size: 12, weight: .bold))
-					.foregroundColor(DesignSystem.Colors.textLight)
+					.font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+					.foregroundStyle(DesignSystem.Colors.textLight)
 			}
 			.padding(.horizontal, 12)
 			.padding(.vertical, 10)
 			.background(DesignSystem.Colors.bgMain)
-			.cornerRadius(12)
+			.clipShape(.rect(cornerRadius: 12))
 			.overlay(
 				RoundedRectangle(cornerRadius: 12)
 					.stroke(DesignSystem.Colors.textLight.opacity(0.22), lineWidth: 1)
@@ -704,7 +709,7 @@ struct EditCourseDetailsView: View {
 			status = normalizedStatus(plannedCourse.status)
 			creditsText = resolvedCreditsText
 			gradingType = plannedCourse.gradingType
-			grade = plannedCourse.grade ?? ""   // load persisted grade from CourseEntity
+			grade = plannedCourse.grade ?? ""   // load persisted grade from PlannerCourse
 			externalURL = ""
 
 			syllabusFileName = plannedCourse.syllabusFileName
@@ -723,7 +728,7 @@ struct EditCourseDetailsView: View {
 		externalURL = ""
 	}
 
-	private func plannedSemesterText(from course: CourseEntity) -> String {
+	private func plannedSemesterText(from course: PlannerCourse) -> String {
 		guard let semester = course.semester else { return "" }
 		let season = semester.season.trimmingCharacters(in: .whitespacesAndNewlines)
 		let year = Int(semester.year)
@@ -812,23 +817,23 @@ struct EditCourseDetailsView: View {
 		VStack(alignment: .leading, spacing: 10) {
 			Text("RELATED DOCUMENTS")
 				.font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-				.foregroundColor(DesignSystem.Colors.textLight)
+				.foregroundStyle(DesignSystem.Colors.textLight)
 
 			if relatedDocuments.isEmpty {
 				Text("No linked documents yet. Link files from Documents.")
 					.font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-					.foregroundColor(DesignSystem.Colors.textLight)
+					.foregroundStyle(DesignSystem.Colors.textLight)
 			} else {
 				ForEach(relatedDocuments.prefix(6), id: \.id) { document in
 					let fileLabel = document.fileName.isEmpty ? "Document" : document.fileName
 					HStack(spacing: 10) {
 						Image(systemName: "doc")
-							.font(.system(size: 12, weight: .semibold))
-							.foregroundColor(DesignSystem.Colors.textLight)
+							.font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+							.foregroundStyle(DesignSystem.Colors.textLight)
 
 						Text(fileLabel)
 							.font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-							.foregroundColor(DesignSystem.Colors.textMain)
+							.foregroundStyle(DesignSystem.Colors.textMain)
 							.lineLimit(1)
 
 						Spacer(minLength: 8)
@@ -837,8 +842,8 @@ struct EditCourseDetailsView: View {
 							openVaultDocument(document)
 						} label: {
 							Image(systemName: "arrow.up.forward.app")
-								.font(.system(size: 11, weight: .semibold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+								.foregroundStyle(DesignSystem.Colors.textLight)
 						}
 						.buttonStyle(.plain)
 						.help("Open document")
@@ -847,8 +852,8 @@ struct EditCourseDetailsView: View {
 							revealVaultDocumentInFinder(document)
 						} label: {
 							Image(systemName: "folder")
-								.font(.system(size: 11, weight: .semibold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+								.foregroundStyle(DesignSystem.Colors.textLight)
 						}
 						.buttonStyle(.plain)
 						.help("Reveal in Finder")
@@ -857,8 +862,8 @@ struct EditCourseDetailsView: View {
 							unlinkVaultDocument(document)
 						} label: {
 							Image(systemName: "link.badge.minus")
-								.font(.system(size: 11, weight: .semibold))
-								.foregroundColor(DesignSystem.Colors.textLight)
+								.font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+								.foregroundStyle(DesignSystem.Colors.textLight)
 						}
 						.buttonStyle(.plain)
 						.help("Unlink from this course")
@@ -872,16 +877,16 @@ struct EditCourseDetailsView: View {
 					} label: {
 						Text("+\(relatedDocuments.count - 6) more linked files in Documents")
 							.font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-							.foregroundColor(DesignSystem.Colors.info)
+							.foregroundStyle(DesignSystem.Colors.info)
 					}
 					.buttonStyle(.plain)
 					.help("Open Documents filtered to this course")
 				}
 			}
 		}
-		.padding(14)
+		.padding(DesignSystem.Spacing.md)
 		.background(DesignSystem.Colors.bgMain.opacity(0.35))
-		.cornerRadius(14)
+		.clipShape(.rect(cornerRadius: 14))
 		.overlay(
 			RoundedRectangle(cornerRadius: 14)
 				.stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -930,11 +935,7 @@ struct EditCourseDetailsView: View {
 	}
 
 	private func openDocumentsForCurrentCourse() {
-		NotificationCenter.default.post(
-			name: .plannerOpenDocumentsForCourse,
-			object: nil,
-			userInfo: ["courseCode": normalizedCourseCode]
-		)
+		AppTypedNavigationRouter.openDocuments(forCourseCode: normalizedCourseCode)
 		onClose()
 	}
 

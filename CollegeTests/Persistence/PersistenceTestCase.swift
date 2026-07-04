@@ -23,14 +23,14 @@ class PersistenceTestCase: XCTestCase {
         profileContext = store.profileContext
         if includesCatalog {
             try store.useInMemoryCatalogForUnitTesting()
-            catalogContext = store.activeCatalogContext
+            catalogContext = store.profileContext
         } else {
             store.releaseActiveCatalogContainerForMemoryPressure()
             catalogContext = nil
         }
         harness = PersistenceTestHarness.Containers(
             profile: store.profileContainer,
-            catalog: store.activeCatalogContainer
+            catalog: includesCatalog ? store.profileContainer : nil
         )
         CollegePersistence.shared.refreshAll()
     }

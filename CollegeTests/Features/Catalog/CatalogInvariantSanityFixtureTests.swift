@@ -16,6 +16,8 @@ final class CatalogInvariantSanityFixtureTests: XCTestCase {
             opeID: nil,
             profileURL: "https://example.edu/profile.json",
             catalogURL: "https://bulletin.fordham.edu/",
+            academicCalendarURL: nil,
+            timeZoneID: nil,
             countryCode: "US",
             stateCode: "NY",
             officialWebsiteURL: nil,

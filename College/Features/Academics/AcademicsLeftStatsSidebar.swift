@@ -35,6 +35,9 @@ struct AcademicsLeftStatsSidebar: View {
     /// Tap-through bindings hosted on `AcademicsView`. The card flips
     /// `showGraduationSheet`; the sheet itself is presented from the parent.
     @Binding var showGraduationSheet: Bool
+    /// Mirror tap-throughs for the GPA + Credits stat cards.
+    @Binding var showGPASheet: Bool
+    @Binding var showCreditsSheet: Bool
 
     private var collegePersistence: CollegePersistence { container.persistence }
     private var modalCoordinator: ModalCoordinator { container.modalCoordinator }
@@ -83,7 +86,9 @@ struct AcademicsLeftStatsSidebar: View {
                         gpaText: plannerGPAFormatted,
                         creditsEarned: plannerCreditsEarned,
                         creditsRequired: plannerCreditsRequired,
-                        programsBreakdown: programsBreakdown
+                        programsBreakdown: programsBreakdown,
+                        onTapGPA: { showGPASheet = true },
+                        onTapCredits: { showCreditsSheet = true }
                     )
                     StackedProgressLegendBlock(
                         profile: prof,
@@ -101,7 +106,7 @@ struct AcademicsLeftStatsSidebar: View {
             .padding(.vertical, 16)
         }
         .frame(maxHeight: .infinity)
-        .background(DesignSystem.Colors.surface)
+        .inspectorSidebarBackground()
     }
 }
 
@@ -119,11 +124,11 @@ private struct MajorHeaderRow: View {
         HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(index == 1 ? "DEGREE" : "MAJOR \(index)")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.8)
                 Text(displayName)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 17, weight: .bold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -131,7 +136,7 @@ private struct MajorHeaderRow: View {
             Spacer(minLength: 8)
             // Static three-dot glyph (no menu in v1, per design decision).
             Image(systemName: "ellipsis")
-                .font(.system(size: 13, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 .foregroundStyle(.tertiary)
                 .padding(.top, 6)
                 .accessibilityHidden(true)
@@ -167,7 +172,7 @@ private struct RequirementProgressCard: View {
                     .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(pct)%")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
             }
@@ -176,16 +181,16 @@ private struct RequirementProgressCard: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Requirement progress")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .foregroundStyle(.primary)
                 Text(creditsLine)
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
                     .foregroundStyle(Color.accentColor)
                     .lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(DesignSystem.Colors.glassCardBase)
@@ -241,7 +246,7 @@ struct CompactGraduationTimelineCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "graduationcap.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
                         .frame(width: 34, height: 34)
                         .background(
@@ -252,12 +257,12 @@ struct CompactGraduationTimelineCard: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text("Graduation Timeline")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                             if let chip = expectedGraduation, !chip.isEmpty {
                                 Text(chip.uppercased())
-                                    .font(.system(size: 9, weight: .bold))
+                                    .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
@@ -267,7 +272,7 @@ struct CompactGraduationTimelineCard: View {
                             }
                         }
                         Text(timelineSubtitle)
-                            .font(.system(size: 11))
+                            .font(DesignSystem.Fonts.main(size: 11))
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                             .fixedSize(horizontal: false, vertical: true)
@@ -275,7 +280,7 @@ struct CompactGraduationTimelineCard: View {
 
                     Spacer(minLength: 4)
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                         .foregroundStyle(.tertiary)
                         .padding(.top, 6)
                 }
@@ -287,7 +292,7 @@ struct CompactGraduationTimelineCard: View {
                                 ? String(localized: "academics.graduation.degree_credit_progress", defaultValue: "DEGREE CREDIT PROGRESS")
                                 : String(localized: "TOTAL CREDIT PROGRESS", defaultValue: "TOTAL CREDIT PROGRESS")
                         )
-                            .font(.system(size: 9, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                             .foregroundStyle(.secondary)
                             .tracking(0.6)
                         Spacer(minLength: 8)
@@ -295,15 +300,15 @@ struct CompactGraduationTimelineCard: View {
                             if requiredCredits > 0 {
                                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                                     Text("\(completedCredits)")
-                                        .font(.system(size: 12, weight: .bold))
+                                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                                         .foregroundStyle(.primary)
                                     Text(" / \(requiredCredits) Credits")
-                                        .font(.system(size: 12))
+                                        .font(DesignSystem.Fonts.main(size: 12))
                                         .foregroundStyle(.secondary)
                                 }
                             } else {
                                 Text("\(completedCredits) cr earned")
-                                    .font(.system(size: 12, weight: .bold))
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                                     .foregroundStyle(.primary)
                             }
                         }
@@ -312,14 +317,14 @@ struct CompactGraduationTimelineCard: View {
                     ProgressCapsule(fraction: fraction)
                     if let footnote = programsBreakdown.optionalProgramsFootnote {
                         Text(footnote)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
-            .padding(14)
+            .padding(DesignSystem.Spacing.md)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(DesignSystem.Colors.glassCardBase)
@@ -368,6 +373,8 @@ private struct MiniStatGridRow: View {
     let creditsEarned: Int
     let creditsRequired: Int
     let programsBreakdown: CollegePersistence.DeclaredProgramsCreditsBreakdown
+    var onTapGPA: () -> Void = {}
+    var onTapCredits: () -> Void = {}
 
     private var creditsSubtitle: String {
         if creditsRequired > 0 {
@@ -384,41 +391,65 @@ private struct MiniStatGridRow: View {
         HStack(spacing: 10) {
             cell(label: "CUMULATIVE GPA",
                  value: gpaText,
-                 subtitle: "out of 4.00")
+                 subtitle: "out of 4.00",
+                 accessibilityHint: "Opens your GPA breakdown",
+                 action: onTapGPA)
             cell(label: "CREDITS EARNED",
                  value: "\(creditsEarned)",
                  subtitle: creditsSubtitle,
-                 subtitleLineLimit: programsBreakdown.hasAdditionalPrograms ? 3 : 1)
+                 subtitleLineLimit: programsBreakdown.hasAdditionalPrograms ? 3 : 1,
+                 accessibilityHint: "Opens your credit breakdown",
+                 action: onTapCredits)
         }
     }
 
     @ViewBuilder
-    private func cell(label: String, value: String, subtitle: String, subtitleLineLimit: Int = 1) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.secondary)
-                .tracking(0.6)
-            Text(value)
-                .font(.system(size: 22, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
-            Text(subtitle)
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .lineLimit(subtitleLineLimit)
-                .fixedSize(horizontal: false, vertical: true)
+    private func cell(
+        label: String,
+        value: String,
+        subtitle: String,
+        subtitleLineLimit: Int = 1,
+        accessibilityHint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(label)
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .tracking(0.6)
+                    Spacer(minLength: 2)
+                    Image(systemName: "chevron.right")
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                Text(value)
+                    .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(DesignSystem.Fonts.main(size: 10))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(subtitleLineLimit)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(DesignSystem.Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(DesignSystem.Colors.glassCardBase)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(DesignSystem.Colors.glassCardBase)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
-        )
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .accessibilityHint(accessibilityHint)
     }
 }
 
@@ -468,7 +499,7 @@ private struct StackedProgressLegendBlock: View {
             stackedBar
             legend
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(DesignSystem.Colors.glassCardBase)
@@ -528,7 +559,7 @@ private struct StackedProgressLegendBlock: View {
     private var legend: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Degree plan")
-                .font(.system(size: 9, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                 .foregroundStyle(.tertiary)
                 .tracking(0.4)
             HStack {
@@ -545,7 +576,7 @@ private struct StackedProgressLegendBlock: View {
             if programsBreakdown.hasAdditionalPrograms {
                 Divider().padding(.vertical, 4)
                 Text("Additional programs")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                     .foregroundStyle(.tertiary)
                     .tracking(0.4)
                 ForEach(programsBreakdown.additionalPrograms) { program in
@@ -563,17 +594,17 @@ private struct StackedProgressLegendBlock: View {
         let kind = program.kind == .major ? "Major" : "Minor"
         HStack(spacing: 6) {
             Text(kind)
-                .font(.system(size: 9, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                 .foregroundStyle(.tertiary)
                 .frame(width: 36, alignment: .leading)
             Text(program.displayName)
-                .font(.system(size: 10, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)
             Text("\(done)/\(req) · \(left) left")
-                .font(.system(size: 10))
+                .font(DesignSystem.Fonts.main(size: 10))
                 .foregroundStyle(.tertiary)
                 .monospacedDigit()
         }
@@ -586,7 +617,7 @@ private struct StackedProgressLegendBlock: View {
                 .fill(AcademicsStatusPalette.dot(for: state))
                 .frame(width: 7, height: 7)
             Text("\(AcademicsStatusPalette.label(for: state)) \(value) cr")
-                .font(.system(size: 10))
+                .font(DesignSystem.Fonts.main(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
@@ -615,6 +646,20 @@ private struct SemesterListCompact: View {
         AcademicsPlannerSemesterBridge.summaries(semesters: plannerSemesters)
     }
 
+    private func courseLines(for semesterID: UUID) -> [SemesterCourseLine] {
+        guard let semester = plannerSemesters.first(where: { $0.id == semesterID }) else { return [] }
+        return semester.coursesArray.map { course in
+            SemesterCourseLine(
+                id: course.id,
+                code: course.code.trimmingCharacters(in: .whitespacesAndNewlines),
+                name: course.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                credits: Int(course.credits),
+                status: course.status,
+                isCompleted: course.isCompleted
+            )
+        }
+    }
+
     private var headerLabel: String {
         let count = summaries.count
         if count == 0 { return "NO SEMESTERS" }
@@ -624,7 +669,7 @@ private struct SemesterListCompact: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(headerLabel)
-                .font(.system(size: 10, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                 .foregroundStyle(.secondary)
                 .tracking(0.6)
                 .padding(.horizontal, 4)
@@ -635,6 +680,7 @@ private struct SemesterListCompact: View {
                 ForEach(summaries) { summary in
                     SemesterRowCompact(
                         summary: summary,
+                        courses: courseLines(for: summary.id),
                         onRequestDelete: { semesterPendingDeleteID = summary.id }
                     )
                 }
@@ -687,19 +733,85 @@ private enum PlannerSemesterSeason: String, CaseIterable, Identifiable {
     }
 }
 
+/// Lightweight, value-type projection of a semester's courses for the click-to-view popover.
+struct SemesterCourseLine: Identifiable, Equatable {
+    let id: UUID
+    let code: String
+    let name: String
+    let credits: Int
+    let status: String
+    let isCompleted: Bool
+}
+
 private struct SemesterRowCompact: View {
     @Environment(AppContainer.self) private var container
     private var persistence: CollegePersistence { container.persistence }
     let summary: AcademicsPlannerSemesterSummary
+    let courses: [SemesterCourseLine]
     let onRequestDelete: () -> Void
     private var collegePersistence: CollegePersistence { container.persistence }
     @State private var isHovered = false
     @State private var isEditing = false
+    @State private var isDropTargeted = false
+    @State private var showingCourses = false
     @State private var draftSeason: PlannerSemesterSeason = .fall
     @State private var draftYear: Int = Calendar.current.component(.year, from: Date())
     @FocusState private var yearFieldFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var expandAnimation: Animation {
+        reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.34, dampingFraction: 0.86)
+    }
 
     var body: some View {
+        VStack(spacing: 0) {
+            headerRow
+                .padding(.horizontal, 10)
+                .padding(.vertical, isEditing ? 10 : 8)
+                .onTapGesture(count: 2) {
+                    if !isEditing { beginEditing() }
+                }
+
+            if showingCourses && !isEditing {
+                coursesExpansion
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity
+                    ))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(DesignSystem.Colors.glassCardBase)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(
+                    isDropTargeted
+                        ? Color.accentColor
+                        : (isEditing ? Color.accentColor.opacity(0.45) : DesignSystem.Colors.chromeStroke),
+                    lineWidth: isDropTargeted ? 2 : 1
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .onHover { isHovered = $0 }
+        .dropDestination(for: String.self) { items, _ in
+            handleDrop(items)
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
+        }
+        .contextMenu {
+            Button(showingCourses ? "Hide Courses" : "View Courses") {
+                withAnimation(expandAnimation) { showingCourses.toggle() }
+            }
+            Button("Edit Semester") { beginEditing() }
+            Button("Delete Semester", role: .destructive, action: onRequestDelete)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(summary.displayTitle), \(summary.totalCredits) credits, \(summary.courseCount) course\(summary.courseCount == 1 ? "" : "s"), \(AcademicsStatusPalette.label(for: summary.dominantState))")
+    }
+
+    private var headerRow: some View {
         HStack(spacing: 8) {
             Circle()
                 .fill(AcademicsStatusPalette.dot(for: summary.dominantState))
@@ -709,23 +821,31 @@ private struct SemesterRowCompact: View {
                 editingControls
             } else {
                 Button {
-                    beginEditing()
+                    withAnimation(expandAnimation) { showingCourses.toggle() }
                 } label: {
-                    Text(summary.displayTitle)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 5) {
+                        Text(summary.displayTitle)
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.right")
+                            .font(DesignSystem.Fonts.main(size: 8, weight: .bold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(showingCourses ? 90 : 0))
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help("Edit semester")
+                .help(showingCourses ? "Hide courses" : "View courses in this semester")
             }
 
             Spacer(minLength: 4)
 
             if !isEditing {
                 Text("\(summary.totalCredits) cr")
-                    .font(.system(size: 11))
+                    .font(DesignSystem.Fonts.main(size: 11))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 StatusPill(state: summary.dominantState)
@@ -734,7 +854,7 @@ private struct SemesterRowCompact: View {
             if isEditing {
                 Button(action: commitEditing) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
                 }
                 .buttonStyle(.plain)
@@ -743,7 +863,7 @@ private struct SemesterRowCompact: View {
 
                 Button(action: cancelEditing) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -752,7 +872,7 @@ private struct SemesterRowCompact: View {
             } else if isHovered {
                 Button(action: beginEditing) {
                     Image(systemName: "pencil")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -760,36 +880,74 @@ private struct SemesterRowCompact: View {
 
                 Button(action: onRequestDelete) {
                     Image(systemName: "trash")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                         .foregroundStyle(.red.opacity(0.85))
                 }
                 .buttonStyle(.plain)
                 .help("Delete semester")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, isEditing ? 10 : 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(DesignSystem.Colors.glassCardBase)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(
-                    isEditing ? Color.accentColor.opacity(0.45) : DesignSystem.Colors.chromeStroke,
-                    lineWidth: 1
-                )
-        )
-        .onHover { isHovered = $0 }
-        .contextMenu {
-            Button("Edit Semester") { beginEditing() }
-            Button("Delete Semester", role: .destructive, action: onRequestDelete)
+    }
+
+    /// Inline course list revealed beneath the semester header — same card, animated open/close.
+    @ViewBuilder
+    private var coursesExpansion: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .padding(.horizontal, 10)
+
+            if courses.isEmpty {
+                HStack(spacing: 7) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                    Text("No courses yet — drag from the breakdown")
+                        .font(DesignSystem.Fonts.main(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(courses) { course in
+                        SemesterCourseLineRow(
+                            course: course,
+                            onDelete: { collegePersistence.deleteCourse(id: course.id) },
+                            onOpen: {
+                                container.modalCoordinator.activeModal = .courseDashboard(
+                                    courseCode: course.code,
+                                    defaultCourseName: course.name,
+                                    defaultCreditsText: course.credits > 0 ? "\(course.credits)" : "",
+                                    courseID: course.id
+                                )
+                            }
+                        )
+                        if course.id != courses.last?.id {
+                            Divider().padding(.leading, 14)
+                        }
+                    }
+                }
+                .padding(.bottom, 4)
+            }
         }
-        .onTapGesture(count: 2) {
-            if !isEditing { beginEditing() }
+    }
+
+    private func handleDrop(_ items: [String]) -> Bool {
+        let payloads = items.map(PlannerCourseDragPayload.decode).filter { !$0.code.isEmpty }
+        guard !payloads.isEmpty else { return false }
+        var didAdd = false
+        for payload in payloads {
+            let added = collegePersistence.addRequirementCourse(
+                toSemesterID: summary.id,
+                code: payload.code,
+                title: payload.title,
+                credits: payload.creditValue
+            )
+            didAdd = didAdd || added
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(summary.displayTitle), \(summary.totalCredits) credits, \(AcademicsStatusPalette.label(for: summary.dominantState))")
+        return didAdd
     }
 
     private var editingControls: some View {
@@ -800,7 +958,7 @@ private struct SemesterRowCompact: View {
                 }
             } label: {
                 Text(draftSeason.rawValue)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .lineLimit(1)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -817,14 +975,14 @@ private struct SemesterRowCompact: View {
                     draftYear = max(2000, draftYear - 1)
                 } label: {
                     Image(systemName: "minus")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                         .frame(width: 18, height: 18)
                 }
                 .buttonStyle(.plain)
 
-                TextField("", value: $draftYear, format: .number)
+                TextField("", value: $draftYear, format: .number.grouping(.never))
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .monospacedDigit()
                     .multilineTextAlignment(.center)
                     .frame(width: 44)
@@ -835,7 +993,7 @@ private struct SemesterRowCompact: View {
                     draftYear = min(2099, draftYear + 1)
                 } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                         .frame(width: 18, height: 18)
                 }
                 .buttonStyle(.plain)
@@ -874,12 +1032,70 @@ private struct SemesterRowCompact: View {
     }
 }
 
+private struct SemesterCourseLineRow: View {
+    let course: SemesterCourseLine
+    let onDelete: () -> Void
+    var onOpen: (() -> Void)? = nil
+    @State private var isHovered = false
+
+    private var statusState: AcademicsStatusPalette.State {
+        AcademicsStatusPalette.state(forStatus: course.status, isCompleted: course.isCompleted)
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Circle()
+                .fill(AcademicsStatusPalette.dot(for: statusState))
+                .frame(width: 7, height: 7)
+
+            Text(course.code)
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+
+            if !course.name.isEmpty {
+                Text(course.name)
+                    .font(DesignSystem.Fonts.main(size: 12))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Spacer(minLength: 4)
+            }
+
+            if isHovered {
+                Button(action: onDelete) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove from semester")
+            } else if course.credits > 0 {
+                Text("\(course.credits) cr")
+                    .font(DesignSystem.Fonts.main(size: 11))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture { onOpen?() }
+        .help(onOpen == nil ? "" : "Open course page")
+    }
+}
+
 private struct StatusPill: View {
     let state: AcademicsStatusPalette.State
 
     var body: some View {
         Text(AcademicsStatusPalette.label(for: state))
-            .font(.system(size: 9, weight: .semibold))
+            .font(DesignSystem.Fonts.main(size: 9, weight: .semibold))
             .foregroundStyle(AcademicsStatusPalette.pillForeground(for: state))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
@@ -898,9 +1114,9 @@ private struct AddSemesterButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: "calendar.badge.plus")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 Text("Add Semester")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
             }
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)

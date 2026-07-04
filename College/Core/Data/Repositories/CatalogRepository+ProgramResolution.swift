@@ -51,6 +51,26 @@ extension CatalogRepository {
             )
         }
 
+        // Degree-level fallback: older/stale stores may hold catalog-title-style levels
+        // (e.g. "Graduate Catalog 2025-2026") that don't equal the profile's "Graduate".
+        // Retry name-only so already-scraped programs still resolve without a re-scrape.
+        if results.isEmpty {
+            results = try fetchMajors(
+                universityID: university.id,
+                name: cleanedName,
+                degreeLevel: nil,
+                isMinor: isMinor
+            )
+            if results.isEmpty, cleanedName != target {
+                results = try fetchMajors(
+                    universityID: university.id,
+                    name: target,
+                    degreeLevel: nil,
+                    isMinor: isMinor
+                )
+            }
+        }
+
         if results.count > 1, !degreeCandidates.isEmpty {
             let degreeMatches = results.filter { major in
                 let stored = (major.degreeType ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,12 +96,26 @@ extension CatalogRepository {
     ) throws -> [Major] {
         let all = try fetchAllMajors(universityID: universityID)
         return all.filter { major in
-            guard major.name == name, major.isMinor == isMinor else { return false }
+            guard major.name.caseInsensitiveCompare(name) == .orderedSame,
+                  major.isMinor == isMinor else { return false }
             if let degreeLevel, !degreeLevel.isEmpty {
-                return major.degreeLevel.caseInsensitiveCompare(degreeLevel) == .orderedSame
+                return Self.degreeLevelsMatch(stored: major.degreeLevel, requested: degreeLevel)
             }
             return true
         }
+    }
+
+    /// Tolerant degree-level comparison. Treats catalog-title-style stored values
+    /// ("Graduate Catalog 2025-2026") as equal to the canonical level ("Graduate"),
+    /// so link resolution survives stale stores and catalog labelling variants.
+    static func degreeLevelsMatch(stored: String, requested: String) -> Bool {
+        let r = requested.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !r.isEmpty else { return true }
+        let s = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.caseInsensitiveCompare(r) == .orderedSame { return true }
+        let sNorm = ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: s, catoid: "")
+        let rNorm = ModernCampusCatalogLabels.normalizedCatalogTypeLabel(from: r, catoid: "")
+        return sNorm.caseInsensitiveCompare(rNorm) == .orderedSame
     }
 
     private func disambiguateMajors(_ majors: [Major], ownershipHint: String?) -> Major? {

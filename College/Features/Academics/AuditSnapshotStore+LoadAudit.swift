@@ -6,10 +6,43 @@
 import SwiftUI
 import SwiftData
 
+private enum AuditLoadAuditDecoders {
+    static let selectDetail = JSONDecoder()
+    static let stringArray = JSONDecoder()
+}
+
 extension AuditSnapshotStore {
     /// Builds declared-program audit degrees (MainActor; invoked from `reloadAudit`).
     @MainActor
     func buildAuditDegrees(
+        collegePersistence: CollegePersistence,
+        majors: [String],
+        minors: [String],
+        academicProfile: AcademicProfile?,
+        previousAuditDegrees: [AcademicsAuditPanel.AuditDegree]
+    ) async -> (degrees: [AcademicsAuditPanel.AuditDegree], expandedCategoryIDs: Set<UUID>) {
+        await LoadOperationTrace.withSpan(
+            name: "LoadAudit",
+            category: .audit,
+            budgetMs: LaunchPerformanceAcceptance.academicsAuditWarnThresholdMs,
+            executionContext: .mainThread,
+            metadata: [
+                "majors": "\(majors.count)",
+                "minors": "\(minors.count)"
+            ]
+        ) {
+            await buildAuditDegreesWork(
+                collegePersistence: collegePersistence,
+                majors: majors,
+                minors: minors,
+                academicProfile: academicProfile,
+                previousAuditDegrees: previousAuditDegrees
+            )
+        }
+    }
+
+    @MainActor
+    private func buildAuditDegreesWork(
         collegePersistence: CollegePersistence,
         majors: [String],
         minors: [String],
@@ -49,16 +82,37 @@ extension AuditSnapshotStore {
         }
         let planCourses = collegePersistence.semesters.flatMap(\.coursesArray)
         var planProgressByNormCode: [String: RequirementPlanProgress] = [:]
+        // Latest semester a course is scheduled in, so the breakdown can tag the row with the
+        // term (e.g. "Fall 2026"). Keyed by normalized code; ties broken by (year, seasonOrder).
+        var scheduledTermByNormCode: [String: (label: String, sortKey: (Int, Int))] = [:]
         for c in planCourses {
             let raw = c.code.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !raw.isEmpty else { continue }
             let k = normaliseCode(raw)
             let piece = AcademicsCourseSchedule.singleCoursePlanProgress(c, asOf: today)
             planProgressByNormCode[k] = AcademicsCourseSchedule.mergeProgress(planProgressByNormCode[k], piece)
+
+            if let semester = c.semester {
+                let season = semester.season.trimmingCharacters(in: .whitespacesAndNewlines)
+                let year = Int(semester.year)
+                let label = season.isEmpty ? "Semester \(year)" : "\(season) \(year)"
+                let sortKey = (year, Int(semester.seasonOrder))
+                if let existing = scheduledTermByNormCode[k] {
+                    if sortKey > existing.sortKey {
+                        scheduledTermByNormCode[k] = (label, sortKey)
+                    }
+                } else {
+                    scheduledTermByNormCode[k] = (label, sortKey)
+                }
+            }
         }
 
         func planProgress(forRequirementCode code: String) -> RequirementPlanProgress {
             planProgressByNormCode[normaliseCode(code)] ?? .notOnPlan
+        }
+
+        func scheduledTerm(forRequirementCode code: String) -> String? {
+            scheduledTermByNormCode[normaliseCode(code)]?.label
         }
 
         // Resolve requirements via programURL so that:
@@ -202,7 +256,10 @@ extension AuditSnapshotStore {
             categories.reserveCapacity(sortedReqs.count)
             var categoryDescriptions: [String: String] = [:]
 
-            for req in sortedReqs {
+            for (reqIndex, req) in sortedReqs.enumerated() {
+                if reqIndex > 0, reqIndex.isMultiple(of: 8) {
+                    await Task.yield()
+                }
                 let cat = req.requirementCategory
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if cat.lowercased() == "__program_total_credits__" { continue }
@@ -241,7 +298,7 @@ extension AuditSnapshotStore {
                 let electiveCodes: [String] = {
                     if let detailed = req.selectFromDetailedJSON, !detailed.isEmpty,
                        let data = detailed.data(using: .utf8),
-                       let arr = try? JSONDecoder().decode([SelectDetail].self, from: data) {
+                       let arr = try? AuditLoadAuditDecoders.selectDetail.decode([SelectDetail].self, from: data) {
                         return dedupeCodesPreservingOrder(
                             arr.map { $0.code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
                                 .filter { !$0.isEmpty }
@@ -249,7 +306,7 @@ extension AuditSnapshotStore {
                     }
                     if let raw = req.selectFromJSON, !raw.isEmpty,
                        let data = raw.data(using: .utf8),
-                       let arr = try? JSONDecoder().decode([String].self, from: data) {
+                       let arr = try? AuditLoadAuditDecoders.stringArray.decode([String].self, from: data) {
                         return dedupeCodesPreservingOrder(
                             arr.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }.filter { !$0.isEmpty }
                         )
@@ -345,7 +402,8 @@ extension AuditSnapshotStore {
                         grade: resolveGrade(forCode: code),
                         planProgress: planProgress(forRequirementCode: code),
                         isElective: false,
-                        alternativeGroupKey: alternativeGroup(forCode: code)
+                        alternativeGroupKey: alternativeGroup(forCode: code),
+                        scheduledTermLabel: scheduledTerm(forRequirementCode: code)
                     )
                 }
                 let electiveItems = electiveCodes.map { code -> AcademicsAuditPanel.AuditItem in
@@ -356,7 +414,8 @@ extension AuditSnapshotStore {
                         grade: resolveGrade(forCode: code),
                         planProgress: planProgress(forRequirementCode: code),
                         isElective: true,
-                        alternativeGroupKey: alternativeGroup(forCode: code)
+                        alternativeGroupKey: alternativeGroup(forCode: code),
+                        scheduledTermLabel: scheduledTerm(forRequirementCode: code)
                     )
                 }
                 let assignedItems = assignedCodes.map { code -> AcademicsAuditPanel.AuditItem in
@@ -367,7 +426,8 @@ extension AuditSnapshotStore {
                         grade: resolveGrade(forCode: code),
                         planProgress: planProgress(forRequirementCode: code),
                         isElective: true,
-                        alternativeGroupKey: alternativeGroup(forCode: code)
+                        alternativeGroupKey: alternativeGroup(forCode: code),
+                        scheduledTermLabel: scheduledTerm(forRequirementCode: code)
                     )
                 }
 
@@ -383,7 +443,8 @@ extension AuditSnapshotStore {
                             grade: existing.grade ?? item.grade,
                             planProgress: AcademicsCourseSchedule.mergeProgress(existing.planProgress, item.planProgress),
                             isElective: existing.isElective || item.isElective,
-                            alternativeGroupKey: existing.alternativeGroupKey ?? item.alternativeGroupKey
+                            alternativeGroupKey: existing.alternativeGroupKey ?? item.alternativeGroupKey,
+                            scheduledTermLabel: existing.scheduledTermLabel ?? item.scheduledTermLabel
                         )
                     } else {
                         mergedItems.append(item)
@@ -480,6 +541,7 @@ extension AuditSnapshotStore {
         let majorColors: [Color] = [Color.accentColor, .green, .orange, .cyan, .pink]
 
         for (idx, name) in majorList.enumerated() {
+            if idx > 0 { await Task.yield() }
             let resolvedURL: String? = collegePersistence.resolveMajorProgramURL(
                 display: name,
                 degreeLevel: profileDegreeLevel.isEmpty ? nil : profileDegreeLevel,
@@ -509,6 +571,7 @@ extension AuditSnapshotStore {
         let minorList = minors.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let minorColors: [Color] = [.teal, .purple, .indigo]
         for (idx, minName) in minorList.enumerated() {
+            if idx > 0 { await Task.yield() }
             // Same rationale as the major loop above: don't gate on URL resolution.
             let minURL = collegePersistence.resolveProgramProgramURL(programDisplay: minName, isMinor: true) ?? ""
             let color = minorColors[idx % minorColors.count]
@@ -555,13 +618,19 @@ extension AuditSnapshotStore {
                     return ""
                 }()
                 let resolvedGrade = c.grade?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let termLabel: String? = {
+                    guard let semester = c.semester else { return nil }
+                    let season = semester.season.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return season.isEmpty ? "Semester \(Int(semester.year))" : "\(season) \(Int(semester.year))"
+                }()
                 return AcademicsAuditPanel.AuditItem(
                     code: c.code.isEmpty ? "—" : c.code,
                     credits: "\(c.credits)",
                     title: resolvedTitle,
                     grade: (resolvedGrade?.isEmpty == false) ? resolvedGrade : nil,
                     planProgress: AcademicsCourseSchedule.singleCoursePlanProgress(c, asOf: today),
-                    isElective: false
+                    isElective: false,
+                    scheduledTermLabel: termLabel
                 )
             }
             let genEdCategory = AcademicsAuditPanel.AuditCategory(

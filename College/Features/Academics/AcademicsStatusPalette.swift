@@ -22,25 +22,25 @@ enum AcademicsStatusPalette {
         case remaining
     }
 
-    // MARK: Completed (soft green)
-    static let completedDot      = Color(red: 0.16, green: 0.74, blue: 0.51)
-    static let completedPillBG   = Color(red: 0.16, green: 0.74, blue: 0.51).opacity(0.14)
-    static let completedPillFG   = Color(red: 0.10, green: 0.52, blue: 0.36)
+    // MARK: Completed (semantic success)
+    static let completedDot      = DesignSystem.Colors.success
+    static let completedPillBG   = DesignSystem.Colors.success.opacity(0.14)
+    static let completedPillFG   = DesignSystem.Colors.success.opacity(0.85)
 
-    // MARK: In Progress (soft orange)
-    static let inProgressDot     = Color(red: 0.95, green: 0.58, blue: 0.20)
-    static let inProgressPillBG  = Color(red: 0.95, green: 0.58, blue: 0.20).opacity(0.14)
-    static let inProgressPillFG  = Color(red: 0.78, green: 0.43, blue: 0.08)
+    // MARK: In Progress (semantic warning)
+    static let inProgressDot     = DesignSystem.Colors.warning
+    static let inProgressPillBG  = DesignSystem.Colors.warning.opacity(0.14)
+    static let inProgressPillFG  = DesignSystem.Colors.warning.opacity(0.85)
 
-    // MARK: Planned (soft lavender)
-    static let plannedDot        = Color(red: 0.49, green: 0.45, blue: 0.95)
-    static let plannedPillBG     = Color(red: 0.49, green: 0.45, blue: 0.95).opacity(0.14)
-    static let plannedPillFG     = Color(red: 0.32, green: 0.27, blue: 0.78)
+    // MARK: Planned (semantic secondary)
+    static let plannedDot        = DesignSystem.Colors.secondary
+    static let plannedPillBG     = DesignSystem.Colors.secondary.opacity(0.14)
+    static let plannedPillFG     = DesignSystem.Colors.secondary.opacity(0.85)
 
-    // MARK: Remaining (neutral)
-    static let remainingDot      = Color.secondary.opacity(0.40)
-    static let remainingPillBG   = Color.secondary.opacity(0.10)
-    static let remainingPillFG   = Color.secondary
+    // MARK: Remaining (neutral adaptive)
+    static let remainingDot      = DesignSystem.Colors.textLight.opacity(0.55)
+    static let remainingPillBG   = DesignSystem.Colors.textLight.opacity(0.10)
+    static let remainingPillFG   = DesignSystem.Colors.textLight
 
     // MARK: Resolvers
 
@@ -92,6 +92,19 @@ extension AcademicsStatusPalette {
         case .inProgress: return .inProgress
         case .planned:    return .planned
         case .notOnPlan:  return .remaining
+        }
+    }
+
+    /// Map a single planner course's stored status into the four-state palette. Used by the
+    /// semester course popover so each course bullet matches the semester pill semantics.
+    static func state(forStatus rawStatus: String, isCompleted: Bool) -> State {
+        if isCompleted { return .completed }
+        switch rawStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "completed":                    return .completed
+        case "in progress", "in-progress":   return .inProgress
+        case "dropped", "failed", "not planned", "not-planned":
+            return .remaining
+        default:                             return .planned
         }
     }
 }

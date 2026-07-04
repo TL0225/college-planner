@@ -1,0 +1,4 @@
+module CollegeTypst {
+    header "college_typst.h"
+    export *
+}

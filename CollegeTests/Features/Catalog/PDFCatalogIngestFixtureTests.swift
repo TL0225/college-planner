@@ -93,7 +93,12 @@ final class PDFCatalogIngestFixtureTests: XCTestCase {
         XCTAssertGreaterThan(output.foundation.pageCount, 0, "\(schoolKey): expected PDF pages")
         XCTAssertGreaterThanOrEqual(output.courses.count, expectations.minCourses, "\(schoolKey): course extraction too small")
         XCTAssertGreaterThanOrEqual(output.programs.count, expectations.minPrograms, "\(schoolKey): program extraction too small")
-        XCTAssertFalse(output.requirements.isEmpty, "\(schoolKey): expected requirement placeholder rows")
+        for requirement in output.requirements {
+            XCTAssertFalse(
+                requirement.major.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                "\(schoolKey): requirement rows must be attributed to a real program"
+            )
+        }
         XCTAssertFalse(output.policyRows.isEmpty, "\(schoolKey): expected policy rows")
 
         for program in output.programs {

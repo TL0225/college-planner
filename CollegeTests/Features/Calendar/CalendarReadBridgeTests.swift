@@ -20,7 +20,6 @@ final class CalendarReadBridgeTests: PersistenceTestCase {
             ctx.delete(task)
         }
         try ctx.save()
-        ProfilePlannerSyncBridge.resetSyncTokenForTesting()
     }
 
     func testEventSnapshotsPreferStoreMirror() throws {

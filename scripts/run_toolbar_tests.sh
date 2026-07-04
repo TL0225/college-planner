@@ -3,17 +3,16 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DERIVED="${DERIVED:-/tmp/CollegeToolbarTestsDD}"
 DEST="${DEST:-platform=macOS}"
-
 cd "$ROOT"
 
-xcodebuild \
+"$SCRIPT_DIR/college-xcodebuild-test.sh" \
   -scheme College \
   -destination "$DEST" \
   -derivedDataPath "$DERIVED" \
   CODE_SIGNING_ALLOWED=NO \
-  -parallel-testing-enabled NO \
   test \
   -only-testing:CollegeTests/ToolbarArchitectureTests \
   -only-testing:CollegeTests/GlassToolbarAccessibilityTests \

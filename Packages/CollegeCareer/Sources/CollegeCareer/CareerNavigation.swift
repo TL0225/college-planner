@@ -5,10 +5,13 @@ public enum CareerSubView: String, CaseIterable, Identifiable, Hashable, Sendabl
     case openings = "Openings"
     case stats = "Stats"
     case resumes = "Resumes"
+    case applyProfile = "Apply Profile"
     case stories = "Stories"
     case networking = "Networking"
 
     public var id: String { rawValue }
+
+    public static let selectedViewStorageKey = "career.selectedView"
 }
 
 public enum CareerBoardLayout: String, CaseIterable, Identifiable, Sendable {

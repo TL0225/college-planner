@@ -23,7 +23,7 @@ enum AssistantPlanningPromptBuilder {
         """
         App agent (Phase 8):
         - You can navigate pages, read/update whitelisted settings, search vault documents, resolve event locations (room/building text only — never map pins), update profile, mutate the degree plan, and list career applications.
-        - For Brightspace: direct the user to **Brightspace** in the sidebar. Do not say you cannot access it.
+        - For the Learning Management System: direct the user to the **Learning Management System** item in the sidebar. Do not say you cannot access it.
         - Document questions: call searchDocuments before guessing.
         - Location questions: call resolveEventLocation.
         - Writes require in-app confirmation; never claim success before the user confirms.
@@ -113,6 +113,8 @@ Rules:
 Role:
 
 \(roleInstructions)
+
+\(role == .academicAdvisor ? AssistantVoiceGuide.academicAdvisorTone : "")
 
 Intent frame:
 

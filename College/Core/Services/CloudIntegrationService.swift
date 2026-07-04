@@ -84,7 +84,6 @@ final class CloudIntegrationService: ObservableObject {
         refreshDetectedProviders()
         activateStoredSecurityBookmarks()
         scanAuthorizedRootsNow()
-        startAutoRescanLoop()
     }
 
     deinit {
@@ -302,8 +301,8 @@ final class CloudIntegrationService: ObservableObject {
         refreshDetectedProviders()
     }
 
-    private func startAutoRescanLoop() {
-        autoRescanTask?.cancel()
+    func startAutoRescan() {
+        guard autoRescanTask == nil else { return }
         autoRescanTask = Task { @MainActor [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -313,6 +312,11 @@ final class CloudIntegrationService: ObservableObject {
                 self.scanAuthorizedRootsNow()
             }
         }
+    }
+
+    func stopAutoRescan() {
+        autoRescanTask?.cancel()
+        autoRescanTask = nil
     }
 
     private func activateStoredSecurityBookmarks() {

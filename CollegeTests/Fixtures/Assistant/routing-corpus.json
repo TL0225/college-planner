@@ -1,0 +1,712 @@
+{
+  "cases" : [
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_001",
+      "prompt" : "What classes do I need to graduate?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_002",
+      "prompt" : "What do I still need for my degree?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_003",
+      "prompt" : "Show me my remaining requirements",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_004",
+      "prompt" : "How many credits do I have left?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_005",
+      "prompt" : "What's left on my degree audit?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_006",
+      "prompt" : "Am I on track to graduate?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_007",
+      "prompt" : "List unmet requirements",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_008",
+      "prompt" : "What requirements am I missing?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_009",
+      "prompt" : "What classes should I take next semester?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_010",
+      "prompt" : "Help me plan next semester",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_011",
+      "prompt" : "Plan my spring schedule",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_012",
+      "prompt" : "What should I register for next term?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_013",
+      "prompt" : "Build my next semester course list",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_014",
+      "prompt" : "Next semester course recommendations",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_015",
+      "prompt" : "Create a semester by semester plan for my major",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "multi_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_016",
+      "prompt" : "Can you create a semester-by-semester breakdown of my major?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "multi_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_017",
+      "prompt" : "Map out all semesters until graduation",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "multi_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_018",
+      "prompt" : "Full degree timeline by semester",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "multi_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_019",
+      "prompt" : "Semester breakdown for my program",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "first_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_020",
+      "prompt" : "What classes should I take first semester?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "first_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_021",
+      "prompt" : "Help me pick freshman year courses",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "first_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_022",
+      "prompt" : "First semester schedule advice",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "first_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_023",
+      "prompt" : "What do new students usually take?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "route_024",
+      "prompt" : "What career does my major lead to?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "route_025",
+      "prompt" : "What can I do with my computer science degree?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "route_026",
+      "prompt" : "Career paths for my major",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "route_027",
+      "prompt" : "What jobs fit my degree?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "route_028",
+      "prompt" : "Where do MIS graduates work?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "route_029",
+      "prompt" : "Explore careers related to my program",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_030",
+      "prompt" : "What's the residency requirement for my degree?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "route_031",
+      "prompt" : "Pass fail policy for electives",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "route_032",
+      "prompt" : "Grade replacement rules",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "route_033",
+      "prompt" : "What is the repeat course policy?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "route_034",
+      "prompt" : "Catalog policy on withdrawals",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "route_035",
+      "prompt" : "Degree residency hours required",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_readiness",
+      "expectedTool" : "assessRegistrationReadiness",
+      "id" : "route_036",
+      "prompt" : "Am I ready to register for classes?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "route_037",
+      "prompt" : "Can I register next semester?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_readiness",
+      "expectedTool" : "assessRegistrationReadiness",
+      "id" : "route_038",
+      "prompt" : "Registration hold check",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_readiness",
+      "expectedTool" : "assessRegistrationReadiness",
+      "id" : "route_039",
+      "prompt" : "Am I cleared to register?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_risk",
+      "expectedTool" : "assessRequirementRisk",
+      "id" : "route_040",
+      "prompt" : "What's the riskiest unmet requirement for my degree?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_041",
+      "prompt" : "Which requirement might delay graduation?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_risk",
+      "expectedTool" : "assessRequirementRisk",
+      "id" : "route_042",
+      "prompt" : "Requirement risk assessment",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "route_043",
+      "prompt" : "What requirement is hardest to finish?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "course_swap_simulation",
+      "expectedTool" : "simulateCourseSwap",
+      "id" : "route_044",
+      "prompt" : "What if I swap UIT 101 for CSE 331?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "course_swap_simulation",
+      "expectedTool" : "simulateCourseSwap",
+      "id" : "route_045",
+      "prompt" : "Simulate dropping one course and adding another",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "course_swap_simulation",
+      "expectedTool" : "simulateCourseSwap",
+      "id" : "route_046",
+      "prompt" : "Course swap what-if",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "syllabus_deadline_sync",
+      "expectedTool" : "proposeSyllabusDeadlineSync",
+      "id" : "route_047",
+      "prompt" : "Add my syllabus deadlines to the planner",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "syllabus_deadline_sync",
+      "expectedTool" : "proposeSyllabusDeadlineSync",
+      "id" : "route_048",
+      "prompt" : "Sync syllabus dates to calendar",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "syllabus_deadline_sync",
+      "expectedTool" : "proposeSyllabusDeadlineSync",
+      "id" : "route_049",
+      "prompt" : "Import syllabus deadlines",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "skill_gap_bridge",
+      "expectedTool" : "suggestCoursesForSkillGaps",
+      "id" : "route_050",
+      "prompt" : "What courses should I take to close my security skill gap?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "skill_gap_bridge",
+      "expectedTool" : "suggestCoursesForSkillGaps",
+      "id" : "route_051",
+      "prompt" : "Courses for cybersecurity skills",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "skill_gap_bridge",
+      "expectedTool" : "suggestCoursesForSkillGaps",
+      "id" : "route_052",
+      "prompt" : "Close my skill gaps with classes",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_workload",
+      "expectedTool" : "assessRegistrationWorkload",
+      "id" : "route_053",
+      "prompt" : "Is 19 credits too heavy this semester?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_workload",
+      "expectedTool" : "assessRegistrationWorkload",
+      "id" : "route_054",
+      "prompt" : "Is my course load too much?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_workload",
+      "expectedTool" : "assessRegistrationWorkload",
+      "id" : "route_055",
+      "prompt" : "Registration workload check for 18 credits",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "weekly_schedule",
+      "expectedTool" : "draftWeeklySchedule",
+      "id" : "route_056",
+      "prompt" : "Draft my weekly study schedule",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "weekly_schedule",
+      "expectedTool" : "draftWeeklySchedule",
+      "id" : "route_057",
+      "prompt" : "Weekly schedule for this semester",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "weekly_schedule",
+      "expectedTool" : "draftWeeklySchedule",
+      "id" : "route_058",
+      "prompt" : "Plan my week around classes",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "fafsa_help",
+      "expectedTool" : "getAidDeadlines",
+      "id" : "route_059",
+      "prompt" : "When is FAFSA due?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "fafsa_help",
+      "expectedTool" : "getAidDeadlines",
+      "id" : "route_060",
+      "prompt" : "FAFSA filing deadline",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "fafsa_help",
+      "expectedTool" : "getAidDeadlines",
+      "id" : "route_061",
+      "prompt" : "When do I submit FAFSA?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "sap_risk",
+      "expectedTool" : "explainSAPPolicy",
+      "id" : "route_062",
+      "prompt" : "Am I at risk for SAP?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "sap_risk",
+      "expectedTool" : "explainSAPPolicy",
+      "id" : "route_063",
+      "prompt" : "Satisfactory academic progress check",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "financial_aid",
+      "id" : "route_064",
+      "prompt" : "Could I lose financial aid from grades?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "web_search",
+      "expectedTool" : "searxWebSearch",
+      "id" : "route_065",
+      "prompt" : "Search the web for pass fail policy",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "route_066",
+      "prompt" : "Look up university withdrawal policy online",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "web_search",
+      "expectedTool" : "searxWebSearch",
+      "id" : "route_067",
+      "prompt" : "Web search for add drop deadline",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "event_action",
+      "id" : "route_068",
+      "prompt" : "Create an event for my study group",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "event_action",
+      "id" : "route_069",
+      "prompt" : "Schedule a meeting on my calendar",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "event_action",
+      "id" : "route_070",
+      "prompt" : "Add study session to calendar",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "edge_001",
+      "prompt" : "What clasess do I need to gradute?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "next_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "edge_002",
+      "prompt" : "plan nxt semster pls",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "edge_003",
+      "prompt" : "careeer options??",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "edge_004",
+      "prompt" : "residency req?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "fafsa_help",
+      "expectedTool" : "getAidDeadlines",
+      "id" : "edge_005",
+      "prompt" : "fafsa when due",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_workload",
+      "expectedTool" : "assessRegistrationWorkload",
+      "id" : "edge_006",
+      "prompt" : "19 crdits too much",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "course_swap_simulation",
+      "expectedTool" : "simulateCourseSwap",
+      "id" : "edge_007",
+      "prompt" : "swap CSE 101 for CSE 331",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "syllabus_deadline_sync",
+      "expectedTool" : "proposeSyllabusDeadlineSync",
+      "id" : "edge_008",
+      "prompt" : "syllabus deadlines planner",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "skill_gap_bridge",
+      "expectedTool" : "suggestCoursesForSkillGaps",
+      "id" : "edge_009",
+      "prompt" : "skill gap security courses",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "registration_readiness",
+      "expectedTool" : "assessRegistrationReadiness",
+      "id" : "edge_010",
+      "prompt" : "register ready?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_risk",
+      "expectedTool" : "assessRequirementRisk",
+      "id" : "edge_011",
+      "prompt" : "riskiest requirement",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "multi_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "edge_012",
+      "prompt" : "semester by semester major plan",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "first_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "edge_013",
+      "prompt" : "first sem courses",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "weekly_schedule",
+      "expectedTool" : "draftWeeklySchedule",
+      "id" : "edge_014",
+      "prompt" : "weekly plan schedule",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "sap_risk",
+      "expectedTool" : "explainSAPPolicy",
+      "id" : "edge_015",
+      "prompt" : "sap financial aid risk",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "planner_due_lookup",
+      "id" : "extra_001",
+      "prompt" : "What is due this week?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "program_lookup",
+      "expectedTool" : "getStudentProfile",
+      "id" : "extra_002",
+      "prompt" : "What's my major?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "planner_due_lookup",
+      "id" : "extra_003",
+      "prompt" : "What's due tomorrow?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "general_inquiry",
+      "id" : "extra_004",
+      "prompt" : "What model are you?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "extra_005",
+      "prompt" : "Help me understand prerequisites",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "degree_policy_lookup",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "extra_006",
+      "prompt" : "Which electives count toward my major?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "career_exploration",
+      "expectedTool" : "getStudentLearningProfile",
+      "id" : "extra_007",
+      "prompt" : "Compare internships for CS majors",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "extra_008",
+      "prompt" : "Can I graduate early?",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "multi_semester_plan",
+      "expectedTool" : "draftSemesterPlan",
+      "id" : "extra_009",
+      "prompt" : "Double major feasibility",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "requirement_explanation",
+      "expectedTool" : "explainRequirements",
+      "id" : "extra_010",
+      "prompt" : "Transfer credit evaluation",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "task_creation",
+      "expectedTool" : "createTask",
+      "id" : "extra_011",
+      "prompt" : "Add assignment due Friday",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "state_aid_help",
+      "expectedTool" : "getAidDeadlines",
+      "id" : "extra_012",
+      "prompt" : "State aid deadline",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "aid_estimate",
+      "expectedTool" : "estimateAidRange",
+      "id" : "extra_013",
+      "prompt" : "Estimate my financial aid",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "award_letter_review",
+      "expectedTool" : "extractAidDocumentFacts",
+      "id" : "extra_014",
+      "prompt" : "Review my award letter",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "enrollment_intensity",
+      "expectedTool" : "getFullTimeStatus",
+      "id" : "extra_015",
+      "prompt" : "Full time vs part time aid",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "catalog_course_search",
+      "expectedTool" : "semanticCatalogSearch",
+      "id" : "extra_016",
+      "prompt" : "Find courses about machine learning",
+      "role" : "academicAdvisor"
+    },
+    {
+      "expectedIntent" : "page_navigation",
+      "expectedTool" : "navigateToPage",
+      "id" : "extra_017",
+      "prompt" : "Navigate to academics page",
+      "role" : "academicAdvisor"
+    }
+  ],
+  "version" : 1
+}

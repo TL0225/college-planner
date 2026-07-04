@@ -6,6 +6,21 @@
 import Foundation
 import SwiftData
 
+/// Outcome of a single program-requirements scrape attempt. Distinguishes a genuine
+/// fresh-cache skip from a scrape that ran but produced nothing — the latter must NOT
+/// be reported to the user as "already fresh".
+enum ProgramRequirementsScrapeOutcome: Sendable {
+    /// Could not run: no active university, or the fetch/parse threw.
+    case failed
+    /// Existing requirements were within the freshness window; nothing was fetched.
+    case skippedFresh
+    /// Re-fetched, but the parsed requirements were byte-identical to what is stored.
+    case unchanged(existingRowCount: Int)
+    /// Requirements were (re)written. `rowCount == 0` means the page was reachable but
+    /// yielded no parseable requirement categories (a real parser miss, not a cache hit).
+    case saved(rowCount: Int)
+}
+
 @MainActor
 extension CollegePersistence {
     /// Scrape and persist program requirements into local store catalog storage.
@@ -21,11 +36,29 @@ extension CollegePersistence {
             return 24 * 60 * 60
             #endif
         }()
-    ) async -> Int {
+    ) async -> ProgramRequirementsScrapeOutcome {
+        await BackgroundServiceOnDemand.runReturning(id: "program_requirements_scrape") {
+            await self.refreshProgramRequirementsIfNeededImpl(
+                programURL: programURL,
+                major: major,
+                degreeType: degreeType,
+                force: force,
+                minimumRefreshIntervalSeconds: minimumRefreshIntervalSeconds
+            )
+        }
+    }
+
+    private func refreshProgramRequirementsIfNeededImpl(
+        programURL: String,
+        major: String,
+        degreeType: String,
+        force: Bool = false,
+        minimumRefreshIntervalSeconds: TimeInterval
+    ) async -> ProgramRequirementsScrapeOutcome {
         guard let university = getActiveUniversity(),
               let repo = catalogRepository else {
             DebugLogger.shared.scraper("📚 Requirements: no active university")
-            return -1
+            return .failed
         }
 
         let canonicalURL = AcademicProgramHelpers.canonicalizeAcalogURL(programURL)
@@ -39,9 +72,18 @@ extension CollegePersistence {
                 DebugLogger.shared.scraper(
                     "📚 Requirements: skip scrape (fresh) major=\(major) degreeType=\(degreeType) age=\(Int(age))s"
                 )
-                return 0
+                return .skippedFresh
             }
         }
+
+        let activityID = BackgroundActivityCenter.programRequirementsActivityID(programURL: canonicalURL)
+        BackgroundActivityReporter.running(
+            id: activityID,
+            domain: .catalog,
+            title: major,
+            detail: String(localized: "catalog.background.program_requirements", defaultValue: "Scraping degree requirements…"),
+            indeterminate: true
+        )
 
         do {
             var parsed = try await scrapeProgramRequirementsOffMain(programURL: programURL)
@@ -57,7 +99,12 @@ extension CollegePersistence {
                 )
                 _ = try? appDataStore.catalogSave()
                 bumpCatalogDataRevision()
-                return existing.count
+                BackgroundActivityReporter.finish(
+                    id: activityID,
+                    succeeded: true,
+                    summary: String(localized: "catalog.background.program_requirements_unchanged", defaultValue: "Requirements up to date")
+                )
+                return .unchanged(existingRowCount: existing.count)
             }
 
             let inserted = try repo.replaceProgramRequirements(
@@ -78,20 +125,39 @@ extension CollegePersistence {
                     message: "\(major) requirements have changed since your last sync. Review the Detailed Audit."
                 )
             }
-            return inserted
+            BackgroundActivityReporter.finish(
+                id: activityID,
+                succeeded: true,
+                summary: inserted > 0
+                    ? String(format: String(localized: "catalog.background.program_requirements_saved", defaultValue: "%d requirement categories saved"), inserted)
+                    : String(localized: "catalog.background.program_requirements_empty", defaultValue: "Scrape finished with no parseable requirements")
+            )
+            if inserted > 0 {
+                AcademicCalendarImportPromptBridge.schedulePromptIfAppropriate(persistence: self)
+            }
+            return .saved(rowCount: inserted)
         } catch {
             DebugLogger.shared.scraper("❌ Requirements scrape failed: \(error)", level: .error)
             DebugLogger.shared.logError(error)
-            return -1
+            BackgroundActivityReporter.finish(
+                id: activityID,
+                succeeded: false,
+                summary: error.localizedDescription
+            )
+            return .failed
         }
     }
 
     /// Network fetch + HTML parse off the main actor (Phase 5 P0).
     private func scrapeProgramRequirementsOffMain(programURL: String) async throws -> [DegreeRequirement] {
-        let canonicalURL = AcademicProgramHelpers.canonicalizeAcalogURL(programURL)
+        let catalogFormat: String? = CoursedogEngine.isCoursedogProgramURL(programURL) ? "coursedog" : nil
         return try await Task.detached(priority: .userInitiated) {
             let scraper = UniversalCatalogScraper()
-            return try await scraper.scrapeProgramRequirements(programURL: canonicalURL)
+            return try await scraper.scrapeProgramRequirements(
+                programURL: programURL,
+                catalogFormat: catalogFormat,
+                politeness: .bulk
+            )
         }.value
     }
 
@@ -102,27 +168,14 @@ extension CollegePersistence {
         universityName: String,
         force: Bool = false
     ) async -> RequirementsRefreshResult {
-        let before = Date()
-        let savedRowCount = await refreshProgramRequirementsIfNeeded(
+        let outcome = await refreshProgramRequirementsIfNeeded(
             programURL: programURL,
             major: major,
             degreeType: degreeType,
             force: force
         )
-        let elapsed = Date().timeIntervalSince(before)
 
-        if savedRowCount < 0 {
-            return RequirementsRefreshResult(
-                programURL: programURL,
-                skippedDueToFreshCache: false,
-                savedRowCount: 0,
-                savedCourseCount: 0,
-                errorMessage: "Could not scrape \(major) — no catalog university match for “\(universityName)”."
-            )
-        }
-
-        let skipped = savedRowCount == 0 && !force && elapsed < 0.5
-        let savedCourseCount: Int = {
+        func currentCourseCount() -> Int {
             guard let university = getActiveUniversity(),
                   let repo = catalogRepository else { return 0 }
             return (try? repo.countDistinctCourseCodesInProgramRequirements(
@@ -130,15 +183,44 @@ extension CollegePersistence {
                 programURL: programURL,
                 degreeType: degreeType
             )) ?? 0
-        }()
+        }
 
-        return RequirementsRefreshResult(
-            programURL: programURL,
-            skippedDueToFreshCache: skipped,
-            savedRowCount: max(0, savedRowCount),
-            savedCourseCount: savedCourseCount,
-            errorMessage: nil
-        )
+        switch outcome {
+        case .failed:
+            return RequirementsRefreshResult(
+                programURL: programURL,
+                skippedDueToFreshCache: false,
+                savedRowCount: 0,
+                savedCourseCount: 0,
+                errorMessage: "Could not scrape \(major) — the catalog page couldn’t be fetched, or there’s no catalog match for “\(universityName)”."
+            )
+        case .skippedFresh:
+            return RequirementsRefreshResult(
+                programURL: programURL,
+                skippedDueToFreshCache: true,
+                savedRowCount: 0,
+                savedCourseCount: currentCourseCount(),
+                errorMessage: nil
+            )
+        case .unchanged(let existingRowCount):
+            return RequirementsRefreshResult(
+                programURL: programURL,
+                skippedDueToFreshCache: false,
+                savedRowCount: existingRowCount,
+                savedCourseCount: currentCourseCount(),
+                errorMessage: nil
+            )
+        case .saved(let rowCount):
+            // rowCount == 0 here means the page was reachable but produced no categories.
+            // It is intentionally NOT reported as "fresh"; the caller surfaces the miss.
+            return RequirementsRefreshResult(
+                programURL: programURL,
+                skippedDueToFreshCache: false,
+                savedRowCount: rowCount,
+                savedCourseCount: currentCourseCount(),
+                errorMessage: nil
+            )
+        }
     }
 
     private func enrichDegreeRequirementsFromCatalog(_ requirements: [DegreeRequirement]) -> [DegreeRequirement] {

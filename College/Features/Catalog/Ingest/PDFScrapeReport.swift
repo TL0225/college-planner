@@ -25,6 +25,52 @@ struct PDFScrapeReport: Codable, Sendable {
     let layoutProfileID: String?
     let documentIRNodeCount: Int?
     let warnings: [String]
+    let failureClass: CatalogPDFFailureClass?
+    let lastFailureMessage: String?
+
+    init(
+        schoolID: String,
+        schoolName: String,
+        generatedAt: Date,
+        parserVersion: String,
+        pdfSHA256: String,
+        pageCount: Int,
+        programsExtracted: Int,
+        coursesExtracted: Int,
+        requirementsExtracted: Int,
+        policiesExtracted: Int,
+        healthReport: PDFHealthReport?,
+        blockClassification: CatalogPDFBlockClassificationDiagnostics?,
+        parserCapabilityVersion: String?,
+        ocrPagesUsed: Int?,
+        averageProgramConfidence: Double?,
+        layoutProfileID: String?,
+        documentIRNodeCount: Int?,
+        warnings: [String],
+        failureClass: CatalogPDFFailureClass? = nil,
+        lastFailureMessage: String? = nil
+    ) {
+        self.schoolID = schoolID
+        self.schoolName = schoolName
+        self.generatedAt = generatedAt
+        self.parserVersion = parserVersion
+        self.pdfSHA256 = pdfSHA256
+        self.pageCount = pageCount
+        self.programsExtracted = programsExtracted
+        self.coursesExtracted = coursesExtracted
+        self.requirementsExtracted = requirementsExtracted
+        self.policiesExtracted = policiesExtracted
+        self.healthReport = healthReport
+        self.blockClassification = blockClassification
+        self.parserCapabilityVersion = parserCapabilityVersion
+        self.ocrPagesUsed = ocrPagesUsed
+        self.averageProgramConfidence = averageProgramConfidence
+        self.layoutProfileID = layoutProfileID
+        self.documentIRNodeCount = documentIRNodeCount
+        self.warnings = warnings
+        self.failureClass = failureClass
+        self.lastFailureMessage = lastFailureMessage
+    }
 
     static let storageKeyPrefix = "catalog.pdf.scrapeReport.v1."
 

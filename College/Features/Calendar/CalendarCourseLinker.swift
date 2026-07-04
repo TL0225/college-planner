@@ -6,6 +6,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import CollegeCalendar
 
 // MARK: - CalendarCourseLinker
 //
@@ -68,9 +69,32 @@ final class CalendarCourseLinker: ObservableObject {
         let unlinked = CollegePersistence.shared.fetchUnlinkedCalendarEvents()
         guard !unlinked.isEmpty else { return }
 
+        var noteLinkedEvents: [CalendarEvent] = []
+        var stillUnlinked: [CalendarEvent] = []
+        for event in unlinked {
+            if let courseID = CalendarSyncNotesMetadata.courseUUID(from: event.notes),
+               let course = CollegePersistence.shared.fetchCourse(id: courseID),
+               let semester = course.semester {
+                CollegePersistence.shared.bulkLinkCalendarEvents(
+                    [event],
+                    to: course,
+                    semester: semester
+                )
+                noteLinkedEvents.append(event)
+            } else {
+                stillUnlinked.append(event)
+            }
+        }
+        guard !stillUnlinked.isEmpty else {
+            if !noteLinkedEvents.isEmpty {
+                CollegePersistence.shared.notifyCalendarDidChange()
+            }
+            return
+        }
+
         // Phase 1: group events by extracted course code
         var groups: [String: [CalendarEvent]] = [:]
-        for event in unlinked {
+        for event in stillUnlinked {
             let title = event.title
             guard !title.isEmpty,
                   let code = extractCourseCode(from: title) else { continue }

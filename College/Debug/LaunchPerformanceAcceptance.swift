@@ -7,8 +7,8 @@ import Foundation
 
 /// Central place for launch / stall performance budgets used in telemetry and tests.
 enum LaunchPerformanceAcceptance {
-    /// Warn when preload pipeline wall time exceeds this (release).
-    static let pipelineWallClockWarnMsRelease = 45_000
+    /// Warn when preload pipeline wall time exceeds this (release). Part 11 / E-23.
+    static let pipelineWallClockWarnMsRelease = 8_000
     /// More permissive budget for Debug (debugger / ASan / local disks).
     static let pipelineWallClockWarnMsDebug = 120_000
 
@@ -27,8 +27,8 @@ enum LaunchPerformanceAcceptance {
 
     // MARK: - Academics audit
 
-    /// Warn when `AcademicsView.loadAudit` wall time exceeds this (release).
-    static let academicsAuditWarnMsRelease = 3_000
+    /// Warn when `AcademicsView.loadAudit` wall time exceeds this (release). Part 11 / E-24.
+    static let academicsAuditWarnMsRelease = 2_000
     /// More permissive budget for Debug (debugger / seeded fixtures).
     static let academicsAuditWarnMsDebug = 10_000
 
@@ -107,5 +107,67 @@ enum LaunchPerformanceAcceptance {
     /// `true` when resident memory is **beyond** the warning budget for the scenario.
     static func residentMemoryExceedsBudget(residentMB: Int, scenario: ResidentMemoryScenario) -> Bool {
         residentMB > residentMemoryWarnThresholdMB(for: scenario)
+    }
+
+    // MARK: - Shell navigation
+
+    static let shellPageSwitchWarnMsRelease = 450
+    static let shellPageSwitchWarnMsDebug = 1_200
+
+    static let shellSidebarToggleWarnMsRelease = 100
+    static let shellSidebarToggleWarnMsDebug = 900
+
+    static let shellInspectorToggleWarnMsRelease = 350
+    static let shellInspectorToggleWarnMsDebug = 1_000
+
+    static let shellSearchFocusWarnMsRelease = 250
+    static let shellSearchFocusWarnMsDebug = 800
+
+    static var shellPageSwitchWarnThresholdMs: Int {
+        #if DEBUG
+        shellPageSwitchWarnMsDebug
+        #else
+        shellPageSwitchWarnMsRelease
+        #endif
+    }
+
+    static var shellSidebarToggleWarnThresholdMs: Int {
+        #if DEBUG
+        shellSidebarToggleWarnMsDebug
+        #else
+        shellSidebarToggleWarnMsRelease
+        #endif
+    }
+
+    static var shellInspectorToggleWarnThresholdMs: Int {
+        #if DEBUG
+        shellInspectorToggleWarnMsDebug
+        #else
+        shellInspectorToggleWarnMsRelease
+        #endif
+    }
+
+    static var shellSearchFocusWarnThresholdMs: Int {
+        #if DEBUG
+        shellSearchFocusWarnMsDebug
+        #else
+        shellSearchFocusWarnMsRelease
+        #endif
+    }
+
+    static func shellPageSwitchExceedsBudget(durationMs: Int) -> Bool {
+        durationMs > shellPageSwitchWarnThresholdMs
+    }
+
+    static func shellSidebarToggleExceedsBudget(durationMs: Int) -> Bool {
+        durationMs > shellSidebarToggleWarnThresholdMs
+    }
+
+    static func shellInspectorToggleExceedsBudget(durationMs: Int) -> Bool {
+        durationMs > shellInspectorToggleWarnThresholdMs
+    }
+
+    static func shellSearchFocusExceedsBudget(durationMs: Int) -> Bool {
+        durationMs > shellSearchFocusWarnThresholdMs
     }
 }

@@ -1,0 +1,27 @@
+{
+  "profiles": [
+    {
+      "id": "sidebarN2Links",
+      "label": "Sidebar N2 links",
+      "schoolIDs": [
+        "dakota_state_university",
+        "stony_brook",
+        "purdue_university",
+        "ohio_university"
+      ],
+      "domSignals": ["n2_links"]
+    },
+    {
+      "id": "entityPreviewProgram",
+      "label": "Entity preview program",
+      "schoolIDs": ["university_at_buffalo"],
+      "domSignals": ["preview_entity", "preview_program"]
+    },
+    {
+      "id": "blockN2Table",
+      "label": "Block N2 table",
+      "schoolIDs": [],
+      "domSignals": ["block_n2_table"]
+    }
+  ]
+}

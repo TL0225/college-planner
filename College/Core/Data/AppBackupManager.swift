@@ -5,6 +5,7 @@
 
 import CryptoKit
 import Foundation
+import SwiftData
 
 /// One-file export/import of app state (local store profile + per-school catalog stores).
 enum AppBackupManager {
@@ -14,14 +15,64 @@ enum AppBackupManager {
         case appLocked
     }
 
+    private struct RestoredBackupPayload: Sendable {
+        let bundleID: String
+        let settingsPlistData: Data?
+        let restoredStores: [String: URL]
+    }
+
     private static let magicV1 = Data("COLBKUP1".utf8)
     private static let magicV2 = Data("COLBKUP2".utf8)
 
     @MainActor
-    static func exportBackup(to destinationURL: URL) throws {
+    private static func resolvedBackupKey() throws -> SymmetricKey {
+        SecurityManager.shared.ensureBackupKeyIfNeeded()
+        guard let key = SecurityManager.shared.masterKey else { throw BackupError.appLocked }
+        return key
+    }
+
+    static func exportBackup(to destinationURL: URL) async throws {
+        let key = try await MainActor.run { try resolvedBackupKey() }
+        let profileStoreCopy = try await MainActor.run { () throws -> (stagingDir: URL, storeURL: URL?) in
+            try AppDataStore.shared.profileSave()
+            let stagingDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("CollegeBackup-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            let storeURL = try ModelStoreMaintenance.copyProfileStoreForBackup(into: stagingDir)
+            return (stagingDir, storeURL)
+        }
+        try await Task.detached(priority: .userInitiated) {
+            defer { try? FileManager.default.removeItem(at: profileStoreCopy.stagingDir) }
+            try performExportBackup(
+                to: destinationURL,
+                key: key,
+                profileStoreCopy: profileStoreCopy.storeURL
+            )
+        }.value
+    }
+
+    static func importBackup(from sourceURL: URL) async throws {
+        let key = try await MainActor.run { try resolvedBackupKey() }
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CollegeRestore-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let restored = try await Task.detached(priority: .userInitiated) {
+            try extractBackupPayload(from: sourceURL, key: key, tempDir: tempDir)
+        }.value
+        try await MainActor.run {
+            try applyRestoredBackup(restored)
+        }
+    }
+
+    private static func performExportBackup(
+        to destinationURL: URL,
+        key: SymmetricKey,
+        profileStoreCopy: URL?
+    ) throws {
         let fm = FileManager.default
         guard let bundleID = Bundle.main.bundleIdentifier else { throw BackupError.missingBundleIdentifier }
-        guard let key = SecurityManager.shared.masterKey else { throw BackupError.appLocked }
 
         let defaultsDomain = UserDefaults.standard.persistentDomain(forName: bundleID) ?? [:]
         let settingsData = try PropertyListSerialization.data(
@@ -30,23 +81,9 @@ enum AppBackupManager {
             options: 0
         )
 
-        let tempDir = fm.temporaryDirectory.appendingPathComponent("CollegeBackup-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: tempDir) }
-
         var copiedStores: [(name: String, url: URL)] = []
-        if let localStoreCopy = try ModelStoreMaintenance.copyProfileStoreForBackup(into: tempDir) {
-            copiedStores.append((name: localStoreCopy.lastPathComponent, url: localStoreCopy))
-        }
-        for schoolID in CatalogStoreCoordinator.shared.loadRegistry().map(\.schoolID) {
-            let catalogURL = CollegeModelContainerFactory.catalogStoreURL(for: schoolID)
-            guard fm.fileExists(atPath: catalogURL.path) else { continue }
-            let copyURL = tempDir.appendingPathComponent("\(schoolID)-\(catalogURL.lastPathComponent)")
-            if fm.fileExists(atPath: copyURL.path) {
-                try fm.removeItem(at: copyURL)
-            }
-            try fm.copyItem(at: catalogURL, to: copyURL)
-            copiedStores.append((name: copyURL.lastPathComponent, url: copyURL))
+        if let profileStoreCopy {
+            copiedStores.append((name: profileStoreCopy.lastPathComponent, url: profileStoreCopy))
         }
 
         fm.createFile(atPath: destinationURL.path, contents: nil)
@@ -83,15 +120,13 @@ enum AppBackupManager {
         }
     }
 
-    @MainActor
-    static func importBackup(from sourceURL: URL) throws {
+    private static func extractBackupPayload(
+        from sourceURL: URL,
+        key: SymmetricKey,
+        tempDir: URL
+    ) throws -> RestoredBackupPayload {
         let fm = FileManager.default
         guard let bundleID = Bundle.main.bundleIdentifier else { throw BackupError.missingBundleIdentifier }
-        guard let key = SecurityManager.shared.masterKey else { throw BackupError.appLocked }
-
-        let tempDir = fm.temporaryDirectory.appendingPathComponent("CollegeRestore-\(UUID().uuidString)", isDirectory: true)
-        try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: tempDir) }
 
         let extractedStoreDir = tempDir.appendingPathComponent("stores", isDirectory: true)
         try fm.createDirectory(at: extractedStoreDir, withIntermediateDirectories: true)
@@ -121,13 +156,8 @@ enum AppBackupManager {
         let settingsBox = try fh.read(upToCount: settingsBoxLen) ?? Data()
         guard settingsBox.count == settingsBoxLen else { throw BackupError.invalidBackupFile }
         let settingsData = try openChunk(settingsBox, using: key, chunkIndex: 0xFFFF_FFFE)
-
-        let plist = try PropertyListSerialization.propertyList(from: settingsData, options: [], format: nil)
-        if let dict = plist as? [String: Any] {
-            UserDefaults.standard.removePersistentDomain(forName: bundleID)
-            UserDefaults.standard.setPersistentDomain(dict, forName: bundleID)
-            UserDefaults.standard.synchronize()
-        }
+        let settingsPlist = try PropertyListSerialization.propertyList(from: settingsData, options: [], format: nil)
+        _ = settingsPlist as? [String: Any]
 
         let storeCount = Int(try readUInt32())
         guard storeCount >= 1 else { throw BackupError.invalidBackupFile }
@@ -163,8 +193,19 @@ enum AppBackupManager {
             restoredStores[name] = outURL
         }
 
-        let profileStoreFileName = ModelStoreMaintenance.profileStoreURL().lastPathComponent
-        if let extractedProfile = restoredStores[profileStoreFileName] {
+        return RestoredBackupPayload(
+            bundleID: bundleID,
+            settingsPlistData: settingsData,
+            restoredStores: restoredStores
+        )
+    }
+
+    @MainActor
+    private static func applyRestoredBackup(_ payload: RestoredBackupPayload) throws {
+        let unifiedStoreFileName = ModelStoreMaintenance.profileStoreURL().lastPathComponent
+        let legacyProfileStoreFileName = CollegeModelContainerFactory.legacyProfileStoreURL().lastPathComponent
+        if let extractedProfile = payload.restoredStores[unifiedStoreFileName]
+            ?? payload.restoredStores[legacyProfileStoreFileName] {
             try ModelStoreMaintenance.replaceStoreFile(
                 at: ModelStoreMaintenance.profileStoreURL(),
                 from: extractedProfile
@@ -172,10 +213,18 @@ enum AppBackupManager {
         }
 
         let catalogBackupSuffix = "-catalog-" + ["sw", "ift", "data"].joined() + ".sqlite"
-        for (name, extracted) in restoredStores where name.hasSuffix(catalogBackupSuffix) {
-            let prefix = name.replacingOccurrences(of: catalogBackupSuffix, with: "")
-            let destination = CollegeModelContainerFactory.catalogStoreURL(for: prefix)
-            try ModelStoreMaintenance.replaceStoreFile(at: destination, from: extracted)
+        let unifiedContext = AppDataStore.shared.profileContext
+        for (name, extracted) in payload.restoredStores where name.hasSuffix(catalogBackupSuffix) {
+            _ = CollegeUnifiedCatalogStoreMigration.importCatalogSQLite(at: extracted, into: unifiedContext)
+        }
+        try? unifiedContext.save()
+
+        if let settingsPlistData = payload.settingsPlistData,
+           let settingsPlist = try? PropertyListSerialization.propertyList(from: settingsPlistData, options: [], format: nil),
+           let dict = settingsPlist as? [String: Any] {
+            UserDefaults.standard.removePersistentDomain(forName: payload.bundleID)
+            UserDefaults.standard.setPersistentDomain(dict, forName: payload.bundleID)
+            UserDefaults.standard.synchronize()
         }
     }
 

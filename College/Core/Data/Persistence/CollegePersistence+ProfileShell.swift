@@ -15,10 +15,18 @@ extension CollegePersistence {
             profile = existing
             return existing
         }
-        guard let created = try? profileRepository.ensurePrimaryProfileShell() else { return nil }
-        profile = created
-        bumpProfileRevision()
-        return created
+        do {
+            let created = try profileRepository.ensurePrimaryProfileShell()
+            profile = created
+            bumpProfileRevision()
+            return created
+        } catch {
+            AppLogger.shared.error(
+                "ensurePrimaryProfile failed: \(error.localizedDescription)",
+                category: .persistence
+            )
+            return nil
+        }
     }
 
     func addExperience(
@@ -28,7 +36,8 @@ extension CollegePersistence {
         startDate: Date,
         endDate: Date?,
         isCurrent: Bool,
-        description: String?
+        description: String?,
+        technologies: String? = nil
     ) {
         _ = try? profileRepository.createExperience(
             title: title,
@@ -37,7 +46,8 @@ extension CollegePersistence {
             startDate: startDate,
             endDate: endDate,
             isCurrent: isCurrent,
-            description: description
+            description: description,
+            technologies: technologies
         )
         save()
         bumpProfileRevision()

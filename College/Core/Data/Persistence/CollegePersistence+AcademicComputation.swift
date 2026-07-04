@@ -585,9 +585,17 @@ extension CollegePersistence {
         _ majorDisplay: String,
         academicProfile: AcademicProfile
     ) -> [CatalogDegreeRequirement] {
+        // Prefer the degree type implied by the program display (e.g. "… , M.S." → "M.S.")
+        // so the lookup matches the catalog rows the Requirements Breakdown resolves. The
+        // stored `academicProfile.degreeType` can drift from the program's actual degree
+        // type, which previously left the credit totals empty (0 / 0) while the breakdown
+        // rendered fine.
+        let inferredDegreeType = DeclaredProgramDegreeMetadata
+            .infer(fromProgramDisplay: majorDisplay)?.fullDegreeType
+        let lookupDegreeType = inferredDegreeType ?? academicProfile.degreeType
         var reqs = getDegreeRequirementsForMajorDisplay(
             majorDisplay,
-            degreeType: academicProfile.degreeType,
+            degreeType: lookupDegreeType,
             degreeLevel: academicProfile.degreeLevel
         )
         var resolvedDegreeKey = majorDisplay
@@ -630,7 +638,27 @@ extension CollegePersistence {
             resolvedDegreeKey = url
         }
 
-        return SpecializationRequirementFilter.apply(requirements: reqs, degreeKey: resolvedDegreeKey)
+        // Final fallback — mirror the Requirements Breakdown audit resolution: a
+        // whitespace-/case-tolerant name lookup that excludes minors. This catches programs
+        // whose stored rows carry a degree-type token that neither the profile nor the URL
+        // resolution matched, so the credit denominators stop collapsing to zero.
+        if reqs.isEmpty {
+            let byName = getDegreeRequirementsByName(
+                majorDisplay,
+                requireDegreeType: nil,
+                excludeDegreeTypes: ["Minor"]
+            )
+            if !byName.isEmpty {
+                reqs = byName
+                if let url = byName.first?.programURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !url.isEmpty {
+                    resolvedDegreeKey = url
+                }
+            }
+        }
+
+        let specFiltered = SpecializationRequirementFilter.apply(requirements: reqs, degreeKey: resolvedDegreeKey)
+        return applyExcludedCategoryFilter(specFiltered, degreeKeys: [resolvedDegreeKey, majorDisplay])
     }
 
     private func resolvedFilteredRequirementsForMinorDisplay(_ minorDisplay: String) -> [CatalogDegreeRequirement] {
@@ -640,7 +668,23 @@ extension CollegePersistence {
         if reqs.isEmpty, let programURL = resolveProgramProgramURL(programDisplay: trimmed, isMinor: true) {
             reqs = getDegreeRequirements(programURL: programURL, degreeType: "Minor")
         }
-        return reqs
+        let resolvedURL = reqs.first?.programURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return applyExcludedCategoryFilter(reqs, degreeKeys: [resolvedURL, trimmed])
+    }
+
+    /// Drops requirement rows whose category the user tagged as "doesn't count toward the
+    /// credit goal" (prerequisite already satisfied, waived by the school, etc.). Mirrors the
+    /// `(degreeKey, categoryTitle)` keying the Requirements Breakdown writes through.
+    private func applyExcludedCategoryFilter(
+        _ requirements: [CatalogDegreeRequirement],
+        degreeKeys: [String]
+    ) -> [CatalogDegreeRequirement] {
+        let excluded = AuditExcludedRequirementStore.excludedCategoryTitles(forAnyDegreeKey: degreeKeys)
+        guard !excluded.isEmpty else { return requirements }
+        return requirements.filter { req in
+            let title = req.requirementCategory.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !excluded.contains(title)
+        }
     }
 
     func creditsProgressSummary(requirements: [CatalogDegreeRequirement]) -> CreditsProgressSummary {
@@ -666,17 +710,31 @@ extension CollegePersistence {
 
         var requiredMin = 0.0
         for section in sections {
-            requiredMin += creditsRequiredMinMaxForCategoryTitle(section.title, requirements: section.requirements).min
+            requiredMin += requirementCreditTargetForSection(
+                title: section.title,
+                requirements: section.requirements
+            )
         }
 
         var claimed = Set<String>()
+        // Credits embedded directly on scraped course details (e.g. ModernCampus/DSU stores
+        // per-course credits on the course detail, not on the requirement `creditsRequired`
+        // field). Used by the zero-fallback below so the degree total matches the visible
+        // breakdown denominators instead of collapsing to 0.
+        var detailCreditsByCode: [String: Double] = [:]
+        func captureDetailCredits(_ detail: CourseDetail) {
+            let code = AcademicProgramHelpers.normalizeCourseCodeForProgress(detail.code)
+            guard !code.isEmpty else { return }
+            claimed.insert(code)
+            let credits = Double(RequirementBreakdownCredits.creditValue(from: detail.credits ?? ""))
+            if credits > 0, (detailCreditsByCode[code] ?? 0) <= 0 {
+                detailCreditsByCode[code] = credits
+            }
+        }
         for requirement in requirements {
             if let detailedJSON = requirement.requiredCoursesDetailedJSON,
                let detailed = decodeDetailedCourseList(detailedJSON) {
-                for detail in detailed {
-                    let code = AcademicProgramHelpers.normalizeCourseCodeForProgress(detail.code)
-                    if !code.isEmpty { claimed.insert(code) }
-                }
+                for detail in detailed { captureDetailCredits(detail) }
             }
             let requiredCodes = (requirement.requiredCourses ?? "")
                 .split(separator: ",")
@@ -686,10 +744,7 @@ extension CollegePersistence {
 
             if let selectDetailedJSON = requirement.selectFromDetailedJSON,
                let selectDetailed = decodeDetailedCourseList(selectDetailedJSON) {
-                for detail in selectDetailed {
-                    let code = AcademicProgramHelpers.normalizeCourseCodeForProgress(detail.code)
-                    if !code.isEmpty { claimed.insert(code) }
-                }
+                for detail in selectDetailed { captureDetailCredits(detail) }
             }
             for code in decodeJSONCourseList(requirement.selectFromJSON)
                 .map(AcademicProgramHelpers.normalizeCourseCodeForProgress)
@@ -770,6 +825,8 @@ extension CollegePersistence {
             for code in claimed {
                 if let info = completionByCode[code], info.credits > 0 {
                     estimate += info.credits
+                } else if let detailCredits = detailCreditsByCode[code], detailCredits > 0 {
+                    estimate += detailCredits
                 } else {
                     estimate += catalogCreditsForNormalizedCode(code)
                 }
@@ -780,6 +837,102 @@ extension CollegePersistence {
         let completed = completedFromClaimed
         let fraction = requiredMin > 0 ? min(max(completed / requiredMin, 0), 1) : 0
         return CreditsProgressSummary(completed: completed, required: requiredMin, fraction: fraction)
+    }
+
+    private func requirementCreditTargetForSection(
+        title: String,
+        requirements: [CatalogDegreeRequirement]
+    ) -> Double {
+        // The XOR banner ("Choose one of the following Specializations 18 credits")
+        // describes the whole specialization region. The selected option rows below it
+        // carry the concrete course credits, so counting both double-counts the path.
+        if isSpecializationGroupHeaderTitle(title) {
+            return 0
+        }
+
+        var requiredCreditValues: [Int] = []
+        var electiveCreditValues: [Int] = []
+        var selectCount = 0
+        var descriptionCredits = RequirementBreakdownCredits.creditsMentionedInProse(title)
+
+        func catalogCreditsForNormalizedCode(_ code: String) -> Int {
+            if let catalog = getCatalogCourse(code: code), catalog.credits > 0 {
+                return Int(catalog.credits)
+            }
+            let spaced = code.replacingOccurrences(
+                of: "([A-Za-z]+)(\\d+)",
+                with: "$1 $2",
+                options: .regularExpression
+            )
+            if spaced != code, let catalog = getCatalogCourse(code: spaced), catalog.credits > 0 {
+                return Int(catalog.credits)
+            }
+            return 0
+        }
+
+        for requirement in requirements {
+            selectCount = max(selectCount, Int(requirement.selectCount))
+            descriptionCredits = max(
+                descriptionCredits,
+                RequirementBreakdownCredits.creditsMentionedInProse(requirement.descriptionText ?? "")
+            )
+
+            if let detailedJSON = requirement.requiredCoursesDetailedJSON,
+               let detailed = decodeDetailedCourseList(detailedJSON),
+               !detailed.isEmpty {
+                requiredCreditValues.append(
+                    contentsOf: detailed.map {
+                        RequirementBreakdownCredits.creditValue(from: $0.credits ?? "")
+                    }
+                )
+            } else {
+                let legacyCodes = (requirement.requiredCourses ?? "")
+                    .split(separator: ",")
+                    .map { AcademicProgramHelpers.normalizeCourseCodeForProgress(String($0)) }
+                    .filter { !$0.isEmpty }
+                requiredCreditValues.append(contentsOf: legacyCodes.map(catalogCreditsForNormalizedCode))
+            }
+
+            if let selectDetailedJSON = requirement.selectFromDetailedJSON,
+               let selectDetailed = decodeDetailedCourseList(selectDetailedJSON),
+               !selectDetailed.isEmpty {
+                electiveCreditValues.append(
+                    contentsOf: selectDetailed.map {
+                        RequirementBreakdownCredits.creditValue(from: $0.credits ?? "")
+                    }
+                )
+            } else {
+                let selectCodes = decodeJSONCourseList(requirement.selectFromJSON)
+                    .map(AcademicProgramHelpers.normalizeCourseCodeForProgress)
+                    .filter { !$0.isEmpty }
+                electiveCreditValues.append(contentsOf: selectCodes.map(catalogCreditsForNormalizedCode))
+            }
+        }
+
+        let fromCourses = RequirementBreakdownCredits.categoryTarget(
+            requiredCreditValues: requiredCreditValues,
+            electiveCreditValues: electiveCreditValues,
+            selectCount: selectCount,
+            descriptionCredits: descriptionCredits
+        )
+        // Mirror the Requirements Breakdown philosophy: the scraped `creditsRequired` and the
+        // "(N Credits)" wording in a category *title* are unreliable (e.g. DSU's
+        // "Required Core (30 Credits)" really means four 3-credit courses = 12), so we only
+        // trust enumerated course credits, choose-N rules, and prose credit mentions. The
+        // catalog title is a last-resort fallback when a section enumerates nothing at all.
+        if fromCourses > 0 {
+            return Double(fromCourses)
+        }
+        let fromCatalog = Int(creditsRequiredMinMaxForCategoryTitle(title, requirements: requirements).min.rounded())
+        return Double(fromCatalog)
+    }
+
+    private func isSpecializationGroupHeaderTitle(_ title: String) -> Bool {
+        let lower = title.lowercased()
+        guard SpecializationGroupDetector.xorDescriptionPhrases.contains(where: { lower.contains($0) }) else {
+            return false
+        }
+        return SpecializationGroupDetector.xorTitleKeywords.contains { lower.contains($0.keyword) }
     }
 
     private func requirementCreditBuckets(requirements: [CatalogDegreeRequirement]) -> RequirementCreditBuckets {
@@ -893,12 +1046,30 @@ extension CollegePersistence {
     }
 
     func programCreditStatusBuckets(requirements: [CatalogDegreeRequirement]) -> ProgramCreditStatusBuckets {
-        let summary = courseProgressSummary(requirements: requirements)
+        let summary = creditsProgressSummary(requirements: requirements)
+        let inProgress = inProgressCredits(forRequirementCodes: eligibleCourseCodes(from: requirements))
+        let completed = summary.completedRoundedInt
+        let required = summary.requiredRoundedInt
         return ProgramCreditStatusBuckets(
-            completed: summary.done,
-            inProgress: max(0, summary.total - summary.done - summary.remaining),
-            remaining: summary.remaining
+            completed: completed,
+            inProgress: inProgress,
+            remaining: max(0, required - completed - inProgress)
         )
+    }
+
+    private func inProgressCredits(forRequirementCodes requirementCodes: Set<String>) -> Int {
+        guard !requirementCodes.isEmpty else { return 0 }
+        var counted = Set<String>()
+        var total = 0
+        for course in plans.flatMap(\.semestersArray).flatMap(\.coursesArray) {
+            let code = AcademicProgramHelpers.normalizeCourseCodeForProgress(course.code)
+            guard !code.isEmpty, requirementCodes.contains(code), counted.insert(code).inserted else { continue }
+            let status = course.status.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !course.isCompleted, (status == "In Progress" || status == "In-Progress") {
+                total += Int(course.credits)
+            }
+        }
+        return total
     }
 
     func majorProgramCreditStatusBuckets(

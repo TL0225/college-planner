@@ -35,11 +35,11 @@ struct IntelligenceDebugView: View {
                     
                     Text("Model: Llama 3.2 3B (4-bit quantized)")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     
                     Text("Location: ~/Desktop/College/Models/llama-3.2-3b-4bit")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -54,7 +54,7 @@ struct IntelligenceDebugView: View {
                                     Spacer()
                                     Text(value.rawValue)
                                         .font(.caption)
-                                        .foregroundColor(color(for: value))
+                                        .foregroundStyle(color(for: value))
                                 }
                             }
                         }
@@ -71,7 +71,7 @@ struct IntelligenceDebugView: View {
                     TextEditor(text: $prerequisiteText)
                         .frame(height: 80)
                         .border(Color.gray.opacity(0.3), width: 1)
-                        .cornerRadius(4)
+                        .clipShape(.rect(cornerRadius: 4))
                 }
             }
             
@@ -87,8 +87,8 @@ struct IntelligenceDebugView: View {
                 .frame(maxWidth: .infinity)
                 .padding()
                 .background(Color.blue)
-                .foregroundColor(.white)
-                .cornerRadius(8)
+                .foregroundStyle(.white)
+                .clipShape(.rect(cornerRadius: 8))
             }
             .disabled(isParsing)
             
@@ -129,8 +129,8 @@ struct IntelligenceDebugView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(modelStatus == "Ready" ? Color.green : Color.orange)
-            .foregroundColor(.white)
-            .cornerRadius(4)
+            .foregroundStyle(.white)
+            .clipShape(.rect(cornerRadius: 4))
     }
     
     private func testButton(_ name: String, text: String) -> some View {
@@ -147,7 +147,7 @@ struct IntelligenceDebugView: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 12)
             .background(Color.blue.opacity(0.1))
-            .cornerRadius(6)
+            .clipShape(.rect(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }

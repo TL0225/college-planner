@@ -100,6 +100,6 @@ struct CalendarStoredEventChipLabel: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
         }
-        .foregroundColor(textColor)
+        .foregroundStyle(textColor)
     }
 }

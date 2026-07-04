@@ -83,7 +83,10 @@ final class CatalogModelsStoreTests: PersistenceTestCase {
                     id: departmentID,
                     name: "Computer Science",
                     code: "CSE",
-                    school: "Engineering"
+                    school: "Engineering",
+                    extractionConfidence: nil,
+                    signalSource: nil,
+                    parserVersion: nil
                 )
             ]
         )
@@ -106,7 +109,12 @@ final class CatalogModelsStoreTests: PersistenceTestCase {
                     catalogStableID: nil,
                     provenanceJSON: nil,
                     mappingConfidence: nil,
-                    mappingSource: nil
+                    mappingSource: nil,
+                    parserVersion: nil,
+                    programKind: nil,
+                    parentProgramKey: nil,
+                    trackVariant: nil,
+                    catalogEditionID: nil
                 )
             ]
         )

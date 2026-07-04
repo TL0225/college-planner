@@ -16,7 +16,7 @@ final class UniversalCatalogScraperIRConsumerTests: XCTestCase {
         let nodeADup = CatalogDocumentNode(
             depth: 0,
             kind: .heading,
-            text: "Majors duplicate",
+            text: "Majors",
             elementSignature: "sig-a"
         )
         let nodeB = CatalogDocumentNode(

@@ -93,7 +93,7 @@ extension CalendarIntegrationManager {
 
             let result: CalendarGoogleIngestResult
             do {
-                result = try ingest.ingestGoogleSnapshots(
+                result = try await ingest.ingestGoogleSnapshots(
                     snapshots: snapshots,
                     calendarID: calendarID,
                     currentMap: currentMap,
@@ -221,7 +221,7 @@ extension CalendarIntegrationManager {
                 location: item.location,
                 notes: notes,
                 status: item.status,
-                customColorHex: item.colorId,
+                customColorHex: CalendarEventDisplayColorResolver.googleStoredColorHex(from: item.colorId),
                 recurrenceRule: recurrenceRule,
                 attendeesJSON: attendeesJSON,
                 isCancelled: false
@@ -295,7 +295,7 @@ extension CalendarIntegrationManager {
             )
         }
 
-        let mapUpdates = (try? CalendarIntegrationAccess.syncIngest?.ingestOutlookSnapshots(
+        let mapUpdates = (try? await CalendarIntegrationAccess.syncIngest?.ingestOutlookSnapshots(
             snapshots: snapshots,
             calendarID: calendarID,
             currentMap: currentMap
@@ -321,11 +321,12 @@ extension CalendarIntegrationManager {
                 end: ev.endDate,
                 isAllDay: ev.isAllDay,
                 location: ev.location,
-                notes: ev.notes
+                notes: ev.notes,
+                localUUIDFromICal: ev.localUUID
             )
         }
 
-        let mapUpdates = (try? CalendarIntegrationAccess.syncIngest?.ingestICloudSnapshots(
+        let mapUpdates = (try? await CalendarIntegrationAccess.syncIngest?.ingestICloudSnapshots(
             snapshots: snapshots,
             currentMap: currentMap
         )) ?? [:]

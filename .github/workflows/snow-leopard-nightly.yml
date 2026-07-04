@@ -1,0 +1,50 @@
+name: Snow Leopard nightly
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snow-leopard-verification:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Snow Leopard verification suites
+        run: |
+          set -euo pipefail
+          SUITES=(
+            AppDataStoreLaunchSafetyTests
+            DataWipeCompletenessTests
+            VaultHierarchyIntegrityTests
+            MenuBarStatusPayloadTests
+            CatalogPDFExtractorSafetyTests
+            CrashSignalHandlerAuditTests
+            CollegePersistenceSavePathTests
+            CollegeSchemaLegacyStoreRepairTests
+            ScoreboardGeneratorTests
+            PlannerCoursePersistenceFlowTests
+            LaunchDashboardFlowTests
+            CatalogNavigationFlowTests
+            VaultFilesystemConsistencyFlowTests
+            LMSKeychainRoundTripTests
+            CalendarEventCRUDFlowTests
+          )
+          for suite in "${SUITES[@]}"; do
+            echo "== $suite =="
+            bash scripts/college-xcodebuild-test.sh -project College.xcodeproj -scheme College -destination 'platform=macOS' \
+              -only-testing:"CollegeTests/$suite" test
+          done
+
+      - name: Generate scoreboard
+        run: bash scripts/generate-snow-leopard-scoreboard.sh
+
+      - name: Upload scoreboard artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snow-leopard-scoreboard
+          path: build/snow-leopard-scoreboard.*

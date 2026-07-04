@@ -27,7 +27,10 @@ final class VaultThumbnailCache: ObservableObject {
     static let shared = VaultThumbnailCache()
     private var cache: [String: NSImage] = [:]
     private var inFlight: Set<String> = []
+    private let maxEntries = 256
     private init() {}
+
+    var entryCount: Int { cache.count }
 
     func image(for key: String) -> NSImage? { cache[key] }
 
@@ -47,6 +50,9 @@ final class VaultThumbnailCache: ObservableObject {
             defer { self.inFlight.remove(key) }
             do {
                 let rep = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
+                if self.cache.count >= self.maxEntries, let oldest = self.cache.keys.first {
+                    self.cache.removeValue(forKey: oldest)
+                }
                 self.cache[key] = rep.nsImage
                 self.objectWillChange.send()
             } catch { }
@@ -76,6 +82,14 @@ enum VaultSpotlightService {
     }
 
     static func index(_ item: IndexItem) {
+        Task { @MainActor in
+            await BackgroundServiceOnDemand.run(id: "vault_spotlight_index") {
+                indexImpl(item)
+            }
+        }
+    }
+
+    private static func indexImpl(_ item: IndexItem) {
         let attr = CSSearchableItemAttributeSet(contentType: .content)
         attr.title = item.name
         attr.contentDescription = [item.category, item.tags.joined(separator: ", "), item.notes]

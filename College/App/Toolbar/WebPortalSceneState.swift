@@ -1,6 +1,6 @@
 // WebPortalSceneState.swift
 // Feature: App / Toolbar
-// Owner: ShortcutWebHostView, BrightspaceView
+// Owner: ShortcutWebHostView, LMSView
 
 import Foundation
 import Observation

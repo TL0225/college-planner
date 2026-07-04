@@ -176,6 +176,20 @@ class ModernCampusEngine {
 		}
 	}
 
+	/// Snapshot of per-run HTTP/discovery counters for ingest observability.
+	static func snapshotDiscoveryTelemetryCounts() -> [String: Int] {
+		discoveryTelemetryLock.withLock {
+			discoveryTelemetryCounts
+		}
+	}
+
+	/// Resets discovery telemetry at the start of a Modern Campus ingest run.
+	static func resetDiscoveryTelemetryCounts() {
+		discoveryTelemetryLock.withLock {
+			discoveryTelemetryCounts.removeAll(keepingCapacity: false)
+		}
+	}
+
 	private static func recordDiscoveryTelemetry(_ key: String) {
 		discoveryTelemetryLock.withLock {
 			discoveryTelemetryCounts[key, default: 0] += 1
@@ -248,21 +262,107 @@ class ModernCampusEngine {
 			next?.resume() // resume outside the lock to avoid priority inversion
 		}
 	}
+
+	/// Caps concurrent in-flight GETs when an origin declares `Crawl-delay` in robots.txt.
+	/// With no declared delay, returns `max`. Otherwise scales down (~one slot per second of delay).
+	static func effectiveConcurrency(declaredCrawlDelay: TimeInterval, max maxConcurrency: Int) -> Int {
+		effectiveConcurrency(
+			declaredCrawlDelay: declaredCrawlDelay,
+			politeness: .interactiveBackground,
+			max: maxConcurrency
+		)
+	}
+
+	/// Crawl-delay-aware concurrency that mirrors fetch politeness.
+	static func effectiveConcurrency(
+		declaredCrawlDelay: TimeInterval,
+		politeness: CatalogFetchPoliteness,
+		max maxConcurrency: Int
+	) -> Int {
+		let ceiling = Swift.max(1, maxConcurrency)
+		let delay = effectiveCrawlDelay(declaredCrawlDelay, politeness: politeness)
+		guard delay > 0 else { return ceiling }
+		return Swift.max(1, min(ceiling, Int(floor(4.0 / delay))))
+	}
+
+	private static func effectiveCrawlDelay(_ declaredCrawlDelay: TimeInterval, politeness: CatalogFetchPoliteness) -> TimeInterval {
+		let declared = Swift.max(0, declaredCrawlDelay)
+		switch politeness {
+		case .interactiveUserFacing:
+			return min(declared, 3.0)
+		case .interactiveBackground:
+			return min(declared, 8.0)
+		case .bulk, .catalogSkeleton:
+			return declared
+		}
+	}
+
+	/// Caps concurrent WKWebView WAF fallbacks — one rendered fetch at a time app-wide.
+	private static let renderedHTMLFallbackSemaphore = AsyncSemaphore(value: 1)
+
+	/// Heuristic: distinguish Cloudflare / bot challenges from normal Acalog pages that mention JavaScript in `<noscript>`.
+	static func htmlLooksLikeWAFOrJSChallenge(_ html: String) -> Bool {
+		let lower = html.lowercased()
+		let hasCatalogBody =
+			lower.contains("id=\"acalog-content\"") ||
+			lower.contains("preview_program.php") ||
+			lower.contains("preview_course") ||
+			lower.contains("undergraduate catalog")
+		if hasCatalogBody { return false }
+
+		let challengeMarkers = [
+			"just a moment",
+			"checking your browser",
+			"cf-browser-verification",
+			"challenge-platform",
+			"attention required! | cloudflare",
+			"/cdn-cgi/challenge-platform/",
+		]
+		return challengeMarkers.contains(where: { lower.contains($0) })
+	}
+
+	private static func fetchRenderedHTMLFallback(for url: URL) async throws -> String {
+		await renderedHTMLFallbackSemaphore.acquire()
+		defer { renderedHTMLFallbackSemaphore.release() }
+
+		if let host = url.host?.lowercased() {
+			AssistantWebFetchPolicy.registerPolicyHosts([host])
+		}
+
+		return try await CatalogRenderedHTMLFetcher.shared.fetchRenderedHTML(from: url)
+	}
 	
-	/// Public HTML fetching function for use by external scrapers
+	/// Public HTML fetching function for use by external scrapers.
 	static func fetchHTMLPublic(_ urlString: String) async throws -> String {
 		return try await fetchHTML(urlString)
 	}
-	
+
+	/// Public HTML fetch honoring a caller-specified `robots.txt` crawl-delay politeness.
+	static func fetchHTMLPublic(_ urlString: String, politeness: CatalogFetchPoliteness) async throws -> String {
+		return try await fetchHTML(urlString, politeness: politeness)
+	}
+
 	/// Private HTML fetching function for internal use.
+	///
+	/// **Politeness**: every GET first passes through ``CatalogOriginRobotsThrottle`` so the
+	/// crawler honors per-origin `robots.txt` `Crawl-delay` (a no-op when none is declared,
+	/// which is the common case). This is applied once per call, before the retry loop.
 	///
 	/// **Retry policy**: Up to 3 attempts with exponential backoff (1 s → 2 s → 4 s).
 	/// University catalog servers are notoriously flaky; a single timeout should not drop
 	/// a course or fail an entire batch.
-	private static func fetchHTML(_ urlString: String) async throws -> String {
+	private static func fetchHTML(
+		_ urlString: String,
+		politeness: CatalogFetchPoliteness = .interactiveBackground
+	) async throws -> String {
 		guard let url = URL(string: urlString) else {
 			throw ScraperError.invalidURL
 		}
+
+		// Honor per-origin crawl-delay before hitting the network. Serialized per host with
+		// jittered spacing; returns immediately for origins that declare no crawl-delay.
+		await CatalogOriginRobotsThrottle.applyPoliteDelayBeforeFetch(url: url, politeness: politeness)
+
 		let request = makeHTMLRequest(for: url)
 		var lastError: Error = ScraperError.invalidResponse
 		let retryableStatusCodes: Set<Int> = [429, 502, 503, 504]
@@ -285,6 +385,22 @@ class ModernCampusEngine {
 
 				let statusCode = httpResponse.statusCode
 				if !(200...299).contains(statusCode) {
+					if statusCode == 403 || statusCode == 429 || statusCode == 503 {
+						let body = String(data: data, encoding: .utf8) ?? ""
+						if htmlLooksLikeWAFOrJSChallenge(body) {
+							recordDiscoveryTelemetry("http.waf_detected.status.\(statusCode)")
+							do {
+								let rendered = try await fetchRenderedHTMLFallback(for: url)
+								if !htmlLooksLikeWAFOrJSChallenge(rendered) {
+									recordDiscoveryTelemetry("http.waf_rendered_success")
+									return rendered
+								}
+								recordDiscoveryTelemetry("http.waf_rendered_still_blocked")
+							} catch {
+								recordDiscoveryTelemetry("http.waf_rendered_failed")
+							}
+						}
+					}
 					guard retryableStatusCodes.contains(statusCode) else {
 						recordDiscoveryTelemetry("http.fail.status.\(statusCode)")
 						throw NSError(
@@ -326,6 +442,19 @@ class ModernCampusEngine {
 
 				guard let html = String(data: data, encoding: .utf8) else {
 					throw ScraperError.invalidResponse
+				}
+				if htmlLooksLikeWAFOrJSChallenge(html) {
+					recordDiscoveryTelemetry("http.waf_detected")
+					do {
+						let rendered = try await fetchRenderedHTMLFallback(for: url)
+						if !htmlLooksLikeWAFOrJSChallenge(rendered) {
+							recordDiscoveryTelemetry("http.waf_rendered_success")
+							return rendered
+						}
+						recordDiscoveryTelemetry("http.waf_rendered_still_blocked")
+					} catch {
+						recordDiscoveryTelemetry("http.waf_rendered_failed")
+					}
 				}
 				return html
 			} catch {
@@ -371,13 +500,7 @@ class ModernCampusEngine {
 	/// - each nav row contains <div class="n2_links"> ... <a href="content.php?catoid=...&navoid=...">Label</a>
 	private static func parseSidebarLinksFromIndexHTML(_ html: String, forCatoid catoid: String) -> [SidebarLink] {
 		guard let doc = try? SwiftSoup.parse(html) else { return [] }
-		// ModernCampus variants observed in the wild:
-		// - <table class="block_n2_links link_table">
-		// - <table class="block_n2_links links_table">
-		let container = (try? doc.select("table.block_n2_links.link_table, table.block_n2_links.links_table").first()) ?? doc
-		let primaryAnchors = (try? container.select("div.n2_links a[href]").array()) ?? []
-		let fallbackAnchors = (try? doc.select("a[href*='content.php'][href*='navoid='], .block_n2_links a[href*='navoid='], td.block_n2_and_content a[href*='navoid='], a.navbar[href*='navoid=']").array()) ?? []
-		let anchors = primaryAnchors.isEmpty ? fallbackAnchors : primaryAnchors
+		let anchors = ModernCampusSidebarParsing.anchors(in: doc)
 		if anchors.isEmpty { return [] }
 
 		var out: [SidebarLink] = []
@@ -678,27 +801,6 @@ class ModernCampusEngine {
 	static func invoke_parseProgramCatalogRequirementSheetFromHTML_forTests(_ html: String) -> ProgramCatalogRequirementSheet {
 		parseProgramCatalogRequirementSheetFromHTML(html)
 	}
-
-	/// Heuristic: distinguish Cloudflare / bot challenges from normal Acalog pages that mention JavaScript in `<noscript>`.
-	static func htmlLooksLikeWAFOrJSChallenge(_ html: String) -> Bool {
-		let lower = html.lowercased()
-		let hasCatalogBody =
-			lower.contains("id=\"acalog-content\"") ||
-			lower.contains("preview_program.php") ||
-			lower.contains("preview_course") ||
-			lower.contains("undergraduate catalog")
-		if hasCatalogBody { return false }
-
-		let challengeMarkers = [
-			"just a moment",
-			"checking your browser",
-			"cf-browser-verification",
-			"challenge-platform",
-			"attention required! | cloudflare",
-			"/cdn-cgi/challenge-platform/",
-		]
-		return challengeMarkers.contains(where: { lower.contains($0) })
-	}
 	#endif
 
 	// MARK: - Types
@@ -769,7 +871,7 @@ class ModernCampusEngine {
 		// Normalize to scheme://host[:port]
 		let scheme = comps.scheme ?? "https"
 		let host = comps.host ?? baseURL
-		let portPart = comps.port != nil ? ":\(comps.port!)" : ""
+		let portPart = comps.port.map { ":\($0)" } ?? ""
 
 		let normalized = trimTrailingSlash("\(scheme)://\(host)\(portPart)")
 		return (normalized, catoidHint)
@@ -1105,8 +1207,8 @@ class ModernCampusEngine {
 	///
 	/// Returns the navoid string if the model confidently identifies a match, nil otherwise.
 	private static func classifySidebarForCoursesWithLLM(navoids: [String: String], logger: DebugLogger) async -> String? {
-		guard AppleSiliconPlatform.isSupported else {
-			logger.log("⚠️ LLM sidebar classifier skipped — \(AppleSiliconPlatform.requirementMessage)")
+		guard AppleSiliconPlatform.isMLXCompatible else {
+			logger.log("⚠️ LLM sidebar classifier skipped — \(AppleSiliconPlatform.mlxRequirementMessage)")
 			return nil
 		}
 
@@ -1137,7 +1239,9 @@ If none seem relevant, return: {"navoid": null}
 					try await Task.sleep(nanoseconds: 15_000_000_000)
 					throw LocalLLMRunnerError.generationFailed
 				}
-				let result = try await group.next()!
+				guard let result = try await group.next() else {
+					throw LocalLLMRunnerError.generationFailed
+				}
 				group.cancelAll()
 				return result
 			}
@@ -1165,7 +1269,11 @@ If none seem relevant, return: {"navoid": null}
 	/// 2) Load content.php?catoid=...&navoid=...
 	/// 3) Detect pagination (filter[cpage]) and gather preview links across all pages
 	/// 4) Crawl each preview page for details (bounded concurrency)
-	static func fetchAllCourses(baseURL: String, catoid: String) async throws -> [CatalogCourse] {
+	static func fetchAllCourses(
+		baseURL: String,
+		catoid: String,
+		politeness: CatalogFetchPoliteness = .interactiveBackground
+	) async throws -> [CatalogCourse] {
 		let key = courseCacheKey(baseURL: baseURL, catoid: catoid)
 		if let cached = cachedCourses(forKey: key) {
 			recordDiscoveryTelemetry("courses.cache_hit")
@@ -1178,7 +1286,7 @@ If none seem relevant, return: {"navoid": null}
 		}
 
 		let task = Task<[CatalogCourse], Error> {
-			try await fetchAllCoursesUncached(baseURL: baseURL, catoid: catoid)
+			try await fetchAllCoursesUncached(baseURL: baseURL, catoid: catoid, politeness: politeness)
 		}
 
 		courseCacheLock.withLock {
@@ -1201,24 +1309,23 @@ If none seem relevant, return: {"navoid": null}
 		}
 	}
 
-	/// Incremental course delivery for chunked local store imports (v1: batches after full fetch).
+	/// Incremental course delivery — yields preview batches as they are fetched (no full-catalog buffer).
 	static func streamCourseBatches(
 		baseURL: String,
 		catoid: String,
-		batchSize: Int = 250
+		batchSize: Int = 250,
+		politeness: CatalogFetchPoliteness = .interactiveBackground
 	) -> AsyncThrowingStream<[CatalogCourse], Error> {
 		AsyncThrowingStream { continuation in
 			Task {
 				do {
-					let all = try await fetchAllCourses(baseURL: baseURL, catoid: catoid)
-					guard !all.isEmpty else {
-						continuation.finish()
-						return
-					}
-					let size = max(1, batchSize)
-					for start in stride(from: 0, to: all.count, by: size) {
-						let end = min(start + size, all.count)
-						continuation.yield(Array(all[start..<end]))
+					try await streamCoursePreviewBatches(
+						baseURL: baseURL,
+						catoid: catoid,
+						batchSize: batchSize,
+						politeness: politeness
+					) { batch in
+						continuation.yield(batch)
 					}
 					continuation.finish()
 				} catch {
@@ -1228,7 +1335,11 @@ If none seem relevant, return: {"navoid": null}
 		}
 	}
 
-	private static func fetchAllCoursesUncached(baseURL: String, catoid: String) async throws -> [CatalogCourse] {
+	private static func discoverCourseLinkStubs(
+		baseURL: String,
+		catoid: String,
+		politeness: CatalogFetchPoliteness
+	) async throws -> [CourseLinkStub] {
 		let logger = DebugLogger.shared
 		let navoidCandidates = try await rankedCourseDescriptionNavoids(baseURL: baseURL, catoid: catoid)
 		if navoidCandidates.isEmpty {
@@ -1239,13 +1350,19 @@ If none seem relevant, return: {"navoid": null}
 		var chosenNavoid: String?
 		var firstHTML = ""
 		var maxPage = 1
+		let declaredCrawlDelay: TimeInterval
+		if let base = URL(string: baseURL) {
+			declaredCrawlDelay = await CatalogOriginRobotsThrottle.declaredCrawlDelaySeconds(for: base)
+		} else {
+			declaredCrawlDelay = 0
+		}
 
 		for (idx, navoid) in navoidCandidates.enumerated() {
 			guard let pageURL = makeCourseDescriptionsContentURLString(baseURL: baseURL, catoid: catoid, navoid: navoid, cpage: nil) else {
 				continue
 			}
 			logger.log("📚 Courses(content): loading course descriptions page: \(pageURL)")
-			let html = try await fetchHTML(pageURL)
+			let html = try await fetchHTML(pageURL, politeness: politeness)
 			let pages = discoverMaxCourseDescriptionsPage(from: html)
 			let stubs = parseCourseLinkStubsFromCourseDescriptionsHTML(html)
 			logger.log("📚 Courses(content): navoid=\(navoid) page1 stubs=\(stubs.count) pages=\(pages)")
@@ -1285,17 +1402,16 @@ If none seem relevant, return: {"navoid": null}
 			}
 		}
 
-		let firstStubs = parseCourseLinkStubsFromCourseDescriptionsHTML(firstHTML)
-		logger.log("📚 Courses(content): page 1 parsed stubs=\(firstStubs.count)")
-		mergeStubs(firstStubs)
-		let totalPages = maxPage
-		if totalPages > 1 {
-			let pages = Array(2...totalPages)
-			let pageFetchConcurrency = 4
+		mergeStubs(parseCourseLinkStubsFromCourseDescriptionsHTML(firstHTML))
+		if maxPage > 1 {
+			let pages = Array(2...maxPage)
+			let pageFetchConcurrency = effectiveConcurrency(
+				declaredCrawlDelay: declaredCrawlDelay,
+				politeness: politeness,
+				max: 4
+			)
 			let pageFetchSemaphore = AsyncSemaphore(value: pageFetchConcurrency)
 			var stubsByPage: [Int: [CourseLinkStub]] = [:]
-
-			logger.log("📚 Courses(content): fetching \(pages.count) additional pages (concurrency=\(pageFetchConcurrency))")
 
 			await withTaskGroup(of: (Int, [CourseLinkStub]).self) { group in
 				for page in pages {
@@ -1305,122 +1421,115 @@ If none seem relevant, return: {"navoid": null}
 					group.addTask {
 						await pageFetchSemaphore.acquire()
 						defer { pageFetchSemaphore.release() }
-
 						do {
-							let pageHTML = try await fetchHTML(pageURLString)
+							let pageHTML = try await fetchHTML(pageURLString, politeness: politeness)
 							let pageStubs = parseCourseLinkStubsFromCourseDescriptionsHTML(pageHTML)
-							logger.log("📚 Courses(content): page \(page) parsed stubs=\(pageStubs.count)")
 							return (page, pageStubs)
 						} catch {
-							logger.log("⚠️ Courses(content): failed to load page \(page)/\(totalPages): \(pageURLString)")
 							return (page, [])
 						}
 					}
 				}
-
 				for await (page, pageStubs) in group {
 					stubsByPage[page] = pageStubs
 				}
 			}
-
 			for page in pages {
 				mergeStubs(stubsByPage[page] ?? [])
 			}
 		}
-		logger.log("📚 Courses(content): total unique stubs=\(stubsByCode.count)")
 
 		let stubs = Array(stubsByCode.values).sorted { $0.courseCode < $1.courseCode }
-		guard !stubs.isEmpty else {
-			logger.log("📚 Courses(content): parsed 0 courses")
-			return []
+		logger.log("📚 Courses(content): total unique stubs=\(stubs.count)")
+		return stubs
+	}
+
+	private static func streamCoursePreviewBatches(
+		baseURL: String,
+		catoid: String,
+		batchSize: Int,
+		politeness: CatalogFetchPoliteness,
+		yieldBatch: ([CatalogCourse]) -> Void
+	) async throws {
+		let stubs = try await discoverCourseLinkStubs(baseURL: baseURL, catoid: catoid, politeness: politeness)
+		guard !stubs.isEmpty else { return }
+
+		let declaredCrawlDelay: TimeInterval
+		if let base = URL(string: baseURL) {
+			declaredCrawlDelay = await CatalogOriginRobotsThrottle.declaredCrawlDelaySeconds(for: base)
+		} else {
+			declaredCrawlDelay = 0
 		}
 
 		let indices = Array(stubs.indices)
-		var resultsByIndex: [Int: CatalogCourse] = [:]
+		let maxConcurrency = effectiveConcurrency(
+			declaredCrawlDelay: declaredCrawlDelay,
+			politeness: politeness,
+			max: min(16, max(1, tunedSession.configuration.httpMaximumConnectionsPerHost))
+		)
 
-		// Fetch preview pages with bounded concurrency. This avoids spawning thousands of tasks at once
-		// (which can look like a "freeze" in the debugger) while still being fast.
-		let maxConcurrency = min(16, max(1, tunedSession.configuration.httpMaximumConnectionsPerHost))
-		logger.log("📚 Courses(content): fetching \(indices.count) preview pages (concurrency=\(maxConcurrency))")
-		let startedAt = Date()
+		var pendingBatch: [CatalogCourse] = []
+		pendingBatch.reserveCapacity(batchSize)
+		let size = max(1, batchSize)
 
-		var previewFallbackCount = 0
-		await withTaskGroup(of: (Int, CatalogCourse, Bool).self) { group in
+		await withTaskGroup(of: CatalogCourse.self) { group in
 			var nextIndexIterator = indices.makeIterator()
-			var completed = 0
 
 			func enqueueNext() {
 				guard let i = nextIndexIterator.next() else { return }
 				let stub = stubs[i]
 				group.addTask {
-					if Task.isCancelled {
-						return (i, stub.asCatalogCourse(), true)
-					}
+					if Task.isCancelled { return stub.asCatalogCourse() }
 					guard let detailURL = makeAbsoluteURLString(baseURL: baseURL, href: stub.href) else {
-						return (i, stub.asCatalogCourse(), true)
+						return stub.asCatalogCourse()
 					}
 					do {
-						let detailHTML = try await fetchHTML(detailURL)
+						let detailHTML = try await fetchHTML(detailURL, politeness: politeness)
 						if let detailed = parseCourseDetailFromPreviewHTML(detailHTML, fallback: stub) {
-							return (i, detailed, false)
+							return detailed
 						}
-						return (i, stub.asCatalogCourse(), true)
+						return stub.asCatalogCourse()
 					} catch {
-						return (i, stub.asCatalogCourse(), true)
+						return stub.asCatalogCourse()
 					}
 				}
 			}
 
-			// Prime the pump.
-			for _ in 0..<maxConcurrency {
+			for _ in 0..<min(maxConcurrency, indices.count) {
 				enqueueNext()
 			}
 
-			for await (i, course, usedFallback) in group {
-				resultsByIndex[i] = course
-				completed += 1
-				if usedFallback { previewFallbackCount += 1 }
-
-				if completed == 1 || completed % 100 == 0 || completed == indices.count {
-					let elapsed = max(0.001, Date().timeIntervalSince(startedAt))
-					let perSecond = Double(completed) / elapsed
-					let remaining = max(0, indices.count - completed)
-					let etaSeconds = perSecond > 0 ? Double(remaining) / perSecond : 0
-					logger.log(
-						String(
-							format: "📚 Courses(content): fetched %d/%d previews (%.0f%%), rate=%.2f/s, eta=%.0fs",
-							completed,
-							indices.count,
-							(Double(completed) / Double(max(1, indices.count))) * 100.0,
-							perSecond,
-							etaSeconds
-						)
-					)
+			while let course = await group.next() {
+				pendingBatch.append(course)
+				if pendingBatch.count >= size {
+					yieldBatch(pendingBatch)
+					pendingBatch.removeAll(keepingCapacity: true)
 				}
-
 				enqueueNext()
 			}
 		}
 
-		let totalPreviewFetches = indices.count
-		let detailedPreviewCount = max(0, totalPreviewFetches - previewFallbackCount)
-		if totalPreviewFetches > 0 {
-			let fallbackRate = (Double(previewFallbackCount) / Double(totalPreviewFetches)) * 100.0
-			logger.log(
-				String(
-					format: "📚 Courses(content): preview parse quality detailed=%d fallback=%d fallbackRate=%.1f%%",
-					detailedPreviewCount,
-					previewFallbackCount,
-					fallbackRate
-				)
-			)
-			recordDiscoveryTelemetry("courses.preview.detailed", count: detailedPreviewCount)
-			recordDiscoveryTelemetry("courses.preview.fallback", count: previewFallbackCount)
+		if !pendingBatch.isEmpty {
+			yieldBatch(pendingBatch)
 		}
+	}
 
-		let ordered = indices.compactMap { resultsByIndex[$0] }
-		let deduped = dedupeCatalogCourses(ordered)
-		logger.log("📚 Courses(content): parsed \(deduped.count) courses")
+	private static func fetchAllCoursesUncached(
+		baseURL: String,
+		catoid: String,
+		politeness: CatalogFetchPoliteness = .interactiveBackground
+	) async throws -> [CatalogCourse] {
+		var collected: [CatalogCourse] = []
+		try await streamCoursePreviewBatches(
+			baseURL: baseURL,
+			catoid: catoid,
+			batchSize: 250,
+			politeness: politeness
+		) { batch in
+			collected.append(contentsOf: batch)
+		}
+		let deduped = dedupeCatalogCourses(collected)
+		DebugLogger.shared.log("📚 Courses(content): parsed \(deduped.count) courses")
 		return deduped
 	}
 
@@ -2042,12 +2151,18 @@ If none seem relevant, return: {"navoid": null}
 		let listCandidates = try await discoverAcalogCatalogListCandidates(baseURL: baseURL)
 		let posted = ModernCampusCatalogLabels.filterPostedCatalogs(from: listCandidates)
 		if !posted.isEmpty {
-			return posted.sorted {
+			let latestPerLabel = ModernCampusCatalogLabels.latestCatalogsPerNormalizedLabel(from: posted)
+			return latestPerLabel.sorted {
 				$0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
 			}
 		}
 
 		let catoid = try await discoverCurrentCatalogID(baseURL: baseURL)
+		DebugLogger.shared.log(
+			"⚠️ No posted catalogs found at \(baseURL); falling back to single inferred catoid=\(catoid)",
+			category: .scraper,
+			level: .error
+		)
 		return [ModernCampusCatalogDescriptor(catoid: catoid, title: "Catalog")]
 	}
 
@@ -2059,10 +2174,24 @@ If none seem relevant, return: {"navoid": null}
 		do {
 			html = try await fetchHTML(listURL)
 		} catch {
+			recordDiscoveryTelemetry("discover.catalog_list.fetch_failed")
+			DebugLogger.shared.log(
+				"⚠️ Catalog list fetch failed (\(listURL)): \(error.localizedDescription) — falling back to single-catalog discovery",
+				category: .scraper,
+				level: .error
+			)
 			return []
 		}
-		guard let doc = try? SwiftSoup.parse(html) else { return [] }
+		guard let doc = try? SwiftSoup.parse(html) else {
+			recordDiscoveryTelemetry("discover.catalog_list.parse_failed")
+			return []
+		}
 
+		return parseCatalogListPage(doc: doc, host: host)
+	}
+
+	/// Parses `misc/catalog_list.php` anchors, including trailing sibling text (UB puts `[ARCHIVED CATALOG]` after the link).
+	static func parseCatalogListPage(doc: Document, host: String = "") -> [ModernCampusCatalogDescriptor] {
 		let anchors = (try? doc.select("a[href*='index.php?catoid=']").array()) ?? []
 		var out: [ModernCampusCatalogDescriptor] = []
 		var seenCatoids = Set<String>()
@@ -2071,8 +2200,11 @@ If none seem relevant, return: {"navoid": null}
 		for a in anchors {
 			let rawHref = (try? a.attr("href")) ?? ""
 			let href = rawHref.replacingOccurrences(of: "&amp;", with: "&")
-			let text = ((try? a.text()) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-			if ModernCampusCatalogLabels.shouldExcludeCatalogListTitle(text) { continue }
+			let lineLabel = catalogListLineLabel(for: a)
+			if ModernCampusCatalogLabels.shouldExcludeCatalogListTitle(lineLabel) { continue }
+
+			let title = ModernCampusCatalogLabels.postedDisplayTitle(from: (try? a.text()) ?? "")
+			if title.isEmpty { continue }
 
 			let comps = URLComponents(string: href.starts(with: "http") ? href : "https://x/" + href.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
 			guard let catoid = comps?.queryItems?.first(where: { $0.name.lowercased() == "catoid" })?.value,
@@ -2083,15 +2215,49 @@ If none seem relevant, return: {"navoid": null}
 			if host.contains("buffalo.edu"), catoid == "3" { continue }
 			guard seenCatoids.insert(catoid).inserted else { continue }
 
-			out.append(ModernCampusCatalogDescriptor(catoid: catoid, title: text))
+			out.append(ModernCampusCatalogDescriptor(catoid: catoid, title: title))
 		}
 
 		return out
 	}
 
+	/// Anchor text plus trailing siblings until the next `<br>` or catalog link (captures `[ARCHIVED CATALOG]` markers).
+	private static func catalogListLineLabel(for anchor: Element) -> String {
+		var parts: [String] = []
+		if let anchorText = try? anchor.text() {
+			let trimmed = anchorText.trimmingCharacters(in: .whitespacesAndNewlines)
+			if !trimmed.isEmpty { parts.append(trimmed) }
+		}
+
+		var node: Node? = anchor.nextSibling()
+		while let current = node {
+			if let element = current as? Element {
+				let tag = element.tagName().lowercased()
+				if tag == "br" || tag == "a" { break }
+				if let text = try? element.text() {
+					let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+					if !trimmed.isEmpty { parts.append(trimmed) }
+				}
+			} else if let textNode = current as? TextNode {
+				let trimmed = textNode.text().trimmingCharacters(in: .whitespacesAndNewlines)
+				if !trimmed.isEmpty { parts.append(trimmed) }
+			}
+			node = current.nextSibling()
+		}
+
+		return parts.joined(separator: " ")
+			.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+	}
+
 	static func discoverCurrentCatalogID(baseURL: String) async throws -> String {
+		// `"1"` is Acalog's conventional first catalog id, used only as a last-resort guess.
+		// Each fallback path is recorded so a wrong-catalog selection is diagnosable.
 		let html = (try? await fetchHTML(baseURL)) ?? ""
-		guard !html.isEmpty else { return "1" }
+		guard !html.isEmpty else {
+			recordDiscoveryTelemetry("discover.catoid.fallback.empty_html")
+			return "1"
+		}
 		do {
 			let doc = try SwiftSoup.parse(html)
 			let anchors = try doc.select("a[href*='catoid=']")
@@ -2103,8 +2269,13 @@ If none seem relevant, return: {"navoid": null}
 					counts[id, default: 0] += 1
 				}
 			}
-			return counts.sorted { $0.value > $1.value }.first?.key ?? "1"
+			if let best = counts.sorted(by: { $0.value > $1.value }).first?.key {
+				return best
+			}
+			recordDiscoveryTelemetry("discover.catoid.fallback.no_links")
+			return "1"
 		} catch {
+			recordDiscoveryTelemetry("discover.catoid.fallback.parse_failed")
 			return "1"
 		}
 	}
@@ -2253,30 +2424,6 @@ If none seem relevant, return: {"navoid": null}
 		}
 		
 		return Array(allPrograms).sorted { $0.name < $1.name }
-	}
-
-	private static func scrapeSearchPage(baseURL: String, catoid: String, locationID: String, keyword: String) async throws -> [ScrapedProgram] {
-		var page = 1
-		var hasNextPage = true
-		var results: [ScrapedProgram] = []
-
-		while hasNextPage && page <= 5 {
-			let urlString = "\(baseURL)/search_advanced.php?cur_cat_oid=\(catoid)&search_database=Search&search_db=Search&cpage=\(page)&ecpage=1&ppage=1&spage=1&tpage=1&location=\(locationID)&filter%5Bkeyword%5D=\(keyword)&filter%5Bexact_match%5D=1"
-			guard let html = try? await fetchHTML(urlString) else { break }
-
-			let pageResults = parseProgramHTML(html, baseURL: baseURL)
-
-			if pageResults.isEmpty {
-				hasNextPage = false
-			} else {
-				results.append(contentsOf: pageResults)
-				if !html.contains("cpage=\(page + 1)") {
-					hasNextPage = false
-				}
-				page += 1
-			}
-		}
-		return results
 	}
 
 	nonisolated private static func parseProgramHTML(_ html: String, baseURL: String) -> [ScrapedProgram] {

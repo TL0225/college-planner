@@ -8,6 +8,9 @@ import FoundationModels
 
 @MainActor
 final class FoundationModelsAssistantSession: AssistantInferenceSession {
+    /// Registering dozens of tools at once has destabilized `LanguageModelSession` on macOS 26.
+    private static let maxRegisteredTools = 16
+
     private let makeExecutor: () -> AIAssistantToolExecutor
 
     init(makeExecutor: @escaping @MainActor @Sendable () -> AIAssistantToolExecutor) {
@@ -21,8 +24,9 @@ final class FoundationModelsAssistantSession: AssistantInferenceSession {
     @MainActor
     private func planOnMainActor(request: AssistantPlanningRequest) async -> AssistantPlanningResult {
         let allowed = request.toolDescriptors.filter { request.allowedToolNames.contains($0.name) }
+        let cappedDescriptors = Self.foundationModelsToolDescriptors(from: allowed)
         let provider = makeExecutor
-        let tools: [any Tool] = allowed.map { descriptor in
+        let tools: [any Tool] = cappedDescriptors.map { descriptor in
             FMRegistryToolAdapter(descriptor: descriptor, makeExecutor: { @MainActor @Sendable in provider() })
         }
         let instructions = AssistantPlanningPromptBuilder.foundationModelsInstructions(
@@ -74,6 +78,19 @@ final class FoundationModelsAssistantSession: AssistantInferenceSession {
                 backend: .foundationModels
             )
         }
+    }
+
+    /// Prefer read tools and cap count so Foundation Models session creation stays stable.
+    private static func foundationModelsToolDescriptors(
+        from descriptors: [AssistantToolDescriptor]
+    ) -> [AssistantToolDescriptor] {
+        let sorted = descriptors.sorted { lhs, rhs in
+            if lhs.requiresConfirmation != rhs.requiresConfirmation {
+                return !lhs.requiresConfirmation
+            }
+            return lhs.name < rhs.name
+        }
+        return Array(sorted.prefix(maxRegisteredTools))
     }
 
     private static func pendingConfirmationToolCall(

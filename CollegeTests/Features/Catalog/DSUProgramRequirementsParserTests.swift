@@ -94,6 +94,50 @@ final class DSUProgramRequirementsParserTests: XCTestCase {
         XCTAssertTrue(categories.contains(where: { $0.localizedCaseInsensitiveContains("Knowledge Courses") }))
     }
 
+    func testParseFullDSUCyberDefenseFixture_specializationsRetainTheirCourses() throws {
+        let fixtureURL = Bundle(for: DSUProgramRequirementsParserTests.self)
+            .url(forResource: "DSUCyberDefenseMS3975", withExtension: "html", subdirectory: "Fixtures")
+            ?? Bundle(for: DSUProgramRequirementsParserTests.self)
+                .url(forResource: "DSUCyberDefenseMS3975", withExtension: "html")
+        guard let fixtureURL else { throw XCTSkip("Missing CollegeTests/Fixtures/DSUCyberDefenseMS3975.html") }
+        let html = try String(contentsOf: fixtureURL, encoding: .utf8)
+        let parsed = try UniversalCatalogScraper.invoke_parseProgramRequirementsHTML_forTests(
+            html,
+            baseURL: "https://catalog.dsu.edu/preview_program.php?catoid=45&poid=3975"
+        )
+
+        func courses(in categoryFragment: String) -> Set<String> {
+            let row = parsed.requirements.first { $0.category.localizedCaseInsensitiveContains(categoryFragment) }
+            return Set(row?.requiredCourses ?? [])
+        }
+
+        let security = courses(in: "Security Management and Compliance Specialization")
+        XCTAssertTrue(security.isSuperset(of: ["INFA 720", "INFA 722", "INFA 742", "INFA 745"]),
+                      "Security specialization lost its course list: \(security)")
+
+        let technical = courses(in: "Technical Specialization")
+        XCTAssertTrue(technical.isSuperset(of: ["INFA 721", "INFA 723", "INFA 732", "INFA 751"]),
+                      "Technical specialization lost its course list: \(technical)")
+
+        let choiceParent = "Choose one of the following Specializations 18 credits"
+        let securityRow = parsed.requirements.first {
+            $0.category.localizedCaseInsensitiveContains("Security Management and Compliance Specialization")
+        }
+        let technicalRow = parsed.requirements.first {
+            $0.category.localizedCaseInsensitiveContains("Technical Specialization")
+        }
+        XCTAssertEqual(securityRow?.parentCategory, choiceParent)
+        XCTAssertEqual(securityRow?.displayTitle, "Security Management and Compliance Specialization")
+        XCTAssertEqual(technicalRow?.parentCategory, choiceParent)
+        XCTAssertEqual(technicalRow?.displayTitle, "Technical Specialization")
+
+        let openEndedSpecializationRules = parsed.requirements.filter {
+            $0.category.localizedCaseInsensitiveContains("Choose two 700-800")
+        }
+        XCTAssertEqual(openEndedSpecializationRules.count, 2)
+        XCTAssertTrue(openEndedSpecializationRules.allSatisfy { $0.parentCategory == choiceParent })
+    }
+
     func testParseProgramRequirements_extractsCreditsOnCourseDetails() throws {
         let parsed = try UniversalCatalogScraper.invoke_parseProgramRequirementsHTML_forTests(
             dsuCyberDefenseSnippet,

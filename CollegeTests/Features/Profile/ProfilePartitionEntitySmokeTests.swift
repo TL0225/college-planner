@@ -92,7 +92,7 @@ final class ProfilePartitionEntitySmokeTests: PersistenceTestCase {
             fileName: "resume.pdf",
             localRelativePath: "vault/resume.pdf"
         )
-        let posting = WorkdayJobPosting(companySlug: "acme", externalId: "JR123")
+        let posting = JobBoardPosting(companySlug: "acme", externalId: "JR123")
         posting.title = "Engineer"
         let application = JobApplication(statusRaw: "applied", sortOrder: 1)
         application.submittedResume = resume

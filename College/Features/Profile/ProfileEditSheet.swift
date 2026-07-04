@@ -27,6 +27,8 @@ struct ProfileEditSheet: View {
     @State private var shouldClearPhoto = false
     @State private var academicProfiles: [AcademicProfile] = []
     @State private var selectedAcademicProfileID: UUID?
+    @State private var commitSelectedAcademicProfileEdits: (() -> Void)?
+    @State private var showDiscardConfirmation = false
 
     var body: some View {
         ZStack {
@@ -36,7 +38,7 @@ struct ProfileEditSheet: View {
 
             VStack(spacing: 0) {
                 EditSheetTitleBar(
-                    onCancel: { dismiss() },
+                    onCancel: { requestCancel() },
                     onDone:   { saveAndDismiss() }
                 )
 
@@ -125,8 +127,17 @@ struct ProfileEditSheet: View {
         .onChange(of: collegePersistence.profileRevision) { _, _ in
             refreshAcademicProfiles()
         }
-        .onDisappear {
-            collegePersistence.commitPrimaryAcademicProfileEdits()
+        .confirmationDialog(
+            "Discard profile changes?",
+            isPresented: $showDiscardConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Discard", role: .destructive) {
+                dismiss()
+            }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text("Your profile edits have not been saved.")
         }
     }
 
@@ -135,11 +146,11 @@ struct ProfileEditSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "graduationcap.fill")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .symbolRenderingMode(.hierarchical)
                 Text(String(localized: "profile.edit.section.academic"))
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                     .tracking(0.4)
@@ -162,15 +173,20 @@ struct ProfileEditSheet: View {
 
             if let academicProfile = selectedAcademicProfile {
                 Form {
-                    AcademicProfileEditFields(academicProfile: academicProfile)
+                    AcademicProfileEditFields(
+                        academicProfile: academicProfile,
+                        onCommitHandlerReady: { handler in
+                            commitSelectedAcademicProfileEdits = handler
+                        }
+                    )
                 }
                 .formStyle(.grouped)
             } else {
                 Text(String(localized: "profile.identity.placeholder_degree"))
-                    .font(.system(size: 13))
+                    .font(DesignSystem.Fonts.main(size: 13))
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
+                    .padding(DesignSystem.Spacing.lg)
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(DesignSystem.Colors.chromeStroke, lineWidth: 1)
@@ -231,7 +247,30 @@ struct ProfileEditSheet: View {
         shouldClearPhoto   = false
     }
 
+    private var hasUnsavedShellChanges: Bool {
+        name != (profile.name ?? "")
+            || pronouns != (profile.pronouns ?? "")
+            || universityEmail != (profile.universityEmail ?? "")
+            || personalPhone != (profile.personalPhone ?? "")
+            || permanentAddress != (profile.permanentAddress ?? "")
+            || advisorName != (profile.advisorName ?? "")
+            || studentId != (profile.studentId ?? "")
+            || pendingPhotoData != nil
+            || shouldClearPhoto
+    }
+
+    private func requestCancel() {
+        if hasUnsavedShellChanges {
+            showDiscardConfirmation = true
+        } else {
+            dismiss()
+        }
+    }
+
     private func saveAndDismiss() {
+        commitSelectedAcademicProfileEdits?()
+        collegePersistence.commitPrimaryAcademicProfileEdits()
+
         let photoData: Data?
         if shouldClearPhoto {
             photoData = nil
@@ -280,7 +319,7 @@ private struct EditSheetTitleBar: View {
             Spacer()
 
             Text(String(localized: "profile.edit.title"))
-                .font(.system(size: 15, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 15, weight: .semibold))
                 .foregroundStyle(.primary)
 
             Spacer()
@@ -359,7 +398,7 @@ private struct ProfilePhotoHero: View {
                     .scaledToFit()
                     .foregroundStyle(.secondary)
                     .symbolRenderingMode(.hierarchical)
-                    .padding(8)
+                    .padding(DesignSystem.Spacing.sm)
             )
             .overlay(Circle().strokeBorder(Color.primary.opacity(0.10), lineWidth: 1.5))
     }
@@ -387,11 +426,11 @@ private struct ProfileEditSection<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                     .foregroundStyle(Color.accentColor)
                     .symbolRenderingMode(.hierarchical)
                 Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
                     .tracking(0.4)
@@ -421,13 +460,13 @@ private struct ProfileEditRow<Control: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(label)
-                .font(.system(size: 13, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                 .foregroundStyle(.primary)
                 .frame(width: 170, alignment: .leading)
                 .lineLimit(1)
 
             control()
-                .font(.system(size: 13))
+                .font(DesignSystem.Fonts.main(size: 13))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(.secondary)
         }

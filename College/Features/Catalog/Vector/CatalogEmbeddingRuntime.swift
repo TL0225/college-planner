@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import Foundation
+@preconcurrency import MLX
 
 /// Bundles catalog query/document embeddings behind ``MLXTaskQueue`` so Gemma and sentence embedders never share the GPU unsafely.
 actor CatalogEmbeddingRuntime {
@@ -22,7 +23,7 @@ actor CatalogEmbeddingRuntime {
             : lexicalEmbeddingVersion
     }
 
-    func embed(text: String, priority: MLXTaskPriority) async throws -> [Float] {
+    func embed(text: String, priority: MLXTaskPriority, mlxDevice: Device? = nil) async throws -> [Float] {
         await MainActor.run { CatalogEmbedMemoryLifecycle.shared.cancelIdleRelease() }
         defer {
             Task { @MainActor in
@@ -32,7 +33,7 @@ actor CatalogEmbeddingRuntime {
 
         let clipped = String(text.prefix(8000))
         if clipped.count <= Self.embedSubChunkMaxCharacters {
-            return try await embedSubChunk(clipped, priority: priority)
+            return try await embedSubChunk(clipped, priority: priority, mlxDevice: mlxDevice)
         }
 
         var vectors: [[Float]] = []
@@ -48,24 +49,42 @@ actor CatalogEmbeddingRuntime {
             let part = String(clipped[idx..<end])
             idx = end
             guard !part.isEmpty else { continue }
-            vectors.append(try await embedSubChunk(part, priority: priority))
+            vectors.append(try await embedSubChunk(part, priority: priority, mlxDevice: mlxDevice))
         }
 
         guard !vectors.isEmpty else {
-            return try await embedSubChunk(clipped, priority: priority)
+            return try await embedSubChunk(clipped, priority: priority, mlxDevice: mlxDevice)
         }
         return Self.meanL2Normalize(vectors)
     }
 
-    private func embedSubChunk(_ text: String, priority: MLXTaskPriority) async throws -> [Float] {
-        if let dir = CatalogMLXEmbedPaths.resolvedModelDirectoryURL() {
-            return try await CatalogMLXEmbedService.shared.embedNormalized(
-                text: text,
-                modelDirectory: dir,
-                priority: priority
-            )
+    /// Lexical-only embedding for fallback paths.
+    func embedLexical(text: String, priority: MLXTaskPriority) async throws -> [Float] {
+        try await lexicalVector(for: text, priority: priority)
+    }
+
+    private func embedSubChunk(_ text: String, priority: MLXTaskPriority, mlxDevice: Device? = nil) async throws -> [Float] {
+        if mlxDevice == .cpu {
+            return try await lexicalVector(for: text, priority: priority)
         }
-        return try await MLXTaskQueue.shared.run(priority: priority) {
+        if AppleSiliconPlatform.isMLXCompatible,
+           let dir = CatalogMLXEmbedPaths.resolvedModelDirectoryURL() {
+            do {
+                return try await CatalogMLXEmbedService.shared.embedNormalized(
+                    text: text,
+                    modelDirectory: dir,
+                    priority: priority,
+                    mlxDevice: mlxDevice
+                )
+            } catch {
+                return try await lexicalVector(for: text, priority: priority)
+            }
+        }
+        return try await lexicalVector(for: text, priority: priority)
+    }
+
+    private func lexicalVector(for text: String, priority: MLXTaskPriority) async throws -> [Float] {
+        try await MLXTaskQueue.shared.run(priority: priority) {
             CatalogLexicalEmbedding.normalizedVector(for: text)
         }
     }

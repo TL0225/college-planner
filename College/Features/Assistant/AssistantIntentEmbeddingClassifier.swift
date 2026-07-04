@@ -59,7 +59,17 @@ private enum AssistantIntentPrototypes {
         ]),
         .init(intentId: "multi_semester_plan", phrases: [
             "two semester plan", "graduation plan", "course sequence", "multi semester",
-            "sequence my courses", "whole degree plan", "map out my degree"
+            "sequence my courses", "whole degree plan", "map out my degree",
+            "semester by semester breakdown", "breakdown of my major"
+        ]),
+        .init(intentId: "career_exploration", phrases: [
+            "what career does my major lead to", "career paths for my major",
+            "what jobs can I get", "what can I do with this major", "careers in computer science",
+            "where does my degree lead", "profession for my major"
+        ]),
+        .init(intentId: "degree_policy_lookup", phrases: [
+            "residency requirement", "pass fail policy", "grade replacement policy",
+            "what does the catalog say", "registrar rule", "degree policy", "academic standing rule"
         ]),
         .init(intentId: "requirement_explanation", phrases: [
             "what do I still need to graduate", "degree requirements left",

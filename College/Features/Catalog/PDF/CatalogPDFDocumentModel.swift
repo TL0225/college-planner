@@ -90,6 +90,25 @@ struct ClassificationEvidence: Sendable, Codable {
     let matchedRules: [String]
     let positiveSignals: [String]
     let negativeSignals: [String]
+    let sourcePage: Int?
+    let sourceSection: String?
+    let sourceText: String?
+
+    init(
+        matchedRules: [String],
+        positiveSignals: [String],
+        negativeSignals: [String],
+        sourcePage: Int? = nil,
+        sourceSection: String? = nil,
+        sourceText: String? = nil
+    ) {
+        self.matchedRules = matchedRules
+        self.positiveSignals = positiveSignals
+        self.negativeSignals = negativeSignals
+        self.sourcePage = sourcePage
+        self.sourceSection = sourceSection
+        self.sourceText = sourceText
+    }
 }
 
 struct CatalogPDFClassifiedBlock: Sendable {
@@ -117,11 +136,17 @@ struct CatalogPDFBlockClassificationDiagnostics: Sendable, Codable {
 struct CatalogPDFIngestOutput: Sendable {
     let programs: [ScrapedProgram]
     let courses: [CatalogCourse]
+    /// Academic departments recognized from the catalog's structural signals.
+    let departments: [ScrapedDepartment]
+    /// Course-code subject prefix (e.g. `ACCT`, `15`) -> department name, used to
+    /// link courses to their department at persist time.
+    let departmentSubjectMap: [String: String]
     let requirements: [DegreeRequirement]
     let policyRows: [(sourceURL: String, navTitle: String, sectionHeading: String?, bodyText: String, catalogScope: String, contentHash: String, binding: String?)]
     let healthReport: CatalogPDFHealthReport
     let foundation: CatalogPDFFoundationResult
     let classificationDiagnostics: CatalogPDFBlockClassificationDiagnostics
+    let courseExtractionDiagnostics: CatalogPDFCourseExtractionDiagnostics?
     let ocrPagesUsed: Int
     let documentIR: CatalogDocumentIR?
 }
@@ -129,4 +154,10 @@ struct CatalogPDFIngestOutput: Sendable {
 struct CatalogPDFFoundationResult: Sendable {
     let pageCount: Int
     let sections: [CatalogPDFDocumentSection]
+}
+
+struct CatalogPDFOutlineEntry: Sendable, Hashable {
+    let title: String
+    let pageIndex: Int?
+    let depth: Int
 }

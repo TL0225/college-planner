@@ -1,13 +1,27 @@
 // WorkdayScraperTests.swift
 // Feature: Career
-// Purpose: Workday URL derivation and detail endpoint construction.
+// Purpose: Workday URL derivation, decoder, and scraper helper regressions.
 
 import XCTest
 @testable import College
 
 final class WorkdayScraperTests: XCTestCase {
+    func testDelayNanosecondsConvertsMilliseconds() {
+        XCTAssertEqual(WorkdayScraper.delayNanoseconds(forMilliseconds: 1_500), 1_500_000_000)
+        XCTAssertEqual(WorkdayScraper.delayNanoseconds(forMilliseconds: 0), 0)
+    }
+
     func testNormalizeCareersURLStripsJobDetailTail() {
         let raw = "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Role_JR123"
+        let normalized = WorkdayScraper.normalizeCareersURLString(raw)
+        XCTAssertEqual(
+            normalized,
+            "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"
+        )
+    }
+
+    func testNormalizeCareersURLStripsCapitalJobDetailTail() {
+        let raw = "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/Job/US-CA-Santa-Clara/Role_JR123"
         let normalized = WorkdayScraper.normalizeCareersURLString(raw)
         XCTAssertEqual(
             normalized,
@@ -23,7 +37,10 @@ final class WorkdayScraperTests: XCTestCase {
             "https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL"
         )
         let ctx = WorkdayScraper.deriveAPIContext(careersURLString: normalized)
-        XCTAssertEqual(ctx?.listJobsURL.absoluteString, "https://insmed.wd5.myworkdayjobs.com/wday/cxs/insmed/EXTERNAL/jobs")
+        XCTAssertEqual(
+            ctx?.listJobsURL?.absoluteString,
+            "https://insmed.wd5.myworkdayjobs.com/wday/cxs/insmed/EXTERNAL/jobs"
+        )
     }
 
     func testDeriveAPIContextFromBoardURL() {
@@ -34,9 +51,17 @@ final class WorkdayScraperTests: XCTestCase {
         XCTAssertEqual(ctx?.tenant, "nvidia")
         XCTAssertEqual(ctx?.board, "NVIDIAExternalCareerSite")
         XCTAssertEqual(
-            ctx?.listJobsURL.absoluteString,
+            ctx?.listJobsURL?.absoluteString,
             "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs"
         )
+    }
+
+    func testDeriveAPIContextRecognizesUppercaseLocalePrefix() {
+        let ctx = WorkdayScraper.deriveAPIContext(
+            careersURLString: "https://insmed.wd5.myworkdayjobs.com/EN-US/EXTERNAL"
+        )
+        XCTAssertNotNil(ctx)
+        XCTAssertEqual(ctx?.board, "EXTERNAL")
     }
 
     func testDetailURLAppendsExternalPathSegments() {
@@ -45,6 +70,38 @@ final class WorkdayScraperTests: XCTestCase {
         )!
         let detail = ctx.detailURL(
             externalPath: "/job/US-CA-Santa-Clara/Senior-Solutions-Architect_JR2017438-1"
+        )
+        XCTAssertEqual(
+            detail?.absoluteString,
+            "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Senior-Solutions-Architect_JR2017438-1"
+        )
+    }
+
+    func testDetailURLPreservesJobSegmentForInsmedListingPath() {
+        let ctx = WorkdayScraper.deriveAPIContext(
+            careersURLString: "https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL"
+        )!
+        let detail = ctx.detailURL(
+            externalPath: "/job/NJ-Corporate-Headquarters/Head-of-Clinical-Data-Management_R3498"
+        )
+        XCTAssertEqual(
+            detail?.absoluteString,
+            "https://insmed.wd5.myworkdayjobs.com/wday/cxs/insmed/EXTERNAL/job/NJ-Corporate-Headquarters/Head-of-Clinical-Data-Management_R3498"
+        )
+    }
+
+    func testIsLocaleSegmentRejectsJobRouteSegment() {
+        XCTAssertFalse(WorkdayScraper.isLocaleSegment("job"))
+        XCTAssertFalse(WorkdayScraper.isLocaleSegment("jobs"))
+        XCTAssertTrue(WorkdayScraper.isLocaleSegment("en-US"))
+    }
+
+    func testDetailURLStripsLocaleAndBoardPrefixFromExternalPath() {
+        let ctx = WorkdayScraper.deriveAPIContext(
+            careersURLString: "https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite"
+        )!
+        let detail = ctx.detailURL(
+            externalPath: "/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Senior-Solutions-Architect_JR2017438-1"
         )
         XCTAssertEqual(
             detail?.absoluteString,
@@ -62,9 +119,31 @@ final class WorkdayScraperTests: XCTestCase {
         XCTAssertEqual(parsed?.siteId, "EXTERNAL")
     }
 
+    func testParseEmbeddedSiteConfigAllowsWhitespaceAfterColon() {
+        let html = """
+        tenant:
+        "insmed",
+        siteId:   "EXTERNAL",
+        """
+        let parsed = WorkdayScraper.parseEmbeddedSiteConfig(from: html)
+        XCTAssertEqual(parsed?.tenant, "insmed")
+        XCTAssertEqual(parsed?.siteId, "EXTERNAL")
+    }
+
     func testDiscoverWorkdayBoardURLFromCustomDomainHTML() {
         let html = """
         <a href="https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL/introduceYourself">Join talent community</a>
+        """
+        let discovered = WorkdayScraper.discoverWorkdayBoardURL(from: html)
+        XCTAssertEqual(
+            discovered,
+            "https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL"
+        )
+    }
+
+    func testDiscoverWorkdayBoardURLStopsAtWhitespace() {
+        let html = """
+        <a href="https://insmed.wd5.myworkdayjobs.com/en-US/EXTERNAL introduce">bad</a>
         """
         let discovered = WorkdayScraper.discoverWorkdayBoardURL(from: html)
         XCTAssertEqual(
@@ -91,6 +170,28 @@ final class WorkdayScraperTests: XCTestCase {
 
     func testWorkdayListResponseDecoderRejectsEmptyObject() {
         XCTAssertThrowsError(try WorkdayJobListResponseDecoder.decode(from: Data("{}".utf8)))
+    }
+
+    func testWorkdayListResponseDecoderRejectsAPIErrorWithoutJobPostingsKey() {
+        let json = #"{"errorCode":"INVALID_SESSION","message":"Session expired"}"#
+        XCTAssertThrowsError(try WorkdayJobListResponseDecoder.decode(from: Data(json.utf8)))
+    }
+
+    func testWorkdayListResponseDecoderAcceptsListWhenErrorCodePresentWithJobPostings() throws {
+        let json = """
+        {
+          "errorCode": "",
+          "total": 1,
+          "jobPostings": [
+            {
+              "title": "Engineer",
+              "externalPath": "/job/Title_R1"
+            }
+          ]
+        }
+        """
+        let decoded = try WorkdayJobListResponseDecoder.decode(from: Data(json.utf8))
+        XCTAssertEqual(decoded.jobPostings.count, 1)
     }
 
     func testWorkdayListResponseDecoderAcceptsNestedLocationFacets() throws {
@@ -167,5 +268,100 @@ final class WorkdayScraperTests: XCTestCase {
             jobsByPath: &jobs
         )
         XCTAssertEqual(jobs["/a"]?.timeType, "Full time")
+    }
+
+    func testDuplicateExternalPathUniquingKeepsLatestJob() {
+        let first = WorkdayScrapedJob(
+            title: "Old",
+            externalPath: "/job/A_R1",
+            locationsText: nil,
+            postedOn: nil,
+            bulletFields: nil
+        )
+        let second = WorkdayScrapedJob(
+            title: "New",
+            externalPath: "/job/A_R1",
+            locationsText: "Remote",
+            postedOn: nil,
+            bulletFields: nil
+        )
+        let byPath = Dictionary(
+            [first, second].map { ($0.externalPath, $0) },
+            uniquingKeysWith: { _, new in new }
+        )
+        XCTAssertEqual(byPath["/job/A_R1"]?.title, "New")
+    }
+
+    func testFacetTaggedJobsPreserveListingOrder() {
+        let jobs = [
+            WorkdayScrapedJob(title: "B", externalPath: "/b", locationsText: nil, postedOn: nil, bulletFields: nil),
+            WorkdayScrapedJob(title: "A", externalPath: "/a", locationsText: nil, postedOn: nil, bulletFields: nil),
+        ]
+        var byPath = Dictionary(jobs.map { ($0.externalPath, $0) }, uniquingKeysWith: { _, new in new })
+        byPath["/b"]?.jobTypeText = "Regular"
+        byPath["/a"]?.jobTypeText = "Regular"
+        let ordered = jobs.map { byPath[$0.externalPath] ?? $0 }
+        XCTAssertEqual(ordered.map(\.title), ["B", "A"])
+    }
+
+    func testJobBoardHTTPHtmlToPlainPreservesParagraphBreaks() {
+        let html = "<p>First paragraph.</p><p>Second paragraph.</p>"
+        let plain = JobBoardHTTP.htmlToPlain(html)
+        XCTAssertTrue(plain.contains("First paragraph."))
+        XCTAssertTrue(plain.contains("Second paragraph."))
+        XCTAssertTrue(plain.contains("\n"))
+    }
+
+    func testWorkdayJobPostingInfoDecodesObjectShapedAdditionalLocations() throws {
+        let json = """
+        {
+          "title": "Role",
+          "jobDescription": "<p>Hello</p>",
+          "additionalLocations": [
+            { "location": "Boston" },
+            { "location": "NYC" }
+          ]
+        }
+        """
+        let info = try JSONDecoder().decode(WorkdayJobPostingInfo.self, from: Data(json.utf8))
+        XCTAssertEqual(info.additionalLocations, ["Boston", "NYC"])
+    }
+
+    func testWorkdayJobPostingInfoDecodesSalaryFields() throws {
+        let json = """
+        {
+          "title": "Role",
+          "jobDescription": "desc",
+          "payRange": "$120,000 - $150,000"
+        }
+        """
+        let info = try JSONDecoder().decode(WorkdayJobPostingInfo.self, from: Data(json.utf8))
+        XCTAssertEqual(info.salaryRangeText, "$120,000 - $150,000")
+    }
+
+    func testWorkdayScraperErrorMapsNetworkToJobBoardNetwork() {
+        let mapped = WorkdayScraperError.network("offline").asJobBoardError
+        XCTAssertEqual(mapped, .network("offline"))
+    }
+
+    func testNormalizeListingExternalPathStripsLocaleAndBoard() {
+        let normalized = WorkdayScraper.normalizeListingExternalPath(
+            "/en-US/NVIDIAExternalCareerSite/job/US-CA-Santa-Clara/Role_JR1",
+            board: "NVIDIAExternalCareerSite"
+        )
+        XCTAssertEqual(normalized, "/job/US-CA-Santa-Clara/Role_JR1")
+    }
+
+    func testThrowIfMaintenancePageDetectsWorkdayMaintenanceRedirect() {
+        let html = """
+        <html><head><script>window.location.href = "https://community.workday.com/maintenance-page"</script></head></html>
+        """
+        XCTAssertThrowsError(try WorkdayScraper.throwIfMaintenancePage(html: html)) { error in
+            guard let workdayError = error as? WorkdayScraperError,
+                  case .network(let detail) = workdayError else {
+                return XCTFail("Expected network error, got \(error)")
+            }
+            XCTAssertTrue(detail.localizedCaseInsensitiveContains("maintenance"))
+        }
     }
 }

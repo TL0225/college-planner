@@ -15,8 +15,8 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
         installEarlyWindowChromeObserver()
         AppActivityCoordinator.shared.refreshPolicyFromSettings()
         UITestLaunchFlags.scheduleUITestActivationRetriesIfNeeded()
-        Task(priority: .utility) {
-            CatalogStoreCoordinator.shared.migrateUniversitiesFromCurrentStoreIfNeeded()
+        Task { @MainActor in
+            await BackgroundServiceRegistry.shared.bootstrap(phase: .atLaunch)
         }
         let backgroundReport = BackgroundTaskCompliance.evaluateFromMainBundle()
         if !backgroundReport.isConfigured {
@@ -34,6 +34,19 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        final class TerminateDrain: @unchecked Sendable {
+            var finished = false
+        }
+        let drain = TerminateDrain()
+        Task { @MainActor in
+            await BackgroundServiceRegistry.shared.stopAll()
+            await DeGoogSidecarManager.shared.stopIfRunning()
+            drain.finished = true
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while !drain.finished && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
         SessionTerminationTracker.markCleanTermination()
     }
 
@@ -70,10 +83,6 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
     /// Applies the unified-toolbar / full-size-content-view chrome to a window.
     /// Idempotent — safe to call multiple times.
     static func applyWindowChrome(to window: NSWindow) {
-        let stableAutosave = AutosaveNames.mainWindow
-        if window.frameAutosaveName != stableAutosave {
-            window.setFrameAutosaveName(stableAutosave)
-        }
         if !window.styleMask.contains(.fullSizeContentView) {
             window.styleMask.insert(.fullSizeContentView)
         }
@@ -94,6 +103,24 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
         // UI tests: keep the title visible so the main `NSWindow` reliably exposes its
         // SwiftUI content in the accessibility tree (XCTest otherwise saw no `Window`).
         guard !UITestLaunchFlags.forcesMainUI else { return }
+        applyDeferredTitleVisibility(to: window)
+    }
+
+    /// macOS 26 (Tahoe): keep the AppKit title visible so the page name survives CMD+Tab.
+    /// Hiding `titleVisibility` and relying on SwiftUI inline `navigationTitle` alone drops
+    /// the label when the window loses key status on pages without a `.principal` toolbar item
+    /// (Overview, Documents, …). Settings uses the same visible-title policy.
+    ///
+    /// Pre-26: hide the native title bar text; SwiftUI `navigationTitle` renders inline.
+    private static func applyDeferredTitleVisibility(to window: NSWindow) {
+        if #available(macOS 26.0, *) {
+            guard window.titleVisibility != .visible else { return }
+            DispatchQueue.main.async { [weak window] in
+                guard let window, window.titleVisibility != .visible else { return }
+                window.titleVisibility = .visible
+            }
+            return
+        }
         guard window.titleVisibility != .hidden else { return }
         DispatchQueue.main.async { [weak window] in
             guard let window, window.titleVisibility != .hidden else { return }
@@ -115,12 +142,19 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
         addPage(String(localized: "app.page.academics"), raw: AppPage.academics.rawValue)
         addPage(String(localized: "app.page.calendar"), raw: AppPage.calendar.rawValue)
         addPage(AppPage.assistant.displayTitle, raw: AppPage.assistant.rawValue)
-        addPage(LMSPortalConfiguration.sidebarDisplayTitle, raw: AppPage.brightspace.rawValue)
+        if LMSPortalConfiguration.isLMSTabEnabled() {
+            addPage(LMSPortalConfiguration.sidebarDisplayTitle, raw: AppPage.lms.rawValue)
+        }
         addPage(String(localized: "app.page.documents"), raw: AppPage.documents.rawValue)
         addPage(String(localized: "app.page.profile"), raw: AppPage.profile.rawValue)
 
         for sc in WebShortcutStore.loadAllSync() {
             addPage(sc.title, raw: AppPage.webShortcutPage(id: sc.id).rawValue)
+        }
+        for group in WebShortcutStore.loadGroupsSync() {
+            for sc in group.shortcuts {
+                addPage("\(group.name) — \(sc.title)", raw: AppPage.webShortcutPage(id: sc.id).rawValue)
+            }
         }
 
         menu.addItem(NSMenuItem.separator())
@@ -147,22 +181,15 @@ final class CollegeAppDelegate: NSObject, NSApplicationDelegate {
                     userInfo: ["url": url]
                 )
             } else if ext == CatalogBundle.fileExtension || (ext == "sqlite" && url.lastPathComponent.lowercased().hasSuffix(".collegecatalog.sqlite")) {
-                NotificationCenter.default.post(
-                    name: .plannerImportCatalogBundleFileURL,
-                    object: nil,
-                    userInfo: ["url": url]
-                )
+                AppTypedNavigationRouter.importCatalogBundle(at: url)
             }
         }
     }
 
     @objc private func openDockSection(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String else { return }
-        NotificationCenter.default.post(
-            name: .plannerOpenPage,
-            object: nil,
-            userInfo: ["pageRaw": raw]
-        )
+        guard let raw = sender.representedObject as? String,
+              let page = AppPage(rawValue: raw) else { return }
+        AppTypedNavigationRouter.openPage(page)
     }
 
     @objc private func openDockSettings(_ sender: Any?) {
@@ -181,17 +208,25 @@ enum HostedUnitTestWindowPolicy {
 
     static func applyIfNeeded() {
         guard shouldSuppress else { return }
-        orderOutAllWindows()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                orderOutAllWindows()
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeMainNotification,
             object: nil,
             queue: .main
         ) { note in
-            guard shouldSuppress, let window = note.object as? NSWindow else { return }
-            window.orderOut(nil)
+            guard shouldSuppress else { return }
+            let window = note.object as? NSWindow
+            Task { @MainActor in
+                window?.orderOut(nil)
+            }
         }
     }
 
+    @MainActor
     private static func orderOutAllWindows() {
         NSApp.windows.forEach { $0.orderOut(nil) }
     }

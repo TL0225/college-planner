@@ -1,6 +1,6 @@
 # ADR 004: Feature Module Boundaries
 
-**Status:** Implemented (Phase 2 complete — feature packages + CI enforcement)  
+**Status:** Partial (Snow Leopard Phase 5 — packages exist; `CollegePersistence` retirement in Phase 7)  
 **Date:** 2026-06-05
 
 ## Context

@@ -90,6 +90,12 @@ actor DocumentClassifierService {
     /// 3. LLM inference on the first 500 chars of PDF text (with 3-second timeout).
     /// Falls back to the regex result if the LLM fails or times out.
     func classify(fileURL: URL) async -> ClassificationResult {
+        await BackgroundServiceOnDemand.runReturning(id: "document_classifier") {
+            await DocumentClassifierService.shared.classifyImpl(fileURL: fileURL)
+        }
+    }
+
+    private func classifyImpl(fileURL: URL) async -> ClassificationResult {
         let filename = fileURL.deletingPathExtension().lastPathComponent
 
         // --- Tier 1 & 2: Fast path from filename ---

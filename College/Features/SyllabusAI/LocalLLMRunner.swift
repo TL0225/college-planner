@@ -6,6 +6,7 @@
 import Foundation
 import MLXLLM
 import MLXLMCommon
+@preconcurrency import MLX
 
 enum LocalLLMRunnerError: LocalizedError {
     case unavailable(String)
@@ -30,18 +31,55 @@ actor LocalLLMRunner {
 
     private var cachedModelDirectory: URL?
     private var cachedContainer: ModelContainer?
+    private var cachedDevice: Device?
 
     // MARK: - Inference
 
     /// Single integration point for on-device JSON LLM inference (Qwen via MLXLLM).
-    func generateJSON(prompt: String, modelPath: URL, maxTokens: Int = 700) async throws -> String {
+    func generateJSON(
+        prompt: String,
+        modelPath: URL,
+        maxTokens: Int = 700,
+        mlxDevice: Device? = nil
+    ) async throws -> String {
+        try await BackgroundServiceOnDemand.runThrowing(id: "local_llm_inference") {
+            try await LocalLLMRunner.shared.generateJSONImpl(
+                prompt: prompt,
+                modelPath: modelPath,
+                maxTokens: maxTokens,
+                mlxDevice: mlxDevice
+            )
+        }
+    }
+
+    private func generateJSONImpl(
+        prompt: String,
+        modelPath: URL,
+        maxTokens: Int = 700,
+        mlxDevice: Device? = nil
+    ) async throws -> String {
         if LocalLLMStubResponder.shouldHandle() {
             return try await LocalLLMStubResponder.response(prompt: prompt)
         }
         try requireSupportedMetalDevice()
         await MainActor.run { LLMMemoryLifecycle.shared.cancelIdleRelease() }
         let output = try await MLXTaskQueue.shared.run(priority: .userInitiated) {
-            try await self.generateJSONUnqueued(prompt: prompt, modelPath: modelPath, maxTokens: maxTokens)
+            if let mlxDevice {
+                return try await Device.withDefaultDevice(mlxDevice) {
+                    try await self.generateJSONUnqueued(
+                        prompt: prompt,
+                        modelPath: modelPath,
+                        maxTokens: maxTokens,
+                        mlxDevice: mlxDevice
+                    )
+                }
+            }
+            return try await self.generateJSONUnqueued(
+                prompt: prompt,
+                modelPath: modelPath,
+                maxTokens: maxTokens,
+                mlxDevice: nil
+            )
         }
         await MainActor.run { LLMMemoryLifecycle.shared.touch() }
         return output
@@ -49,6 +87,22 @@ actor LocalLLMRunner {
 
     /// Streaming variant for on-device JSON generation.
     func generateJSONStreaming(
+        prompt: String,
+        modelPath: URL,
+        maxTokens: Int = 700,
+        onChunk: @escaping @Sendable (String) async -> Void
+    ) async throws -> String {
+        try await BackgroundServiceOnDemand.runThrowing(id: "local_llm_inference") {
+            try await LocalLLMRunner.shared.generateJSONStreamingImpl(
+                prompt: prompt,
+                modelPath: modelPath,
+                maxTokens: maxTokens,
+                onChunk: onChunk
+            )
+        }
+    }
+
+    private func generateJSONStreamingImpl(
         prompt: String,
         modelPath: URL,
         maxTokens: Int = 700,
@@ -71,8 +125,13 @@ actor LocalLLMRunner {
         return output
     }
 
-    private func generateJSONUnqueued(prompt: String, modelPath: URL, maxTokens: Int) async throws -> String {
-        let container = try await resolvedContainer(modelPath: modelPath)
+    private func generateJSONUnqueued(
+        prompt: String,
+        modelPath: URL,
+        maxTokens: Int,
+        mlxDevice: Device?
+    ) async throws -> String {
+        let container = try await resolvedContainer(modelPath: modelPath, mlxDevice: mlxDevice)
 
         let jsonOnlyInstructions =
             "You are a careful parser. Return ONLY valid JSON. No markdown, no code fences, no extra commentary."
@@ -104,7 +163,7 @@ actor LocalLLMRunner {
         maxTokens: Int,
         onChunk: @escaping @Sendable (String) async -> Void
     ) async throws -> String {
-        let container = try await resolvedContainer(modelPath: modelPath)
+        let container = try await resolvedContainer(modelPath: modelPath, mlxDevice: nil)
 
         let jsonOnlyInstructions =
             "You are a careful parser. Return ONLY valid JSON. No markdown, no code fences, no extra commentary."
@@ -133,19 +192,23 @@ actor LocalLLMRunner {
         return output
     }
 
-    private func resolvedContainer(modelPath: URL) async throws -> ModelContainer {
-        if let cachedContainer, cachedModelDirectory == modelPath {
+    private func resolvedContainer(modelPath: URL, mlxDevice: Device?) async throws -> ModelContainer {
+        if let cachedContainer,
+           cachedModelDirectory == modelPath,
+           cachedDevice == mlxDevice {
             return cachedContainer
         }
         let container = try await loadWeights(from: modelPath)
         cachedModelDirectory = modelPath
         cachedContainer = container
+        cachedDevice = mlxDevice
         return container
     }
 
     private func loadWeights(from modelPath: URL) async throws -> ModelContainer {
         let signpost = PerformanceSignposts.beginLLMLoad()
         defer { PerformanceSignposts.endLLMLoad(signpost) }
+        MLXRuntimeMemory.markInitialized()
         return try await loadModelContainer(
             from: modelPath,
             using: MLXTokenizerBridge.localDirectoryLoader
@@ -160,15 +223,22 @@ actor LocalLLMRunner {
     func releaseModel() {
         let signpost = PerformanceSignposts.beginLLMUnload(reason: "releaseModel")
         defer { PerformanceSignposts.endLLMUnload(signpost) }
+        let hadContainer = cachedContainer != nil
         cachedContainer = nil
         cachedModelDirectory = nil
+        cachedDevice = nil
+        // Dropping the container parks the model's weight buffers in MLX's reuse cache; flush
+        // that cache back to the OS so unload actually lowers the memory footprint.
+        if hadContainer {
+            MLXRuntimeMemory.clearCache()
+        }
         Task { @MainActor in
             NotificationCenter.default.post(name: .llmModelDidUnload, object: nil)
         }
     }
 
     func preWarm(modelPath: URL) async {
-        guard AppleSiliconPlatform.isSupported else { return }
+        guard AppleSiliconPlatform.isMLXCompatible else { return }
         guard cachedContainer == nil || cachedModelDirectory != modelPath else { return }
         await MainActor.run { LLMMemoryLifecycle.shared.cancelIdleRelease() }
         do {
@@ -177,6 +247,7 @@ actor LocalLLMRunner {
             }
             cachedModelDirectory = modelPath
             cachedContainer = container
+            cachedDevice = nil
             await MainActor.run { LLMMemoryLifecycle.shared.touch() }
         } catch {
             // Pre-warm is best-effort; ignore errors silently
@@ -184,8 +255,8 @@ actor LocalLLMRunner {
     }
 
     private func requireSupportedMetalDevice() throws {
-        guard AppleSiliconPlatform.isSupported else {
-            throw LocalLLMRunnerError.unavailable(AppleSiliconPlatform.requirementMessage)
+        guard AppleSiliconPlatform.isMLXCompatible else {
+            throw LocalLLMRunnerError.unavailable(AppleSiliconPlatform.mlxRequirementMessage)
         }
     }
 }

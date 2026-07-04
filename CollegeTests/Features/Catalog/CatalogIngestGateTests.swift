@@ -15,6 +15,8 @@ final class CatalogIngestGateTests: XCTestCase {
             opeID: nil,
             profileURL: "https://example.edu/profile.json",
             catalogURL: "https://bulletin.example.edu/",
+            academicCalendarURL: nil,
+            timeZoneID: nil,
             countryCode: "US",
             stateCode: "NY",
             officialWebsiteURL: nil,

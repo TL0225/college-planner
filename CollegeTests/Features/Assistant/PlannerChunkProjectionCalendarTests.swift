@@ -1,16 +1,15 @@
 // PlannerChunkProjectionCalendarTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — PlannerChunkProjectionCalendarTests.
-// Data: CollegePersistence / repositories when applicable.
-
+import Foundation
 import SwiftData
-import XCTest
+import Testing
 @testable import College
 
-/// Phase 2c acceptance: calendar events index notes, guests, course, location.
-@MainActor
-final class PlannerChunkProjectionCalendarTests: PersistenceTestCase {
-    func testCalendarEventChunk_includesEnrichmentFields() throws {
+@Suite("Planner Chunk Projection Calendar")
+struct PlannerChunkProjectionCalendarTests {
+
+    @Test("Calendar event chunk includes enrichment fields")
+    @MainActor
+    func calendarEventChunkIncludesEnrichmentFields() {
         let event = CalendarEvent(
             title: "CSE411 Lecture",
             startDate: Date(),
@@ -21,11 +20,11 @@ final class PlannerChunkProjectionCalendarTests: PersistenceTestCase {
         event.attendeesJSON = #"["alice@example.com"]"#
 
         let chunks = PlannerChunkProjection.chunks(from: event)
-        XCTAssertFalse(chunks.isEmpty)
+        #expect(!chunks.isEmpty)
         let body = chunks[0].ftsBody
-        XCTAssertTrue(body.contains("CSE411"))
-        XCTAssertTrue(body.contains("Engineering 123"))
-        XCTAssertTrue(body.contains("Midterm review"))
-        XCTAssertTrue(body.contains("alice@example.com"))
+        #expect(body.contains("CSE411"))
+        #expect(body.contains("Engineering 123"))
+        #expect(body.contains("Midterm review"))
+        #expect(body.contains("alice@example.com"))
     }
 }

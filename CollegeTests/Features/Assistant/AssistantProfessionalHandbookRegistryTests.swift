@@ -1,37 +1,33 @@
 // AssistantProfessionalHandbookRegistryTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AssistantProfessionalHandbookRegistryTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class AssistantProfessionalHandbookRegistryTests: XCTestCase {
+@Suite("Assistant Professional Handbook Registry")
+struct AssistantProfessionalHandbookRegistryTests {
 
-    func testLawMatchesJDTokenNotBareLawWordInUnrelatedText() {
-        XCTAssertNotNil(
-            AssistantProfessionalHandbookRegistry.entry(
-                collegeName: "Arts and Sciences",
-                resolvedCollegeFromMajor: nil,
-                major: "JD expected",
-                minor: nil,
-                majorEntityName: nil,
-                degreeType: nil
-            )
-        )
-        XCTAssertNil(
-            AssistantProfessionalHandbookRegistry.entry(
-                collegeName: "Arts and Sciences",
-                resolvedCollegeFromMajor: nil,
-                major: "business law seminar elective",
-                minor: nil,
-                majorEntityName: nil,
-                degreeType: nil
-            )
-        )
+    @Test("Law matches JD token not bare law word")
+    func lawMatchesJDTokenNotBareLawWordInUnrelatedText() {
+        #expect(AssistantProfessionalHandbookRegistry.entry(
+            collegeName: "Arts and Sciences",
+            resolvedCollegeFromMajor: nil,
+            major: "JD expected",
+            minor: nil,
+            majorEntityName: nil,
+            degreeType: nil
+        ) != nil)
+        #expect(AssistantProfessionalHandbookRegistry.entry(
+            collegeName: "Arts and Sciences",
+            resolvedCollegeFromMajor: nil,
+            major: "business law seminar elective",
+            minor: nil,
+            majorEntityName: nil,
+            degreeType: nil
+        ) == nil)
     }
 
-    func testLawSchoolSecondarySignalFromCollegeString() {
+    @Test("Law school secondary signal from college string")
+    func lawSchoolSecondarySignalFromCollegeString() {
         let e = AssistantProfessionalHandbookRegistry.entry(
             collegeName: "School of Law",
             resolvedCollegeFromMajor: nil,
@@ -40,11 +36,12 @@ final class AssistantProfessionalHandbookRegistryTests: XCTestCase {
             majorEntityName: nil,
             degreeType: nil
         )
-        XCTAssertNotNil(e)
-        XCTAssertTrue(e?.url.contains("law.buffalo.edu") == true)
+        #expect(e != nil)
+        #expect(e?.url.contains("law.buffalo.edu") == true)
     }
 
-    func testPlannerBlockIncludesDisclaimerLine() {
+    @Test("Planner block includes disclaimer line")
+    func plannerBlockIncludesDisclaimerLine() {
         let block = AssistantProfessionalHandbookRegistry.plannerBlock(
             collegeName: "School of Law",
             resolvedCollegeFromMajor: nil,
@@ -53,7 +50,7 @@ final class AssistantProfessionalHandbookRegistryTests: XCTestCase {
             majorEntityName: nil,
             degreeType: nil
         )
-        XCTAssertNotNil(block)
-        XCTAssertTrue(block?.localizedCaseInsensitiveContains("not legal advice") == true)
+        #expect(block != nil)
+        #expect(block?.localizedCaseInsensitiveContains("not legal advice") == true)
     }
 }

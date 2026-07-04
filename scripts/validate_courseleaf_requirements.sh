@@ -8,7 +8,8 @@ DEST="${DESTINATION:-platform=macOS}"
 
 echo "Running CourseLeaf requirements school-wide tests (fixtures + optional live) for: $SCHOOL"
 
-xcodebuild -scheme "$SCHEME" -destination "$DEST" test \
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+"$SCRIPT_DIR/college-xcodebuild-test.sh" -scheme "$SCHEME" -destination "$DEST" test \
   -only-testing:"CollegeTests/CourseLeafRequirementsGoldenTests" \
   -only-testing:"CollegeTests/CourseLeafRequirementsSectionTests" \
   -only-testing:"CollegeTests/CourseLeafCourselistParserSemanticsTests" \

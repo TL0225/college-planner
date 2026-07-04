@@ -7,6 +7,9 @@ import SwiftUI
 import Observation
 import os
 import MapKit
+#if canImport(AppKit)
+import AppKit
+#endif
 
 // Domain types and cache logic live in CalendarCacheEngine.swift
 public typealias CalEvent = CalendarCalEvent
@@ -21,7 +24,8 @@ public enum CalendarViewDisplayMode: String, CaseIterable, Sendable {
 
 public enum CalendarSidebarPanel: String, CaseIterable, Sendable {
     case eventList = "Event List"
-    case tasks = "Tasks"
+    case tasks = "Tasks & Deadlines"
+    case studyFocus = "Study / Focus"
 }
 
 /// Shared calendar grid cache; `@Observable` limits invalidation to views that read changed buckets.
@@ -99,8 +103,11 @@ public struct CalendarView: View {
         .onChange(of: activeViewMode) { _, newMode in
             storedActiveViewModeRaw = newMode.rawValue
         }
-        .overlay(alignment: .topTrailing) {
-            calendarSearchResultsFloatingPanel
+        .onReceive(NotificationCenter.default.publisher(for: .collegeCalendarSelectSidebarPanel)) { note in
+            guard let raw = note.userInfo?["panel"] as? String,
+                  let panel = CalendarSidebarPanel(rawValue: raw) else { return }
+            sidebarPanel = panel
+            isEventListSidebarShown = true
         }
     }
 
@@ -117,64 +124,6 @@ public struct CalendarView: View {
 
     private var contentSidebarPanelBinding: Binding<CalendarSidebarPanel> {
         $sidebarPanel
-    }
-
-    @ViewBuilder
-    private var calendarSearchResultsFloatingPanel: some View {
-        let searchText = calendarSceneState?.toolbarSearchText ?? ""
-        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if isCalendarPageActive, calendarSceneState?.toolbarSearchExpanded == true, !trimmed.isEmpty {
-            let results = calendarSceneState?.toolbarSearchResults ?? []
-            VStack(alignment: .leading, spacing: 0) {
-                if results.isEmpty {
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.tertiary)
-                        Text("No events found")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                } else {
-                    let shown = Array(results.prefix(6))
-                    ForEach(shown) { match in
-                        HStack(spacing: 12) {
-                            Circle()
-                                .fill(Color.indigo)
-                                .frame(width: 8, height: 8)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(match.title)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .lineLimit(1)
-                                Text(match.subtitle)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        if match.id != shown.last?.id {
-                            Divider().padding(.horizontal, 14)
-                        }
-                    }
-                }
-            }
-            .frame(width: 300)
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(.separator.opacity(0.35), lineWidth: 0.5)
-            )
-            .shadow(color: .black.opacity(0.12), radius: 16, y: 4)
-            .padding(.top, 10)
-            .padding(.trailing, 20)
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: trimmed)
-        }
     }
 
     private static func mapFetchMode(_ mode: CalendarViewDisplayMode) -> CalendarFetchMode {
@@ -214,9 +163,9 @@ private struct CalendarViewContent: View {
     var cacheStore: CalendarEventCacheStore
     @State private var toolbarHandlerToken: (any CalendarToolbarHandlerToken)?
 
-    @SceneStorage("calendar.view.hasAnimatedIn") private var hasAnimatedIn = false
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @AppStorage("ui.reduceMotion") private var prefReduceMotion = false
+    @AppStorage("calendar.connectBanner.dismissed.v1") private var connectBannerDismissed = false
     private var motionReduced: Bool { systemReduceMotion || prefReduceMotion }
 
     @State private var navigationDirection: Int = 1
@@ -235,6 +184,8 @@ private struct CalendarViewContent: View {
     @State private var orderedSidebarEventsSnapshot: [CalEvent] = []
     @State private var uniqueCalendarNamesSnapshot: [String] = []
     @State private var filterSnapshotTask: Task<Void, Never>? = nil
+    @State private var eventDetailSelection: CalendarStoredEvent?
+    @State private var tasksSmartList: CalendarSmartList = .dueToday
     /// Driven by CalendarView's toolbar search popover (passed as binding).
     @Binding var calendarSearchText: String
 
@@ -393,13 +344,27 @@ private struct CalendarViewContent: View {
         }
     }
 
-    private var orderedSidebarTasks: [CalendarPlannerTaskSummary] {
-        CalendarPlannerBridge.sidebarTasks(
-            sidebarDate: sidebarDate,
+
+    private var allOpenTasksInRange: [CalendarPlannerTaskSummary] {
+        CalendarTasksDeadlinesHub.fetchOpenTasks(
             rangeStart: rangeStart,
-            rangeEnd: rangeEnd,
-            calendar: calendar,
-            
+            rangeEnd: rangeEnd
+        )
+    }
+
+    private var smartListTasks: [CalendarPlannerTaskSummary] {
+        CalendarTasksDeadlinesHub.filter(
+            allOpenTasksInRange,
+            list: tasksSmartList,
+            calendar: calendar
+        )
+    }
+
+    private var studyFocusTasks: [CalendarPlannerTaskSummary] {
+        CalendarTasksDeadlinesHub.filter(
+            allOpenTasksInRange,
+            list: .studyFocus,
+            calendar: calendar
         )
     }
 
@@ -464,9 +429,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
         guard !ids.isEmpty else { return }
 
         didPrewarmEventEntities = true
-        for id in ids {
-            _ = collegePersistence?.calendarEventEntity(id: id)
-        }
+        _ = collegePersistence?.calendarEventEntities(ids: ids)
     }
 
     @MainActor
@@ -563,37 +526,98 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
     }
 
     var body: some View {
-        calendarReactiveHandlers(calendarRootLayout)
+        calendarReactiveHandlers(
+            VStack(spacing: 0) {
+                if shouldShowConnectBanner {
+                    connectCalendarBanner
+                }
+                calendarRootLayout
+            }
+        )
+    }
+
+    private var hasConnectedCalendarSource: Bool {
+        guard let calendarManager else { return false }
+        return calendarManager.googleStatus == .connected
+            || calendarManager.appleStatus == .connected
+            || calendarManager.outlookStatus == .connected
+            || calendarManager.iCloudStatus == .connected
+    }
+
+    private var shouldShowConnectBanner: Bool {
+        !connectBannerDismissed && !hasConnectedCalendarSource
+    }
+
+    @ViewBuilder
+    private var connectCalendarBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No calendar connected")
+                    .font(.subheadline.weight(.semibold))
+                Text("Connect Apple, Google, or Outlook calendars to sync your events.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Connect") {
+                NotificationCenter.default.post(
+                    name: Notification.Name("plannerOpenPage"),
+                    object: nil,
+                    userInfo: ["pageRaw": "Settings"]
+                )
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            Button {
+                connectBannerDismissed = true
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss connect calendar banner")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 
     @ViewBuilder
     private var calendarRootLayout: some View {
-        HStack(spacing: 0) {
-            GeometryReader { proxy in
-                calendarMainScroll(proxy: proxy)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-            .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-            .layoutPriority(1)
-
-            if isEventListSidebarShown {
-                Group {
-                    if sidebarPanel == .eventList {
-                        academicEventsSidebar
-                            .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    } else {
-                        tasksSidebar
-                            .transition(.opacity.combined(with: .move(edge: .trailing)))
-                    }
-                }
-                .id(sidebarPanel)
-                    .frame(width: 296)
-                    .layoutPriority(0)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
+        GeometryReader { proxy in
+            calendarMainScroll(proxy: proxy)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: isEventListSidebarShown)
-        .animation(.spring(response: 0.34, dampingFraction: 0.88), value: sidebarPanel)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .layoutPriority(1)
+        .environment(\.calendarEventDetailSelection, $eventDetailSelection)
+        .inspector(isPresented: calendarInspectorPresented) {
+            Group {
+                if let entity = eventDetailSelection {
+                    EventDetailSheetContent(entity: entity)
+                } else {
+                    calendarTrailingInspectorContent
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(.windowBackground)
+            .inspectorColumnWidth(
+                min: eventDetailSelection == nil ? 296 : 320,
+                ideal: eventDetailSelection == nil ? 296 : 420,
+                max: eventDetailSelection == nil ? 420 : 520
+            )
+        }
+        .animation(DesignSystem.Motion.springOrEase(reduceMotion: motionReduced), value: isEventListSidebarShown)
+        .animation(DesignSystem.Motion.springOrEase(reduceMotion: motionReduced), value: sidebarPanel)
+        .animation(DesignSystem.Motion.springOrEase(reduceMotion: motionReduced), value: eventDetailSelection?.id)
         .sheet(isPresented: isAddCalendarSheetPresented) {
             CalendarOverlayAccess.builder?.addCalendarItemOverlay(
                 isPresented: isAddCalendarSheetPresented,
@@ -604,7 +628,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 eventID: nil,
                 style: .anchoredPanel
             )
-            .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
+            .frame(minWidth: 720, idealWidth: 1040, minHeight: 540, idealHeight: 760)
             .presentationBackground(.thinMaterial)
             
         }
@@ -618,18 +642,41 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 eventID: editCalendarSheetEvent?.id,
                 style: .anchoredPanel
             )
-            .frame(minWidth: 920, idealWidth: 1040, minHeight: 640, idealHeight: 760)
+            .frame(minWidth: 720, idealWidth: 1040, minHeight: 540, idealHeight: 760)
             .presentationBackground(.thinMaterial)
             
         }
-        .opacity(hasAnimatedIn ? 1 : 0)
-        .offset(y: hasAnimatedIn ? 0 : (motionReduced ? 0 : 12))
-        .animation(
-            motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88),
-            value: hasAnimatedIn
-        )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.windowBackground)
+    }
+
+    private var calendarInspectorPresented: Binding<Bool> {
+        Binding(
+            get: { isEventListSidebarShown || eventDetailSelection != nil },
+            set: { presented in
+                if !presented {
+                    isEventListSidebarShown = false
+                    eventDetailSelection = nil
+                } else if eventDetailSelection == nil {
+                    isEventListSidebarShown = true
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var calendarTrailingInspectorContent: some View {
+        Group {
+            switch sidebarPanel {
+            case .eventList:
+                academicEventsSidebar
+            case .tasks:
+                tasksAndDeadlinesSidebar
+            case .studyFocus:
+                studyFocusSidebar
+            }
+        }
+        .id(sidebarPanel)
     }
 
     private func cancelCalendarBackgroundTasks() {
@@ -642,15 +689,10 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
     }
 
     private func handleCalendarAppear() {
-        
         scheduleCacheRebuild(delay: 0)
         prewarmEventEntitiesIfNeeded()
         syncToolbarState()
         registerCalendarToolbarHandler()
-        guard !hasAnimatedIn else { return }
-        withAnimation(motionReduced ? .easeOut(duration: 0.10) : .spring(response: 0.30, dampingFraction: 0.88)) {
-            hasAnimatedIn = true
-        }
     }
 
     private func registerCalendarToolbarHandler() {
@@ -691,7 +733,10 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 calendarSceneState?.viewMode = mode
             }
             .onChange(of: isEventListSidebarShown) { _, shown in
-                calendarSceneState?.sidebarShown = shown
+                calendarSceneState?.sidebarShown = shown || eventDetailSelection != nil
+            }
+            .onChange(of: eventDetailSelection?.id) { _, _ in
+                calendarSceneState?.sidebarShown = isEventListSidebarShown || eventDetailSelection != nil
             }
             .onChange(of: sidebarPanel) { _, panel in
                 calendarSceneState?.sidebarPanel = panel
@@ -724,7 +769,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
     private func syncToolbarState() {
         calendarSceneState?.headerDate = headerDateString
         calendarSceneState?.viewMode = activeViewMode
-        calendarSceneState?.sidebarShown = isEventListSidebarShown
+        calendarSceneState?.sidebarShown = isEventListSidebarShown || eventDetailSelection != nil
         calendarSceneState?.sidebarPanel = sidebarPanel
         calendarSceneState?.profileInitials = calendarToolbarInitials
     }
@@ -739,7 +784,12 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
             activeViewMode = mode
         case .sidebarToggle:
             withAnimation(.spring(response: 0.30, dampingFraction: 0.86)) {
-                isEventListSidebarShown.toggle()
+                if isEventListSidebarShown || eventDetailSelection != nil {
+                    isEventListSidebarShown = false
+                    eventDetailSelection = nil
+                } else {
+                    isEventListSidebarShown = true
+                }
             }
         case .sidebarPanelChange(let panel):
             withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
@@ -892,7 +942,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
             let opacity = min(1.0, (abs - 0.25) / 0.75)
             let scale   = 0.55 + 0.45 * min(1.0, abs)
             Image(systemName: isBackward ? "chevron.left" : "chevron.right")
-                .font(.system(size: 20, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 20, weight: .semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 52, height: 52)
                 .background(.thinMaterial, in: Circle())
@@ -913,7 +963,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 ForEach(headers, id: \.timeIntervalSince1970) { date in
                     let dayString = CalendarFormatters.weekday.string(from: date).uppercased()
                     Text(dayString)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
@@ -928,15 +978,21 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 ForEach(0..<rows, id: \.self) { rowIndex in
                     let startIdx = rowIndex * 7
                     let endIdx = min(startIdx + 7, days.count)
-                    let rowDays = (startIdx..<endIdx).map { colIndex -> (Int, [CalEvent]?, Bool) in
+                    let rowDays = (startIdx..<endIdx).map { colIndex -> (Date, Int, [CalEvent]?, Bool) in
                         let date = days[colIndex]
                         let dayNum = calendar.component(.day, from: date)
                         let evs = getEvents(for: date)
                         let isCurrent = calendar.isDateInToday(date)
-                        return (dayNum, evs.isEmpty ? nil : evs, isCurrent)
+                        return (date, dayNum, evs.isEmpty ? nil : evs, isCurrent)
                     }
                     
-                    MonthCalendarRow(days: rowDays, isLast: rowIndex == rows - 1)
+                    MonthCalendarRow(
+                        days: rowDays,
+                        isLast: rowIndex == rows - 1,
+                        onDoubleClickDay: { date in
+                            presentAddEvent(on: date, minuteOfDay: 9 * 60)
+                        }
+                    )
                 }
             }
         }
@@ -981,8 +1037,8 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                             ForEach(0...24, id: \.self) { hour in
                                 HStack(alignment: .top, spacing: 0) {
                                     Text(hourString(for: hour))
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(Color.secondary.opacity(0.55))
+                                        .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
+                                        .foregroundStyle(Color.secondary.opacity(0.55))
                                         .frame(width: 50, alignment: .trailing)
                                         .padding(.trailing, 8)
                                         .offset(y: -6)
@@ -1005,6 +1061,17 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                             let layouts = timedLayouts(for: date)
                             GeometryReader { geo in
                                 ZStack(alignment: .topLeading) {
+                                    Rectangle()
+                                        .fill(Color.clear)
+                                        .contentShape(Rectangle())
+                                        .frame(width: geo.size.width, height: 24 * hourHeight)
+                                        .gesture(
+                                            SpatialTapGesture(count: 2)
+                                                .onEnded { value in
+                                                    presentAddEvent(on: date, yOffset: value.location.y)
+                                                }
+                                        )
+
                                     ForEach(layouts) { layout in
                                         let event = layout.event
                                         let columnWidth = (geo.size.width - 8) / CGFloat(layout.columnCount)
@@ -1070,8 +1137,8 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                             if currentOffset > 0 {
                                 HStack(spacing: 0) {
                                     Text(currentTimeString(for: now))
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.red)
+                                        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
+                                        .foregroundStyle(.red)
                                         .frame(width: 50, alignment: .trailing)
                                         .padding(.trailing, 8)
                                     Spacer(minLength: 0)
@@ -1110,18 +1177,43 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
         )
     }
 
+    private func presentAddEvent(on date: Date, yOffset: CGFloat) {
+        let rawMinutes = Int((max(0, yOffset) / max(1, hourHeight)) * 60)
+        let snappedMinutes = min(23 * 60 + 45, max(0, (rawMinutes / 15) * 15))
+        presentAddEvent(on: date, minuteOfDay: snappedMinutes)
+    }
+
+    private func presentAddEvent(on date: Date, minuteOfDay: Int) {
+        var components = calendar.dateComponents([.year, .month, .day], from: date)
+        components.hour = max(0, min(23, minuteOfDay / 60))
+        components.minute = max(0, min(59, minuteOfDay % 60))
+
+        let start = calendar.date(from: components) ?? date
+        let storedDuration = UserDefaults.standard.integer(forKey: "calendar.defaultEventDurationMinutes")
+        let durationMinutes = storedDuration > 0 ? storedDuration : 60
+        let end = calendar.date(byAdding: .minute, value: durationMinutes, to: start)
+            ?? start.addingTimeInterval(TimeInterval(durationMinutes * 60))
+
+        modalCoordinator?.presentAddCalendarItem(
+            semesterID: nil,
+            title: nil,
+            start: start,
+            end: end
+        )
+    }
+
     @ViewBuilder
     private func dayHeaderColumn(for date: Date) -> some View {
         let isToday = calendar.isDateInToday(date)
 
         VStack(spacing: 4) {
             Text(dayHeader(for: date))
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isToday ? .accentColor : .secondary)
+                .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                .foregroundStyle(isToday ? Color.accentColor : Color.secondary)
 
             Text("\(calendar.component(.day, from: date))")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundColor(isToday ? .white : .primary)
+                .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                .foregroundStyle(isToday ? .white : .primary)
                 .frame(width: 32, height: 32)
                 .background(isToday ? Color.accentColor : Color.clear)
                 .clipShape(Circle())
@@ -1137,20 +1229,20 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 ForEach(allDay) { event in
                     let isInfo = isInformationalAllDay(event)
                     Text(event.title)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(isInfo ? .accentColor : .white)
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                        .foregroundStyle(isInfo ? Color.accentColor : .white)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
                         .frame(maxWidth: .infinity)
                         .background(isInfo ? Color.accentColor.opacity(0.15) : Color.red.opacity(0.8))
-                        .cornerRadius(4)
+                        .clipShape(.rect(cornerRadius: 4))
                 }
             }
-            .padding(6)
+            .padding(DesignSystem.Spacing.sm)
             .background(DesignSystem.Colors.glassCardBase.opacity(0.8))
-            .cornerRadius(6)
+            .clipShape(.rect(cornerRadius: 6))
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
@@ -1202,10 +1294,10 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Event List")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
                     Text(sidebarDateString)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                         .foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 8)
@@ -1213,9 +1305,9 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                     isFilterPopoverShown.toggle()
                 } label: {
                     Image(systemName: "line.3.horizontal.decrease")
-                        .foregroundColor(activeCalendarFilters.isEmpty ? Color.secondary.opacity(0.55) : .accentColor)
-                        .font(.system(size: 15, weight: .medium))
-                        .padding(6)
+                        .foregroundStyle(activeCalendarFilters.isEmpty ? Color.secondary.opacity(0.55) : Color.accentColor)
+                        .font(DesignSystem.Fonts.main(size: 15, weight: .medium))
+                        .padding(DesignSystem.Spacing.sm)
                         .background(
                             activeCalendarFilters.isEmpty
                                 ? Color.clear
@@ -1241,10 +1333,10 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                     if orderedSidebarEventsSnapshot.isEmpty {
                         VStack(spacing: 8) {
                             Image(systemName: "calendar.badge.checkmark")
-                                .font(.system(size: 28))
+                                .font(DesignSystem.Fonts.main(size: 28))
                                 .foregroundStyle(.tertiary)
                             Text("No events")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
                                 .foregroundStyle(.tertiary)
                         }
                         .frame(maxWidth: .infinity)
@@ -1292,7 +1384,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
                 presentAddEventFromSidebar()
             }) {
                 Text("Add Event")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
@@ -1310,90 +1402,46 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
             .padding(.bottom, 20)
             .sensoryFeedback(.impact(weight: .light), trigger: isAddCalendarSheetPresented.wrappedValue)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.clear)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.12))
-                .frame(width: 1)
-        }
+        .inspectorSidebarBackground()
         .sensoryFeedback(.selection, trigger: sidebarDate)
     }
 
-    private var tasksSidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Tasks")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.primary)
-                    Text(sidebarDateString)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                }
-                Spacer(minLength: 8)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 16)
-
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 12) {
-                    if orderedSidebarTasks.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "checklist")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.tertiary)
-                            Text("No tasks")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 24)
-                    } else {
-                        ForEach(orderedSidebarTasks) { task in
-                            SideTaskCard(
-                                title: task.title,
-                                dueDate: task.dueDate
-                            )
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .scrollBounceBehavior(.basedOnSize)
-
-            Button(action: {
-                presentAddTaskFromSidebar()
-            }) {
-                Text("Add Task")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(DesignSystem.Colors.chromeStroke, lineWidth: 1)
+    private var tasksAndDeadlinesSidebar: some View {
+        CalendarTasksDeadlinesPanel(
+            tasks: smartListTasks,
+            selectedList: $tasksSmartList,
+            sidebarDateLabel: sidebarDateString,
+            reduceMotion: motionReduced,
+            onAddTask: presentAddTaskFromSidebar,
+            taskRow: { task in
+                AnyView(
+                    SideTaskCard(
+                        title: task.title,
+                        dueDate: task.dueDate
                     )
+                )
             }
-            .buttonStyle(PressableCardStyle(reduceMotion: motionReduced))
-            .pointerStyle(.link)
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 20)
-        }
-        .background(Color.clear)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(width: 1)
-        }
+        )
     }
-    
+
+    private var studyFocusSidebar: some View {
+        CalendarTasksDeadlinesPanel(
+            tasks: studyFocusTasks,
+            selectedList: .constant(.studyFocus),
+            sidebarDateLabel: sidebarDateString,
+            reduceMotion: motionReduced,
+            onAddTask: presentAddTaskFromSidebar,
+            taskRow: { task in
+                AnyView(
+                    SideTaskCard(
+                        title: task.title,
+                        dueDate: task.dueDate
+                    )
+                )
+            }
+        )
+    }
+
     private func courseCode(for title: String) -> String {
         let parts = title.components(separatedBy: " ")
         if parts.count >= 2 {
@@ -1408,7 +1456,7 @@ let formatted = await CalendarReadAccess.search!.searchOffMain(query: trimmed, l
     private func eventColor(for type: EventType) -> (base: Color, text: Color) {
         switch type {
         case .deadline: return (.red, .red.opacity(0.8))
-        case .lecture, .classEvent: return (.accentColor, .accentColor.opacity(0.8))
+        case .lecture, .classEvent: return (Color.accentColor, Color.accentColor.opacity(0.8))
         case .lab: return (.purple, .purple.opacity(0.8))
         case .extracurricular, .club: return (.green, .green.opacity(0.8))
         default: return (.secondary, .secondary)
@@ -1424,11 +1472,10 @@ fileprivate struct TimeEventBlock: View {
     @Environment(\.calendarPersistence) private var collegePersistence
     @Environment(\.calendarIntegrationManager) private var calendarManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.calendarEventDetailSelection) private var eventDetailSelection
 
     @State private var isHovering = false
     @GestureState private var isPressed = false
-    @State private var selectedEntity: CalendarStoredEvent?
-    @State private var showDetail = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1438,20 +1485,20 @@ fileprivate struct TimeEventBlock: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .minimumScaleFactor(0.75)
-                    .foregroundColor(textColor)
+                    .foregroundStyle(textColor)
 
                 GeometryReader { geo in
                     if geo.size.height > 25 && eventWidth >= 100 {
                         Text(timeString)
                             .lineLimit(1)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundColor(textColor.opacity(0.8))
+                            .font(DesignSystem.Fonts.main(size: 9, weight: .medium))
+                            .foregroundStyle(textColor.opacity(0.8))
                     }
                 }
             }
-            .padding(4)
+            .padding(DesignSystem.Spacing.xs)
             .frame(maxWidth: .infinity, alignment: .leading)
             .clipped()
         }
@@ -1462,7 +1509,7 @@ fileprivate struct TimeEventBlock: View {
             }
         )
         .padding(.trailing, 2)
-        .cornerRadius(4)
+        .clipShape(.rect(cornerRadius: 4))
         .overlay(
             RoundedRectangle(cornerRadius: 4)
                 .stroke(baseColor.opacity(0.3), lineWidth: 0.5)
@@ -1480,17 +1527,26 @@ fileprivate struct TimeEventBlock: View {
             }
         }
         .onTapGesture {
-            selectedEntity = resolvedEntity
-            showDetail = selectedEntity != nil
+            eventDetailSelection.wrappedValue = resolvedEntity
         }
-        .popover(isPresented: $showDetail, arrowEdge: .trailing) {
-            if let selectedEntity {
-                EventDetailPopoverContent(entity: selectedEntity)
+        .contextMenu {
+            if let entity = resolvedEntity {
+                Button("Edit Event…") {
+                    eventDetailSelection.wrappedValue = entity
+                }
+                Button("Copy Title") {
+                    #if canImport(AppKit)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(event.title, forType: .string)
+                    #endif
+                }
             } else {
-                Text("Event unavailable")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(20)
+                Button("Copy Title") {
+                    #if canImport(AppKit)
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(event.title, forType: .string)
+                    #endif
+                }
             }
         }
     }
@@ -1507,7 +1563,7 @@ fileprivate struct TimeEventBlock: View {
         }
 
         switch event.type {
-        case .lecture: return .accentColor
+        case .lecture: return Color.accentColor
         case .lab: return .purple
         case .deadline: return .red
         case .extracurricular: return .green
@@ -1532,16 +1588,23 @@ fileprivate struct TimeEventBlock: View {
 }
 
 fileprivate struct MonthCalendarRow: View {
-    let days: [(Int, [CalEvent]?, Bool)]
+    let days: [(Date, Int, [CalEvent]?, Bool)]
     let isLast: Bool
+    let onDoubleClickDay: (Date) -> Void
     
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 ForEach(0..<days.count, id: \.self) { index in
                     let day = days[index]
-                    MonthCalendarCell(dayNumber: day.0, events: day.1 ?? [], isCurrentDay: day.2)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    MonthCalendarCell(
+                        date: day.0,
+                        dayNumber: day.1,
+                        events: day.2 ?? [],
+                        isCurrentDay: day.3,
+                        onDoubleClick: onDoubleClickDay
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     
                     if index < days.count - 1 {
                         Divider().background(Color.primary.opacity(0.08))
@@ -1558,9 +1621,11 @@ fileprivate struct MonthCalendarRow: View {
 }
 
 fileprivate struct MonthCalendarCell: View {
+    let date: Date
     let dayNumber: Int
     let events: [CalEvent]
     let isCurrentDay: Bool
+    let onDoubleClick: (Date) -> Void
 
     @State private var isHovered = false
 
@@ -1587,16 +1652,16 @@ fileprivate struct MonthCalendarCell: View {
                 HStack {
                     if isCurrentDay {
                         Text("\(dayNumber)")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
                             .frame(width: 24, height: 24)
                             .background(Color.accentColor)
                             .clipShape(Circle())
                             .shadow(color: Color.accentColor.opacity(isHovered ? 0.5 : 0), radius: 6)
                     } else {
                         Text("\(dayNumber)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(events.isEmpty ? Color.secondary.opacity(0.55) : Color.primary.opacity(0.8))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                            .foregroundStyle(events.isEmpty ? Color.secondary.opacity(0.55) : Color.primary.opacity(0.8))
                             .frame(width: 24, height: 24)
                             .background(isHovered ? Color.primary.opacity(0.08) : Color.clear)
                             .clipShape(Circle())
@@ -1616,8 +1681,8 @@ fileprivate struct MonthCalendarCell: View {
 
                     if events.count > adjustedCapacity {
                         Text("+ \(events.count - adjustedCapacity) more")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary)
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                            .foregroundStyle(.secondary)
                             .padding(.leading, 6)
                             .padding(.top, 2)
                     }
@@ -1629,6 +1694,10 @@ fileprivate struct MonthCalendarCell: View {
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovering }
             }
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) {
+                onDoubleClick(date)
+            }
         }
     }
 }
@@ -1639,14 +1708,12 @@ fileprivate struct EventPill: View {
     @Environment(\.calendarPersistence) private var collegePersistence
     @Environment(\.calendarIntegrationManager) private var calendarManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.calendarEventDetailSelection) private var eventDetailSelection
     @State private var isHovering = false
-    @State private var selectedEntity: CalendarStoredEvent?
-    @State private var showDetail = false
 
     var body: some View {
         Button(action: {
-            selectedEntity = resolvedEntity
-            showDetail = selectedEntity != nil
+            eventDetailSelection.wrappedValue = resolvedEntity
         }) {
             HStack(spacing: 4) {
                 Rectangle()
@@ -1655,25 +1722,25 @@ fileprivate struct EventPill: View {
 
                 if event.isImportant {
                     Image(systemName: "exclamationmark.circle.fill")
-                        .font(.system(size: 8))
+                        .font(DesignSystem.Fonts.main(size: 8))
                 } else if event.type == .lecture || event.type == .classEvent {
                     Image(systemName: "book.fill")
-                        .font(.system(size: 8))
+                        .font(DesignSystem.Fonts.main(size: 8))
                 } else if event.type == .lab {
                     Image(systemName: "flask.fill")
-                        .font(.system(size: 8))
+                        .font(DesignSystem.Fonts.main(size: 8))
                 }
 
                 Text(event.title)
-                    .font(.system(size: 9, weight: event.isImportant ? .bold : .medium))
+                    .font(DesignSystem.Fonts.main(size: 9, weight: event.isImportant ? .bold : .medium))
                     .lineLimit(1)
             }
-            .foregroundColor(textColor)
+            .foregroundStyle(textColor)
             .padding(.trailing, 6)
             .frame(height: 18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(baseColor.opacity(isHovering ? 0.3 : 0.15))
-            .cornerRadius(4)
+            .clipShape(.rect(cornerRadius: 4))
             .clipped()
         }
         .buttonStyle(PressableCardStyle(reduceMotion: reduceMotion))
@@ -1681,16 +1748,6 @@ fileprivate struct EventPill: View {
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.1)) {
                 isHovering = hovering
-            }
-        }
-        .popover(isPresented: $showDetail, arrowEdge: .trailing) {
-            if let selectedEntity {
-                EventDetailPopoverContent(entity: selectedEntity)
-            } else {
-                Text("Event unavailable")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(20)
             }
         }
     }
@@ -1708,7 +1765,7 @@ fileprivate struct EventPill: View {
 
         switch event.type {
         case .deadline: return .red
-        case .lecture, .classEvent: return .accentColor
+        case .lecture, .classEvent: return Color.accentColor
         case .lab: return .purple
         case .extracurricular, .club: return .green
         default: return .secondary
@@ -1723,7 +1780,7 @@ fileprivate struct EventPill: View {
 
         switch event.type {
         case .deadline: return .red.opacity(0.8)
-        case .lecture, .classEvent: return .accentColor.opacity(0.8)
+        case .lecture, .classEvent: return Color.accentColor.opacity(0.8)
         case .lab: return .purple.opacity(0.8)
         case .extracurricular, .club: return .green.opacity(0.8)
         default: return .secondary
@@ -1743,9 +1800,9 @@ fileprivate struct SideEventCard: View {
     let isPast: Bool
     let entity: CalendarStoredEvent?
 
+    @Environment(\.calendarEventDetailSelection) private var eventDetailSelection
     @State private var isHovering = false
     @State private var hoverLocation: CGPoint = .zero
-    @State private var showDetail = false
 
     private var mutedTextColor: Color { .secondary.opacity(0.6) }
     private var strikeColor: Color { .secondary.opacity(0.45) }
@@ -1761,8 +1818,8 @@ fileprivate struct SideEventCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(badge)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(liveBadgeColor)
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                    .foregroundStyle(liveBadgeColor)
                     .strikethrough(isPast, color: strikeColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -1775,8 +1832,8 @@ fileprivate struct SideEventCard: View {
 
                 if isAllDay {
                     Text("ALL-DAY")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(liveAllDayColor)
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundStyle(liveAllDayColor)
                         .strikethrough(isPast, color: strikeColor)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -1791,30 +1848,30 @@ fileprivate struct SideEventCard: View {
                 Spacer()
 
                 Text(time)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(liveTimeColor)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                    .foregroundStyle(liveTimeColor)
                     .strikethrough(isPast, color: strikeColor)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(liveTitleColor)
+                    .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
+                    .foregroundStyle(liveTitleColor)
                     .strikethrough(isPast, color: strikeColor)
 
                 HStack(spacing: 4) {
                     Image(systemName: isAllDay ? "calendar" : "clock")
-                        .font(.system(size: 11))
-                        .foregroundColor(liveIconColor)
+                        .font(DesignSystem.Fonts.main(size: 11))
+                        .foregroundStyle(liveIconColor)
                     Text(calendarName)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(liveMetaColor)
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                        .foregroundStyle(liveMetaColor)
                         .strikethrough(isPast, color: strikeColor)
                         .lineLimit(1)
                 }
             }
         }
-        .padding(20)
+        .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.glassCardBase.background(.thinMaterial))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
@@ -1826,9 +1883,6 @@ fileprivate struct SideEventCard: View {
             radius: isHovering ? 18 : 8,
             y: isHovering ? 5 : 2
         )
-        .scaleEffect(isHovering ? 1.025 : 1.0)
-        .offset(y: isHovering ? -2 : 0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isHovering)
         .onContinuousHover { phase in
             switch phase {
             case .active(let location):
@@ -1839,11 +1893,8 @@ fileprivate struct SideEventCard: View {
             }
         }
         .onTapGesture {
-            if entity != nil { showDetail = true }
-        }
-        .popover(isPresented: $showDetail, arrowEdge: .leading) {
             if let entity {
-                EventDetailPopoverContent(entity: entity)
+                eventDetailSelection.wrappedValue = entity
             }
         }
         .cursor(.pointingHand)
@@ -1860,8 +1911,8 @@ fileprivate struct SideTaskCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("TASK")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(Color.accentColor.opacity(0.8))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                    .foregroundStyle(Color.accentColor.opacity(0.8))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .overlay(
@@ -1873,15 +1924,15 @@ fileprivate struct SideTaskCard: View {
 
                 HStack(spacing: 5) {
                     Image(systemName: "checklist")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                     Text(dueTimeText)
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(.secondary)
             }
 
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1902,8 +1953,6 @@ fileprivate struct SideTaskCard: View {
                 isHovering = hovering
             }
         }
-        .scaleEffect(isHovering ? 1.02 : 1.0)
-        .animation(.spring(response: 0.22, dampingFraction: 0.80), value: isHovering)
     }
 
     private var dueTimeText: String {
@@ -1915,18 +1964,19 @@ fileprivate struct SideTaskCard: View {
     }
 }
 
-// MARK: - Event Detail Popover
+// MARK: - Event Detail Sheet
 
-private struct EventDetailPopoverContent: View {
+private struct EventDetailSheetContent: View {
     let entity: CalendarStoredEvent
 
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.calendarEventDetailSelection) private var eventDetailSelection
+
     private var isPresentedBinding: Binding<Bool> {
         Binding(
-            get: { true },
+            get: { eventDetailSelection.wrappedValue != nil },
             set: { isPresented in
                 if !isPresented {
-                    dismiss()
+                    eventDetailSelection.wrappedValue = nil
                 }
             }
         )
@@ -1940,11 +1990,9 @@ private struct EventDetailPopoverContent: View {
             initialStart: entity.startDate,
             initialEnd: entity.endDate,
             eventID: entity.id,
-            style: .anchoredPanel
+            style: .inspectorSidebar
         )
-        .frame(width: 507)
-        .frame(minHeight: 333, idealHeight: 373, maxHeight: 413)
-        .background(Color.clear)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -1964,7 +2012,7 @@ private struct CalendarFilterPopoverContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Filter Events")
-                .font(.system(size: 13, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -1975,7 +2023,7 @@ private struct CalendarFilterPopoverContent: View {
             // Day picker
             VStack(alignment: .leading, spacing: 8) {
                 Text("Day")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .foregroundStyle(.tertiary)
                     .textCase(.uppercase)
                     .padding(.horizontal, 16)
@@ -2000,7 +2048,7 @@ private struct CalendarFilterPopoverContent: View {
             if !availableCalendars.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Calendar")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .textCase(.uppercase)
                         .padding(.horizontal, 16)
@@ -2010,12 +2058,12 @@ private struct CalendarFilterPopoverContent: View {
                         let isActive = activeCalendarFilters.contains(calName)
                         HStack {
                             Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 14))
-                                .foregroundColor(isActive ? .accentColor : Color.secondary.opacity(0.55))
+                                .font(DesignSystem.Fonts.main(size: 14))
+                                .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.55))
                                 .contentTransition(.symbolEffect(.replace.offUp))
                                 .animation(.spring(response: 0.26, dampingFraction: 0.80), value: isActive)
                             Text(calName)
-                                .font(.system(size: 13))
+                                .font(DesignSystem.Fonts.main(size: 13))
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
@@ -2043,7 +2091,7 @@ private struct CalendarFilterPopoverContent: View {
                     HStack {
                         Spacer()
                         Text("Clear Filters")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
                         Spacer()
                     }
@@ -2063,7 +2111,7 @@ private struct CalendarFilterPopoverContent: View {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { sidebarDate = date }
         } label: {
             Text(label)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                .font(DesignSystem.Fonts.main(size: 12, weight: isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? AnyShapeStyle(.white) : AnyShapeStyle(.primary))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
@@ -2078,7 +2126,7 @@ private struct CalendarFilterPopoverContent: View {
 
 fileprivate extension View {
     func border(_ color: Color, width: CGFloat, edges: [Edge]) -> some View {
-        overlay(EdgeBorder(width: width, edges: edges).foregroundColor(color))
+        overlay(EdgeBorder(width: width, edges: edges).foregroundStyle(color))
     }
 
     @ViewBuilder

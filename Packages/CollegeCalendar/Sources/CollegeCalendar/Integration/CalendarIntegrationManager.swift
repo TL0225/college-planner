@@ -63,6 +63,26 @@ public struct ConnectedCalendar: Identifiable, Hashable {
     public let source: String  // "Apple" or "Google"
     public let color: Color
     public let remoteID: String?
+    public let parentSchoolID: String?
+    public let departmentKey: String?
+
+    public init(
+        id: String,
+        name: String,
+        source: String,
+        color: Color,
+        remoteID: String?,
+        parentSchoolID: String? = nil,
+        departmentKey: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.source = source
+        self.color = color
+        self.remoteID = remoteID
+        self.parentSchoolID = parentSchoolID
+        self.departmentKey = departmentKey
+    }
 }
 
 @MainActor
@@ -111,8 +131,28 @@ public class CalendarIntegrationManager: ObservableObject {
         return isoFormatter.string(from: date)
     }
 
+    nonisolated static func formatISO8601(_ date: Date, timeZone: TimeZone) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = timeZone
+        formatter.formatOptions = isoFormatter.formatOptions
+        return formatter.string(from: date)
+    }
+
     nonisolated private static func formatYMD(_ date: Date) -> String {
         return ymdFormatter.string(from: date)
+    }
+
+    nonisolated static func formatYMD(_ date: Date, timeZone: TimeZone) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate, .withDashSeparatorInDate]
+        formatter.timeZone = timeZone
+        return formatter.string(from: date)
+    }
+
+    nonisolated static func exportTimeZone() -> TimeZone {
+        let selection = UserDefaults.standard.string(forKey: CalendarTimeZonePreference.storageKey)
+            ?? CalendarTimeZonePreference.systemValue
+        return CalendarTimeZonePreference.resolvedTimeZone(selection: selection)
     }
 
     #if DEBUG
@@ -130,8 +170,6 @@ public class CalendarIntegrationManager: ObservableObject {
     private let primaryGoogleCalendarIDKey = "PrimaryGoogleCalendarID"
     private var primaryGoogleCalendarID: String? = nil
 
-    // nonisolated(unsafe): Task.cancel() is Sendable and safe to call from deinit.
-    nonisolated(unsafe) private var syncTask: Task<Void, Never>?
     private var isSyncInFlight: Bool = false
     private var queuedSyncRequest: Bool = false
     private var ekStoreChangeDebounce: Task<Void, Never>?
@@ -143,8 +181,7 @@ public class CalendarIntegrationManager: ObservableObject {
     let eventStore = EKEventStore()
     nonisolated(unsafe) private var appleEventStoreObserver: NSObjectProtocol?
 
-    // Privacy/security: avoid shared session cookies/caches for Google requests.
-    private lazy var secureSession: URLSession = {
+    lazy var secureSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.waitsForConnectivity = true
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -337,6 +374,178 @@ public class CalendarIntegrationManager: ObservableObject {
         } + restored
     }
 
+    // MARK: - Academic (scraped university calendar) sidebar entries
+
+    private let persistedAcademicCalendarsKey = "PersistedAcademicCalendars_v2"
+    private let legacyPersistedAcademicCalendarsKey = "PersistedAcademicCalendars_v1"
+
+    private struct PersistedAcademicCalendar: Codable {
+        let id: String
+        let name: String
+        let colorHex: String
+        let schoolID: String
+        let parentSchoolID: String?
+        let departmentKey: String?
+    }
+
+    public func registerAcademicCalendar(schoolID: String, displayName: String, colorHex: String = "8b5cf6") {
+        registerAcademicDepartmentCalendar(
+            schoolID: schoolID,
+            schoolDisplayName: displayName,
+            departmentKey: "university_wide",
+            departmentDisplayName: displayName,
+            colorHex: colorHex
+        )
+    }
+
+    public func registerAcademicDepartmentCalendar(
+        schoolID: String,
+        schoolDisplayName: String,
+        departmentKey: String,
+        departmentDisplayName: String,
+        colorHex: String = "8b5cf6"
+    ) {
+        let toggleID = "Academic:\(schoolID):\(departmentKey)"
+        let legacyMigrated = migrateLegacyAcademicToggleIfNeeded(schoolID: schoolID)
+
+        let alreadyRegistered = connectedCalendars.contains(where: { $0.id == toggleID })
+        if alreadyRegistered,
+           let idx = connectedCalendars.firstIndex(where: { $0.id == toggleID }) {
+            let existing = connectedCalendars[idx]
+            let metadataUnchanged =
+                existing.name == departmentDisplayName
+                && existing.remoteID == schoolID
+                && existing.parentSchoolID == schoolID
+                && existing.departmentKey == departmentKey
+                && enabledCalendarIDs.contains(toggleID)
+            if metadataUnchanged, !legacyMigrated {
+                _ = schoolDisplayName
+                return
+            }
+            connectedCalendars[idx] = ConnectedCalendar(
+                id: toggleID,
+                name: departmentDisplayName,
+                source: "Academic",
+                color: existing.color,
+                remoteID: schoolID,
+                parentSchoolID: schoolID,
+                departmentKey: departmentKey
+            )
+        } else {
+            connectedCalendars.append(
+                ConnectedCalendar(
+                    id: toggleID,
+                    name: departmentDisplayName,
+                    source: "Academic",
+                    color: Color(hex: colorHex),
+                    remoteID: schoolID,
+                    parentSchoolID: schoolID,
+                    departmentKey: departmentKey
+                )
+            )
+        }
+        _ = schoolDisplayName
+        enabledCalendarIDs.insert(toggleID)
+        persistEnabledCalendars()
+        persistAcademicCalendars()
+    }
+
+    public func removeAcademicCalendar(schoolID: String) {
+        let legacyToggle = "Academic:\(schoolID)"
+        let prefixed = "Academic:\(schoolID):"
+        connectedCalendars.removeAll { $0.id == legacyToggle || $0.id.hasPrefix(prefixed) }
+        enabledCalendarIDs.remove(legacyToggle)
+        for cal in connectedCalendars where cal.id.hasPrefix(prefixed) {
+            enabledCalendarIDs.remove(cal.id)
+        }
+        persistEnabledCalendars()
+        persistAcademicCalendars()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
+    }
+
+    public func removeAcademicDepartmentCalendar(schoolID: String, departmentKey: String) {
+        let toggleID = "Academic:\(schoolID):\(departmentKey)"
+        connectedCalendars.removeAll { $0.id == toggleID }
+        enabledCalendarIDs.remove(toggleID)
+        persistEnabledCalendars()
+        persistAcademicCalendars()
+        CalendarPersistenceAccess.persistence?.notifyCalendarDidChange()
+    }
+
+    private func migrateLegacyAcademicToggleIfNeeded(schoolID: String) -> Bool {
+        let legacyToggle = "Academic:\(schoolID)"
+        var changed = false
+        if enabledCalendarIDs.contains(legacyToggle) {
+            enabledCalendarIDs.remove(legacyToggle)
+            changed = true
+        }
+        let beforeCount = connectedCalendars.count
+        connectedCalendars.removeAll { $0.id == legacyToggle }
+        return changed || connectedCalendars.count != beforeCount
+    }
+
+    private func persistAcademicCalendars() {
+        let academic = connectedCalendars
+            .filter { $0.source == "Academic" }
+            .map {
+                PersistedAcademicCalendar(
+                    id: $0.id,
+                    name: $0.name,
+                    colorHex: $0.color.hexRGBString() ?? "8b5cf6",
+                    schoolID: $0.remoteID ?? String($0.id.dropFirst("Academic:".count)),
+                    parentSchoolID: $0.parentSchoolID,
+                    departmentKey: $0.departmentKey
+                )
+            }
+        if let data = try? JSONEncoder().encode(academic) {
+            UserDefaults.standard.set(data, forKey: persistedAcademicCalendarsKey)
+        }
+    }
+
+    func restorePersistedAcademicCalendars() {
+        let decoded: [PersistedAcademicCalendar]
+        if let data = UserDefaults.standard.data(forKey: persistedAcademicCalendarsKey),
+           let modern = try? JSONDecoder().decode([PersistedAcademicCalendar].self, from: data) {
+            decoded = modern
+        } else if let data = UserDefaults.standard.data(forKey: legacyPersistedAcademicCalendarsKey),
+                  let legacy = try? JSONDecoder().decode([LegacyPersistedAcademicCalendar].self, from: data) {
+            decoded = legacy.map {
+                PersistedAcademicCalendar(
+                    id: "Academic:\($0.schoolID):university_wide",
+                    name: $0.name,
+                    colorHex: $0.colorHex,
+                    schoolID: $0.schoolID,
+                    parentSchoolID: $0.schoolID,
+                    departmentKey: "university_wide"
+                )
+            }
+        } else {
+            return
+        }
+        let restored = decoded.map {
+            ConnectedCalendar(
+                id: $0.id,
+                name: $0.name,
+                source: "Academic",
+                color: Color(hex: $0.colorHex),
+                remoteID: $0.schoolID,
+                parentSchoolID: $0.parentSchoolID ?? $0.schoolID,
+                departmentKey: $0.departmentKey ?? "university_wide"
+            )
+        }
+        connectedCalendars = connectedCalendars.filter { $0.source != "Academic" } + restored
+        for cal in restored {
+            enabledCalendarIDs.insert(cal.id)
+        }
+    }
+
+    private struct LegacyPersistedAcademicCalendar: Codable {
+        let id: String
+        let name: String
+        let colorHex: String
+        let schoolID: String
+    }
+
     // Fast lookup to avoid O(n) scans of syncMap during rendering.
     // Key: local UUID lowercased -> remoteKey (calendarID||eventID)
     private var googleRemoteKeyByLocalIDLower: [String: String] = [:]
@@ -413,6 +622,12 @@ public class CalendarIntegrationManager: ObservableObject {
             .forEach { defaults.removeObject(forKey: $0) }
     }
 
+    /// Calendar ID used for Google export of a local event, if mapped.
+    public func googleExportCalendarID(forLocalEventID id: UUID) -> String? {
+        guard let remoteKey = googleRemoteKey(forLocalID: id.uuidString) else { return nil }
+        return parseGoogleRemoteKey(remoteKey).calendarID
+    }
+
     private func googleRemoteKey(forLocalID localID: String) -> String? {
         let key = localID.lowercased()
         if let v = googleRemoteKeyByLocalIDLower[key] { return v }
@@ -450,6 +665,8 @@ public class CalendarIntegrationManager: ObservableObject {
         }
     }
 
+    var googleExportInFlight: [String: Task<Bool, Never>] = [:]
+
     private var googleRateLimitUntil: Date? {
         get {
             let t = UserDefaults.standard.double(forKey: googleRateLimitUntilKey)
@@ -478,6 +695,11 @@ public class CalendarIntegrationManager: ObservableObject {
     private var googleSyncRequiresReconnect: Bool {
         get { UserDefaults.standard.bool(forKey: googleSyncRequiresReconnectKey) }
         set { UserDefaults.standard.set(newValue, forKey: googleSyncRequiresReconnectKey) }
+    }
+
+    /// Public read-only accessor for UI (event inspector connection health).
+    public var googleSyncRequiresReconnectPublic: Bool {
+        googleSyncRequiresReconnect
     }
 
     private var googleLastRequestAt: Date = .distantPast
@@ -527,6 +749,7 @@ public class CalendarIntegrationManager: ObservableObject {
 
         // Restore user-created local calendars.
         restorePersistedLocalCalendars()
+        restorePersistedAcademicCalendars()
 
         // Build the in-memory reverse lookup cache for fast UI filtering.
         rebuildGoogleReverseMap(from: syncMap)
@@ -554,6 +777,10 @@ public class CalendarIntegrationManager: ObservableObject {
 
     public func sourceCalendarColor(for event: CalendarStoredEvent) -> Color? {
         let localID = event.id.uuidString
+
+        if let academicID = CalendarVisibilityFilter.academicToggleID(from: event.providerSource) {
+            return connectedCalendars.first(where: { $0.id == academicID })?.color
+        }
 
         if Self.isCollegeAppManagedEvent(event) {
             let appleID: String = {
@@ -778,6 +1005,13 @@ public class CalendarIntegrationManager: ObservableObject {
     public func shouldDisplayEvent(_ event: CalendarStoredEvent) -> Bool {
         let localID = event.id.uuidString
 
+        if let academicID = CalendarVisibilityFilter.academicToggleID(from: event.providerSource) {
+            if connectedCalendars.contains(where: { $0.id == academicID }) {
+                return enabledCalendarIDs.contains(academicID)
+            }
+            return true
+        }
+
         if Self.isCollegeAppManagedEvent(event) {
             let appleID: String = {
                 let code = (event.courseCode ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -952,10 +1186,12 @@ public class CalendarIntegrationManager: ObservableObject {
         if AppleCalendarIntegration.isConnected {
             detail?("Loading Apple calendars")
             ensureAppleCalendarsLoadedIfConnected()
-            progress?(0.20)
+            progress?(0.40)
 
-            detail?("Syncing Apple events")
-            await syncAppleCalendar(showNotifications: false)
+            detail?("Scheduling Apple event sync")
+            Task { @MainActor in
+                await syncAppleCalendar(showNotifications: false)
+            }
             progress?(0.60)
         } else {
             progress?(0.60)
@@ -1013,11 +1249,6 @@ public class CalendarIntegrationManager: ObservableObject {
 
     deinit {
         removeAppleEventStoreObserver()
-        // Cancel all background sync task loops so they don't spin forever after deinit.
-        // Task.cancel() is nonisolated and safe to call from any context.
-        syncTask?.cancel()
-        outlookSyncTask?.cancel()
-        iCloudSyncTask?.cancel()
     }
 
     private func enabledAppleCalendarIdentifiersForSync() -> [String] {
@@ -1114,11 +1345,12 @@ public class CalendarIntegrationManager: ObservableObject {
                 notes: ek.notes,
                 urlString: ek.url?.absoluteString,
                 calendarIdentifier: ek.calendar.calendarIdentifier,
-                localUUIDFromURL: localUUIDFromURL
+                localUUIDFromURL: localUUIDFromURL,
+                recurrenceRule: CalendarRecurrenceRuleCodec.storedRecurrenceRule(from: ek.recurrenceRules)
             )
         }
 
-        let mapUpdates: [String: String] = (try? CalendarIntegrationAccess.syncIngest?.ingestAppleSnapshots(snapshots: snapshots, currentMap: currentMap, mappedLocalIDsLower: mappedLocalIDsLower
+        let mapUpdates: [String: String] = (try? await CalendarIntegrationAccess.syncIngest?.ingestAppleSnapshots(snapshots: snapshots, currentMap: currentMap, mappedLocalIDsLower: mappedLocalIDsLower
         )) ?? [:]
 
         await MainActor.run {
@@ -1238,7 +1470,7 @@ public class CalendarIntegrationManager: ObservableObject {
 
                     // Show notifications for initial sync after connection
                     self.performInitialSync(showNotifications: true)
-                    self.startBackgroundSync()
+                    CalendarIntegrationBridge.onProviderConnected?()
                 case .failure(let error):
                     #if DEBUG
                         self.debugLog("Google OAuth sign-in FAILED: \(error.localizedDescription)")
@@ -1250,6 +1482,26 @@ public class CalendarIntegrationManager: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Starts periodic Google/Outlook/iCloud sync loops for connected providers. Registry-controlled; idempotent.
+    public func startProviderBackgroundSyncLoops() {
+        if googleStatus == .connected {
+            startBackgroundSync()
+        }
+        if outlookStatus == .connected {
+            startOutlookBackgroundSync()
+        }
+        if iCloudStatus == .connected {
+            startiCloudBackgroundSync()
+        }
+    }
+
+    /// Stops all provider background sync loops without disconnecting accounts.
+    public func stopProviderBackgroundSyncLoops() {
+        stopBackgroundSync()
+        stopOutlookBackgroundSync()
+        stopiCloudBackgroundSync()
     }
 
     public func disconnectGoogle() {
@@ -1446,19 +1698,7 @@ public class CalendarIntegrationManager: ObservableObject {
     // MARK: - Background Sync
 
     private func startBackgroundSync() {
-        stopBackgroundSync()
-        syncTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
-                guard !Task.isCancelled else { return }
-                guard let self else { return }
-                guard self.googleStatus == .connected else { continue }
-                #if DEBUG
-                    self.debugLog("Background Sync Task fired.")
-                #endif
-                await self.syncGoogle(showNotifications: false)
-            }
-        }
+        CalendarIntegrationBridge.startGoogleProviderPolling?()
     }
 
     nonisolated static func googleEventFingerprint(
@@ -1480,8 +1720,7 @@ public class CalendarIntegrationManager: ObservableObject {
     }
 
     private func stopBackgroundSync() {
-        syncTask?.cancel()
-        syncTask = nil
+        CalendarIntegrationBridge.stopGoogleProviderPolling?()
     }
 
     private func performInitialSync(showNotifications: Bool = false) {
@@ -2024,6 +2263,8 @@ public class CalendarIntegrationManager: ObservableObject {
                 isAllDay: isAllDay,
                 location: location,
                 notes: notes,
+                recurrenceRule: event.recurrenceRule,
+                attendeesJSON: event.attendeesJSON,
                 token: token
             )
             if success {
@@ -2040,6 +2281,8 @@ public class CalendarIntegrationManager: ObservableObject {
         isAllDay: Bool,
         location: String?,
         notes: String?,
+        recurrenceRule: String?,
+        attendeesJSON: String?,
         token: String,
         completion: ((Bool) -> Void)?
     ) {
@@ -2056,6 +2299,8 @@ public class CalendarIntegrationManager: ObservableObject {
                 isAllDay: isAllDay,
                 location: location,
                 notes: notes,
+                recurrenceRule: recurrenceRule,
+                attendeesJSON: attendeesJSON,
                 token: token
             )
             completion?(success)
@@ -2070,6 +2315,8 @@ public class CalendarIntegrationManager: ObservableObject {
         isAllDay: Bool,
         location: String?,
         notes: String?,
+        recurrenceRule: String?,
+        attendeesJSON: String?,
         token: String,
         overrideCalendarID: String? = nil
     ) async -> Bool {
@@ -2078,29 +2325,40 @@ public class CalendarIntegrationManager: ObservableObject {
         let googleStart: GoogleCalendarDate
         let googleEnd: GoogleCalendarDate
 
+        let exportTimeZone = Self.exportTimeZone()
+        let exportTimeZoneID = exportTimeZone.identifier
+
         if isAllDay {
-            let sDate = Self.formatYMD(start)
-            let eDate = Self.formatYMD(end)
-            googleStart = GoogleCalendarDate(dateTime: nil, date: sDate)
-            googleEnd = GoogleCalendarDate(dateTime: nil, date: eDate)
+            let sDate = Self.formatYMD(start, timeZone: exportTimeZone)
+            let eDate = Self.formatYMD(end, timeZone: exportTimeZone)
+            googleStart = GoogleCalendarDate(dateTime: nil, date: sDate, timeZone: exportTimeZoneID)
+            googleEnd = GoogleCalendarDate(dateTime: nil, date: eDate, timeZone: exportTimeZoneID)
         } else {
-            let sDate = Self.formatISO8601(start)
-            let eDate = Self.formatISO8601(end)
-            googleStart = GoogleCalendarDate(dateTime: sDate, date: nil)
-            googleEnd = GoogleCalendarDate(dateTime: eDate, date: nil)
+            let sDate = Self.formatISO8601(start, timeZone: exportTimeZone)
+            let eDate = Self.formatISO8601(end, timeZone: exportTimeZone)
+            googleStart = GoogleCalendarDate(dateTime: sDate, date: nil, timeZone: exportTimeZoneID)
+            googleEnd = GoogleCalendarDate(dateTime: eDate, date: nil, timeZone: exportTimeZoneID)
         }
 
         // 3. Check for existing Google remote key
         let currentMap = self.syncMap
-        let existingRemoteKey = currentMap.first(where: { $0.value == localIDString })?.key
+        var existingRemoteKey = currentMap.first(where: { $0.value == localIDString })?.key
 
         let targetCalendarID: String = {
             if let existingRemoteKey {
                 return self.parseGoogleRemoteKey(existingRemoteKey).calendarID
             }
-            // Use caller-specified calendar if provided, otherwise fall back to default
             return overrideCalendarID ?? self.defaultGoogleCalendarID()
         }()
+
+        if existingRemoteKey == nil,
+           let uuid = UUID(uuidString: localIDString),
+           let localEvent = fetchLocalEvent(uuid: uuid),
+           let providerEventId = localEvent.providerEventId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !providerEventId.isEmpty
+        {
+            existingRemoteKey = makeGoogleRemoteKey(calendarID: targetCalendarID, eventID: providerEventId)
+        }
 
         // 4. Create Request
         let encodedCalendarID =
@@ -2127,6 +2385,12 @@ public class CalendarIntegrationManager: ObservableObject {
         // Only add private extended properties on events we create.
         // Google rejects private extended properties for some event types (e.g. birthdays), and
         // we don't need this tag on PATCH.
+        let exportColorId: String? = {
+            guard let uuid = UUID(uuidString: localIDString),
+                  let local = fetchLocalEvent(uuid: uuid)
+            else { return nil }
+            return CalendarEventDisplayColorResolver.googleColorId(fromStoredHex: local.customColorHex)
+        }()
         let payload = GoogleEventUpload(
             summary: title,
             location: location,
@@ -2138,13 +2402,26 @@ public class CalendarIntegrationManager: ObservableObject {
                     Self.googleLocalIDExtendedPropertyKey: localIDString
                 ])
                 : nil,
-            recurrence: nil,
+            recurrence: CalendarRecurrenceRuleCodec.googleRecurrenceArray(from: recurrenceRule),
+            attendees: GoogleAttendeeHelper.uploadAttendees(fromStoredJSON: attendeesJSON),
+            colorId: exportColorId,
             conferenceDataVersion: nil
         )
 
         guard let requestUrl = url else { return false }
 
-        var request = URLRequest(url: requestUrl)
+        let hasInviteRecipients = payload.attendees?.isEmpty == false
+        let finalURL: URL = {
+            guard hasInviteRecipients,
+                  var components = URLComponents(url: requestUrl, resolvingAgainstBaseURL: false)
+            else { return requestUrl }
+            var query = components.queryItems ?? []
+            query.append(URLQueryItem(name: "sendUpdates", value: "all"))
+            components.queryItems = query
+            return components.url ?? requestUrl
+        }()
+
+        var request = URLRequest(url: finalURL)
         request.httpMethod = httpMethod
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -2221,6 +2498,16 @@ public class CalendarIntegrationManager: ObservableObject {
                     #endif
                 }
             } else {
+                if let remoteKey = existingRemoteKey, currentMap[remoteKey] == nil {
+                    let googleEventID = self.parseGoogleRemoteKey(remoteKey).eventID
+                    await MainActor.run {
+                        self.updateSyncMap(
+                            calendarID: targetCalendarID,
+                            eventID: googleEventID,
+                            localID: localIDString
+                        )
+                    }
+                }
                 #if DEBUG
                     debugLog(
                         "Google Export success (\(httpMethod)). localID=\(localIDString) status=\(statusCode)"
@@ -2553,7 +2840,7 @@ public class CalendarIntegrationManager: ObservableObject {
                     UserDefaults.standard.set(true, forKey: "OutlookConnected")
                     CalendarNotificationAccess.notifications?.post(kind: .info, title: "Calendar Connected", message: "Outlook Calendar sync enabled", progress: nil, autoDismissAfter: 4)
                     self.performOutlookInitialSync(showNotifications: true)
-                    self.startOutlookBackgroundSync()
+                    CalendarIntegrationBridge.onProviderConnected?()
                 case .failure(let error):
                     self.outlookStatus = .disconnected
                     UserDefaults.standard.set(false, forKey: "OutlookConnected")
@@ -2579,32 +2866,19 @@ public class CalendarIntegrationManager: ObservableObject {
         Task { [weak self] in await self?.syncOutlook(showNotifications: true) }
     }
 
-    // nonisolated(unsafe): Task.cancel() is Sendable and safe to call from deinit.
-    nonisolated(unsafe) private var outlookSyncTask: Task<Void, Never>?
-    private var isOutlookSyncInFlight = false
-
     private func startOutlookBackgroundSync() {
-        stopOutlookBackgroundSync()
-        outlookSyncTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
-                guard !Task.isCancelled else { return }
-                guard let self else { return }
-                let outlookConnected = await MainActor.run { self.outlookStatus == .connected }
-                guard outlookConnected else { continue }
-                await self.syncOutlook(showNotifications: false)
-            }
-        }
+        CalendarIntegrationBridge.startOutlookProviderPolling?()
     }
 
     private func stopOutlookBackgroundSync() {
-        outlookSyncTask?.cancel()
-        outlookSyncTask = nil
+        CalendarIntegrationBridge.stopOutlookProviderPolling?()
     }
 
     private func performOutlookInitialSync(showNotifications: Bool) {
         Task { [weak self] in await self?.syncOutlook(showNotifications: showNotifications) }
     }
+
+    private var isOutlookSyncInFlight = false
 
     private let outlookSyncMapKey = "OutlookCalendarSyncMap"
     private var _outlookSyncMap: [String: String] = [:]
@@ -2744,13 +3018,11 @@ public class CalendarIntegrationManager: ObservableObject {
 
     // MARK: - iCloud CalDAV Integration
 
-    private let iCloudUsernameKey = "icloud_caldav_username"
-    private let iCloudPasswordKey = "icloud_caldav_password"
+    let iCloudUsernameKey = "icloud_caldav_username"
+    let iCloudPasswordKey = "icloud_caldav_password"
     private let iCloudKeychainService: String = {
         "\(Bundle.main.bundleIdentifier ?? "College").caldav.icloud"
     }()
-    // nonisolated(unsafe): Task.cancel() is Sendable and safe to call from deinit.
-    nonisolated(unsafe) private var iCloudSyncTask: Task<Void, Never>?
     private var isICloudSyncInFlight = false
 
     var iCloudUsername: String? { iCloudKeychainGet(iCloudUsernameKey) }
@@ -2767,8 +3039,8 @@ public class CalendarIntegrationManager: ObservableObject {
                     self.iCloudStatus = .connected
                     UserDefaults.standard.set(true, forKey: "iCloudCalDAVConnected")
                     CalendarNotificationAccess.notifications?.post(kind: .info, title: "iCloud Connected", message: "iCloud Calendar sync enabled", progress: nil, autoDismissAfter: 4)
+                    CalendarIntegrationBridge.onProviderConnected?()
                 }
-                self.startiCloudBackgroundSync()
                 Task { [weak self] in await self?.synciCloud(showNotifications: true) }
             } catch {
                 await MainActor.run {
@@ -2799,22 +3071,11 @@ public class CalendarIntegrationManager: ObservableObject {
     }
 
     private func startiCloudBackgroundSync() {
-        stopiCloudBackgroundSync()
-        iCloudSyncTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(120))
-                guard !Task.isCancelled else { return }
-                guard let self else { return }
-                let iCloudConnected = await MainActor.run { self.iCloudStatus == .connected }
-                guard iCloudConnected else { continue }
-                await self.synciCloud(showNotifications: false)
-            }
-        }
+        CalendarIntegrationBridge.startICloudProviderPolling?()
     }
 
     private func stopiCloudBackgroundSync() {
-        iCloudSyncTask?.cancel()
-        iCloudSyncTask = nil
+        CalendarIntegrationBridge.stopICloudProviderPolling?()
     }
 
     private func validateiCloudCredentials(username: String, password: String) async throws {
@@ -3021,7 +3282,7 @@ public class CalendarIntegrationManager: ObservableObject {
         }
     }
 
-    private func addCalDAVAuth(_ req: inout URLRequest, username: String, password: String) {
+    func addCalDAVAuth(_ req: inout URLRequest, username: String, password: String) {
         if let data = "\(username):\(password)".data(using: .utf8) {
             req.setValue("Basic \(data.base64EncodedString())", forHTTPHeaderField: "Authorization")
         }
@@ -3043,7 +3304,7 @@ public class CalendarIntegrationManager: ObservableObject {
         }
     }
 
-    private func iCloudKeychainGet(_ key: String) -> String? {
+    func iCloudKeychainGet(_ key: String) -> String? {
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: iCloudKeychainService,
@@ -3133,6 +3394,7 @@ private struct GoogleCreatedEventResponse: Codable {
 struct GoogleCalendarDate: Codable {
     let dateTime: String?
     let date: String?
+    let timeZone: String?
 }
 
 // https://developers.google.com/calendar/api/v3/reference/calendarList/list
@@ -3157,10 +3419,12 @@ struct GoogleEventUpload: Encodable {
     let end: GoogleCalendarDate
     let extendedProperties: GoogleExtendedProperties?
     let recurrence: [String]?
+    let attendees: [GoogleAttendee]?
+    let colorId: String?
     let conferenceDataVersion: Int?
 
     enum CodingKeys: String, CodingKey {
-        case summary, location, description, start, end, extendedProperties, recurrence
+        case summary, location, description, start, end, extendedProperties, recurrence, attendees, colorId
         case conferenceDataVersion
     }
 }
@@ -3176,16 +3440,32 @@ struct GoogleExtendedProperties: Encodable {
 // MARK: - Google Attendee JSON helpers
 
 enum GoogleAttendeeHelper {
-    /// Encodes an array of GoogleAttendee to a compact JSON string for storage.
+    /// Encodes Google attendees into unified guest JSON for storage.
     static func encode(_ attendees: [GoogleAttendee]) -> String? {
-        guard !attendees.isEmpty else { return nil }
-        return try? String(data: JSONEncoder().encode(attendees), encoding: .utf8)
+        let records = attendees.compactMap { attendee -> CalendarEventGuestsCodec.GuestRecord? in
+            let email = attendee.email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !email.isEmpty else { return nil }
+            let name = (attendee.displayName ?? email).trimmingCharacters(in: .whitespacesAndNewlines)
+            return CalendarEventGuestsCodec.GuestRecord(
+                name: name,
+                email: email,
+                responseStatus: attendee.responseStatus
+            )
+        }
+        return CalendarEventGuestsCodec.encode(records: records)
     }
 
-    /// Decodes a JSON string back to [GoogleAttendee].
+    /// Decodes stored guest JSON (unified or legacy Google attendee payloads).
     static func decode(_ json: String) -> [GoogleAttendee] {
-        guard let data = json.data(using: .utf8) else { return [] }
-        return (try? JSONDecoder().decode([GoogleAttendee].self, from: data)) ?? []
+        CalendarEventGuestsCodec.decodeFlexible(json).map { guest in
+            GoogleAttendee(
+                email: guest.email,
+                displayName: guest.name,
+                responseStatus: guest.responseStatus ?? "needsAction",
+                organizer: nil,
+                self: nil
+            )
+        }
     }
 
     /// Returns the best conference join URL from a GoogleConferenceData, preferring video.
@@ -3213,6 +3493,24 @@ enum GoogleAttendeeHelper {
     static func rrule(from recurrence: [String]?) -> String? {
         recurrence?.first(where: { $0.hasPrefix("RRULE:") })
             .map { String($0.dropFirst("RRULE:".count)) }
+    }
+
+    /// Maps stored guest JSON to Google Calendar attendee payloads for export.
+    static func uploadAttendees(fromStoredJSON json: String?) -> [GoogleAttendee]? {
+        let guests = CalendarEventGuestsCodec.decode(json)
+        let attendees = guests.compactMap { guest -> GoogleAttendee? in
+            let email = guest.email?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !email.isEmpty else { return nil }
+            let name = guest.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return GoogleAttendee(
+                email: email,
+                displayName: name.isEmpty ? nil : name,
+                responseStatus: guest.responseStatus ?? "needsAction",
+                organizer: nil,
+                self: nil
+            )
+        }
+        return attendees.isEmpty ? nil : attendees
     }
 }
 
@@ -3242,6 +3540,7 @@ struct iCloudEventData: Sendable {
     let isAllDay: Bool
     let location: String?
     let notes: String?
+    let localUUID: UUID?
 }
 
 // MARK: - CalDAV Minimal XML Parser
@@ -3391,6 +3690,7 @@ private enum ICalMiniParser {
         var endTZ: String?
         var location: String?
         var notes: String?
+        var localUUID: UUID?
         var isAllDay = false
         var inEvent = false
 
@@ -3415,6 +3715,7 @@ private enum ICalMiniParser {
                 endTZ = tz(params)
             case "LOCATION": location = unescape(value)
             case "DESCRIPTION": notes = unescape(value)
+            case "X-COLLEGE-LOCAL-ID": localUUID = UUID(uuidString: value)
             default: break
             }
         }
@@ -3430,7 +3731,8 @@ private enum ICalMiniParser {
             uid: uid, summary: summary ?? "(No Title)", startDate: start, endDate: end,
             isAllDay: isAllDay,
             location: location?.isEmpty == false ? location : nil,
-            notes: notes?.isEmpty == false ? notes : nil)
+            notes: notes?.isEmpty == false ? notes : nil,
+            localUUID: localUUID)
     }
 
     private static func split(_ line: String) -> (String, String, String) {

@@ -19,20 +19,27 @@ struct AcademicCalendarWidget: View {
 
     var body: some View {
         OverviewCard {
-            Text(String(localized: "widget.academic_calendar.title"))
-                .font(DesignSystem.Fonts.main(size: 16, weight: .bold, design: .serif))
+            OverviewWidgetHeader(
+                String(localized: "widget.academic_calendar.title"),
+                systemImage: "calendar",
+                accentColor: WidgetCategory.academic.accentColor
+            )
+
+            Color.clear.frame(height: 16)
 
             if academicProfiles.isEmpty {
-                Text(String(localized: "widget.academic_calendar.empty"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                OverviewWidgetEmptyState(
+                    title: String(localized: "widget.academic_calendar.empty"),
+                    message: String(localized: "widget.academic_calendar.empty.message", defaultValue: "Add an academic profile to track term milestones."),
+                    systemImage: "calendar.badge.plus",
+                    accentColor: .teal
+                )
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(academicProfiles, id: \.id) { ap in
                         calendarRow(ap)
                     }
                 }
-                .padding(.top, 6)
             }
         }
         .background {
@@ -45,23 +52,29 @@ struct AcademicCalendarWidget: View {
         let label = ap.resolvedShortLabel(among: academicProfiles)
         let grad = ap.expectedGraduation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-        HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(ap.accentColor)
-                .frame(width: 6, height: 6)
-                .padding(.top, 5)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                if !grad.isEmpty {
-                    Text(String(format: String(localized: "widget.academic_calendar.graduation"), grad))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(String(localized: "widget.academic_calendar.no_date"))
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+        OverviewWidgetRowSurface(accentColor: ap.accentColor) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "graduationcap.fill")
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                    .foregroundStyle(ap.accentColor)
+                    .frame(width: 32, height: 32)
+                    .background(ap.accentColor.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    if !grad.isEmpty {
+                        Text(String(format: String(localized: "widget.academic_calendar.graduation"), grad))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(String(localized: "widget.academic_calendar.no_date"))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                Spacer()
             }
         }
     }

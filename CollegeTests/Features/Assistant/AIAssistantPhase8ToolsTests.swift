@@ -1,46 +1,46 @@
 // AIAssistantPhase8ToolsTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AIAssistantPhase8ToolsTests.
-// Data: CollegePersistence / repositories when applicable.
+// Phase 8 tool registry (Swift Testing).
 
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-@MainActor
-final class AIAssistantPhase8ToolsTests: XCTestCase {
-    func testRegistryHasPhase8Tools() {
+@Suite("AI Assistant Phase 8 Tools")
+struct AIAssistantPhase8ToolsTests {
+
+    @Test("Registry has phase 8 tools")
+    @MainActor
+    func registryHasPhase8Tools() {
         let names = Set(AIAssistantToolRegistry.all.map { $0.descriptor.name })
-        XCTAssertTrue(names.contains("navigateToPage"))
-        XCTAssertTrue(names.contains("resolveEventLocation"))
-        XCTAssertTrue(names.contains("searchDocuments"))
-        XCTAssertTrue(names.contains("addCourseToPlan"))
-        XCTAssertGreaterThanOrEqual(names.count, 40)
+        #expect(names.contains("navigateToPage"))
+        #expect(names.contains("resolveEventLocation"))
+        #expect(names.contains("searchDocuments"))
+        #expect(names.contains("addCourseToPlan"))
+        #expect(names.count >= 40)
     }
 
-    func testPlanningCatalogJSONIsNonEmptyForAdvisor() {
+    @Test("Planning catalog JSON is non-empty for advisor")
+    @MainActor
+    func planningCatalogJSONIsNonEmptyForAdvisor() {
         let json = AIAssistantToolRegistry.planningCatalogJSON(for: .academicAdvisor)
-        XCTAssertGreaterThan(json.count, 400)
-        XCTAssertTrue(json.contains("getStudentProfile"))
-        XCTAssertTrue(json.contains("navigateToPage"))
+        #expect(json.count > 400)
+        #expect(json.contains("getStudentProfile"))
+        #expect(json.contains("navigateToPage"))
     }
 
-    func testNavigateToolRejectsBrightspace() async throws {
-        let ctx = AssistantToolExecutionContext(
-            collegePersistence: CollegePersistence.shared,
-            activePage: .calendar,
-            selectedPersona: .academicAdvisor,
-            snapshot: AssistantPlannerSnapshot(events: [], tasks: [], majors: [], minors: [], programs: []),
-            currentDate: Date()
-        )
+    @Test("Navigate tool rejects Brightspace")
+    @MainActor
+    func navigateToolRejectsBrightspace() async {
+        let ctx = AssistantTestFixtures.toolContext(page: .calendar)
         let tool = NavigateToPageTool()
         do {
             _ = try await tool.execute(
                 arguments: ["page": .string("brightspace")],
                 context: ctx
             )
-            XCTFail("Expected brightspace rejection")
+            Issue.record("Expected brightspace rejection")
         } catch {
-            XCTAssertTrue(error.localizedDescription.localizedCaseInsensitiveContains("brightspace"))
+            #expect(error.localizedDescription.localizedCaseInsensitiveContains("learning management"))
         }
     }
 }

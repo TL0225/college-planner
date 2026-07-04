@@ -12,6 +12,10 @@ struct PortfolioProject: Identifiable, Codable, Hashable {
     var technologies: String
     var summary: String
     var projectURL: String
+    var startDateString: String?
+    var endDateString: String?
+    var githubURL: String?
+    var bullets: [String]
 
     init(
         id: UUID = UUID(),
@@ -19,7 +23,11 @@ struct PortfolioProject: Identifiable, Codable, Hashable {
         role: String = "",
         technologies: String = "",
         summary: String = "",
-        projectURL: String = ""
+        projectURL: String = "",
+        startDateString: String? = nil,
+        endDateString: String? = nil,
+        githubURL: String? = nil,
+        bullets: [String] = []
     ) {
         self.id = id
         self.title = title
@@ -27,5 +35,9 @@ struct PortfolioProject: Identifiable, Codable, Hashable {
         self.technologies = technologies
         self.summary = summary
         self.projectURL = projectURL
+        self.startDateString = startDateString
+        self.endDateString = endDateString
+        self.githubURL = githubURL
+        self.bullets = bullets
     }
 }

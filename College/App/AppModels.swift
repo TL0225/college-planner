@@ -10,12 +10,13 @@ import Combine
 enum AppPage: Equatable, Hashable {
     case degree
     case academics
+    case transferDatabase
     case calendar
     case career
     case assistant
     case profile
     case settings
-    case brightspace
+    case lms
     case documents
     case webShortcut(id: UUID)
     #if DEBUG
@@ -28,12 +29,13 @@ enum AppPage: Equatable, Hashable {
         switch self {
         case .degree: return "Degree"
         case .academics: return "Academics"
+        case .transferDatabase: return "Transfer Database"
         case .calendar: return "Calendar"
         case .career: return "Career"
         case .assistant: return "Assistant"
         case .profile: return "Profile"
         case .settings: return "Settings"
-        case .brightspace: return "Brightspace"
+        case .lms: return "LMS"
         case .documents: return "Documents"
         case .webShortcut(let id):
             return Self.shortcutRawPrefix + id.uuidString
@@ -47,12 +49,13 @@ enum AppPage: Equatable, Hashable {
         switch rawValue {
         case "Degree": self = .degree
         case "Academics": self = .academics
+        case "Transfer Database": self = .transferDatabase
         case "Calendar": self = .calendar
         case "Career": self = .career
         case "Assistant": self = .assistant
         case "Profile": self = .profile
         case "Settings": self = .settings
-        case "Brightspace": self = .brightspace
+        case "LMS", "Brightspace": self = .lms
         case "Documents": self = .documents
         #if DEBUG
         case "Debug": self = .debug
@@ -72,12 +75,13 @@ enum AppPage: Equatable, Hashable {
         switch self {
         case .degree: return "graduationcap.fill"
         case .academics: return "books.vertical.fill"
+        case .transferDatabase: return "arrow.left.arrow.right.circle.fill"
         case .calendar: return "calendar"
         case .career: return "briefcase.fill"
         case .assistant: return "sparkles"
         case .profile: return "person.fill"
         case .settings: return "gearshape.fill"
-        case .brightspace: return "network"
+        case .lms: return "network"
         case .documents: return "folder.fill"
         case .webShortcut: return "link.circle.fill"
         #if DEBUG
@@ -90,14 +94,15 @@ enum AppPage: Equatable, Hashable {
         switch self {
         case .degree: return DesignSystem.Colors.primary
         case .academics: return Color(hex: "4f46e5")
+        case .transferDatabase: return Color(hex: "0891b2")
         case .calendar: return Color.black
         case .career: return Color(hex: "2563eb")
         case .assistant: return Color(hex: "0ea5e9")
         case .profile: return DesignSystem.Colors.info
         case .settings: return DesignSystem.Colors.textMain
-        case .brightspace: return Color(hex: "0ea5e9")
+        case .lms: return Color(hex: "0ea5e9")
         case .documents: return Color(hex: "3451b2")
-        case .webShortcut: return Color(hex: "6366f1")
+        case .webShortcut: return DesignSystem.Colors.primary
         #if DEBUG
         case .debug: return Color.purple
         #endif
@@ -108,12 +113,13 @@ enum AppPage: Equatable, Hashable {
         switch self {
         case .degree: return "Overview"
         case .academics: return "Academics"
+        case .transferDatabase: return "Transfer Database"
         case .calendar: return "Calendar"
         case .career: return "Career"
         case .assistant: return "AI Assistant"
         case .profile: return "Profile"
         case .settings: return "Settings"
-        case .brightspace: return "Brightspace"
+        case .lms: return LMSPortalConfiguration.lmsDisplayName
         case .documents: return "Documents"
         case .webShortcut(let id):
             return WebShortcutStore.shortcutSync(id: id)?.title ?? "Shortcut"
@@ -127,12 +133,13 @@ enum AppPage: Equatable, Hashable {
         switch self {
         case .degree: return "degree"
         case .academics: return "academics"
+        case .transferDatabase: return "transferDatabase"
         case .calendar: return "calendar"
         case .career: return "career"
         case .assistant: return "assistant"
         case .profile: return "profile"
         case .settings: return "settings"
-        case .brightspace: return "brightspace"
+        case .lms: return "lms"
         case .documents: return "documents"
         case .webShortcut: return "webShortcut"
         #if DEBUG
@@ -145,12 +152,13 @@ enum AppPage: Equatable, Hashable {
         var ids: [String] = [
             "degree",
             "academics",
+            "transferDatabase",
             "calendar",
             "career",
             "assistant",
             "profile",
             "settings",
-            "brightspace",
+            "lms",
             "documents",
         ]
         #if DEBUG

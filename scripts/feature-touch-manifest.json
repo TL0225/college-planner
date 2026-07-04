@@ -1,0 +1,140 @@
+{
+  "_comment": "Feature touch-zone overrides for scripts/generate-cursor-feature-rules.py. Features are auto-discovered from College/Features/*. After adding a folder, run: python3 scripts/generate-cursor-feature-rules.py --write",
+  "features": {
+    "Academics": {
+      "description": "Semester planner, degree audit, GPA/credit views, graduation timeline.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+AcademicComputation.swift",
+        "College/Core/Data/Persistence/CollegePersistence+AcademicProgress.swift",
+        "College/Core/Data/Persistence/CollegePersistence+AcademicIdentity.swift",
+        "College/Core/Data/Persistence/CollegePersistence+PlannerWrites.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/ProfileRepository+PlannerSemesterWrites.swift",
+        "College/Core/Data/Repositories/ProfileRepository+GraduationPlan.swift",
+        "College/Core/Data/Repositories/CatalogRepository+RequirementReads.swift"
+      ],
+      "package": "Packages/CollegeAcademics/**",
+      "toolbar": "College/App/Toolbar/AcademicsToolbarContent.swift"
+    },
+    "Assistant": {
+      "description": "On-device AI assistant, tool routing, DeGoog sidecar, conversation UI.",
+      "repositories": []
+    },
+    "Calendar": {
+      "description": "Calendar grid, editor, sync, ICS, academic calendar helpers.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+Calendar.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/CalendarRepository.swift",
+        "College/Core/Data/Repositories/CalendarRepository+*.swift"
+      ],
+      "package": "Packages/CollegeCalendar/**",
+      "toolbar": "College/App/Toolbar/CalendarToolbarContent.swift"
+    },
+    "Career": {
+      "description": "Applications, job board, resumes, interview prep, networking.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+Career.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/CareerRepository.swift",
+        "College/Core/Data/Repositories/CareerRepository+*.swift"
+      ],
+      "package": "Packages/CollegeCareer/**",
+      "toolbar": "College/App/Toolbar/CareerToolbarContent.swift",
+      "related_features": ["Resume"]
+    },
+    "Catalog": {
+      "description": "School catalog scrape, ingest, search, vector index.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+Catalog.swift",
+        "College/Core/Data/Persistence/CollegePersistence+ProgramRequirementsScrape.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/CatalogRepository.swift",
+        "College/Core/Data/Repositories/CatalogRepository+*.swift"
+      ]
+    },
+    "Courses": {
+      "description": "Course detail sheets and catalog-linked course dashboard.",
+      "repositories": [
+        "College/Core/Data/Repositories/CatalogRepository+CourseLookup.swift",
+        "College/Core/Data/Repositories/CatalogRepository+Reads.swift"
+      ]
+    },
+    "Degree": {
+      "description": "Degree planner UI and major/minor requirement presentation.",
+      "repositories": [
+        "College/Core/Data/Repositories/ProfileRepository+GraduationPlan.swift",
+        "College/Core/Data/Repositories/CatalogRepository+ProgramResolution.swift"
+      ]
+    },
+    "Documents": {
+      "description": "Vault file browser and document metadata UI.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+Vault.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/VaultRepository.swift",
+        "College/Core/Data/Repositories/VaultRepository+*.swift"
+      ]
+    },
+    "LMS": {
+      "description": "LMS portal web host and Brightspace/Canvas/Moodle import.",
+      "toolbar": "College/App/Toolbar/WebToolbarContent.swift",
+      "app_wiring": [
+        "College/App/LMSPortalConfiguration.swift"
+      ]
+    },
+    "Overview": {
+      "description": "Dashboard widgets and overview read models.",
+      "repositories": []
+    },
+    "Profile": {
+      "description": "Student identity, experience, achievements, profile shell.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+ProfileShell.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/ProfileRepository.swift",
+        "College/Core/Data/Repositories/ProfileRepository+*.swift"
+      ],
+      "toolbar": "College/App/Toolbar/ProfileToolbarContent.swift"
+    },
+    "Resume": {
+      "description": "Resume builder UI, platform export budgets, and canonical profile adaptation.",
+      "parent": "Career",
+      "bridges": [
+        "College/Features/Resume/ResumeNavigationPort.swift",
+        "College/Features/Resume/ResumePageBudgetEngine.swift",
+        "College/Features/Resume/ResumeCanonicalProfile+PlatformAdaptation.swift"
+      ],
+      "related_features": ["Career"]
+    },
+    "Settings": {
+      "description": "App preferences, catalog sync settings, integrations.",
+      "repositories": []
+    },
+    "SyllabusAI": {
+      "description": "Syllabus upload, review, and MLX-backed extraction flows.",
+      "repositories": []
+    },
+    "Transfer": {
+      "description": "Transfer credit database, official refresh, academics impact.",
+      "persistence": [
+        "College/Core/Data/Persistence/CollegePersistence+Transfer.swift"
+      ],
+      "repositories": [
+        "College/Core/Data/Repositories/TransferRepository.swift"
+      ]
+    }
+  },
+  "shell_no_touch_unless_asked": [
+    "College/App/ContentView.swift",
+    "College/App/SidebarView.swift",
+    "College/App/CollegeApp.swift",
+    "College/App/AppContainer.swift"
+  ]
+}

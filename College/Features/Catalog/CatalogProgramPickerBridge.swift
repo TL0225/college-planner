@@ -6,6 +6,12 @@
 import Foundation
 import SwiftData
 
+/// Resolved university target for off-main catalog program fetches.
+struct CatalogProgramPickerUniversityTarget: Sendable {
+    let universityID: UUID
+    let displayName: String
+}
+
 /// Sendable catalog program row for off-main requirements picker builds (Phase 5 P0).
 struct CatalogProgramPickerRowSnapshot: Sendable {
     let universityName: String
@@ -25,12 +31,12 @@ enum CatalogProgramPickerQuery {
     static let majorsPerUniversityLimit = 5_000
 
     static func fetchRows(
-        universityNames: [String],
+        universityTargets: [CatalogProgramPickerUniversityTarget],
         context: ModelContext
     ) throws -> [CatalogProgramPickerRowSnapshot] {
         let allowed = Set(
-            universityNames
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            universityTargets
+                .map { $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
                 .filter { !$0.isEmpty }
         )
         guard !allowed.isEmpty else { return [] }
@@ -38,14 +44,10 @@ enum CatalogProgramPickerQuery {
         var rows: [CatalogProgramPickerRowSnapshot] = []
         rows.reserveCapacity(min(allowed.count * 64, majorsPerUniversityLimit))
 
-        for rawName in universityNames {
-            let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty,
-                  let university = try fetchUniversity(named: trimmed, context: context) else { continue }
-
-            let majors = try fetchAllMajors(universityID: university.id, context: context)
+        for target in universityTargets {
+            let majors = try fetchAllMajors(universityID: target.universityID, context: context)
             for major in majors {
-                let universityName = (major.university?.name ?? trimmed)
+                let universityName = (major.university?.name ?? target.displayName)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 guard allowed.contains(universityName.lowercased()) else { continue }
 
@@ -124,16 +126,6 @@ enum CatalogProgramPickerQuery {
         return value
     }
 
-    private static func fetchUniversity(named name: String, context: ModelContext) throws -> University? {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        var descriptor = FetchDescriptor<University>(
-            predicate: #Predicate { $0.name == trimmed }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
-    }
-
     private static func fetchAllMajors(universityID: UUID, context: ModelContext) throws -> [Major] {
         var descriptor = FetchDescriptor<Major>(
             predicate: #Predicate { major in
@@ -151,13 +143,33 @@ enum CatalogProgramPickerBridge {
     static func selectableProgramsOffMain(
         universityNames: [String]
     ) async -> [CatalogProgramRequirementsHydrator.SelectableProgram] {
-        let container = await MainActor.run { AppDataStore.shared.activeCatalogContainer }
-        guard let container else { return [] }
+        let prepared = await MainActor.run { () -> (ModelContainer, [CatalogProgramPickerUniversityTarget])? in
+            let store = AppDataStore.shared
+            var targets: [CatalogProgramPickerUniversityTarget] = []
+            for rawName in universityNames {
+                let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty,
+                      let (repo, universityID) = CatalogStoreSnapshotBridge.catalogRepositoryForUniversity(
+                        named: trimmed,
+                        appDataStore: store,
+                        activate: false
+                      ) else { continue }
+                let displayName = (try? repo.fetchUniversity(id: universityID))?.name ?? trimmed
+                targets.append(
+                    CatalogProgramPickerUniversityTarget(
+                        universityID: universityID,
+                        displayName: displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                )
+            }
+            guard !targets.isEmpty else { return nil }
+            return (store.profileContainer, targets)
+        }
+        guard let (container, targets) = prepared else { return [] }
 
-        let names = universityNames
         let rows = await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
-            return (try? CatalogProgramPickerQuery.fetchRows(universityNames: names, context: context)) ?? []
+            return (try? CatalogProgramPickerQuery.fetchRows(universityTargets: targets, context: context)) ?? []
         }.value
 
         return CatalogProgramRequirementsHydrator.selectablePrograms(fromPickerRows: rows)

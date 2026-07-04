@@ -20,7 +20,7 @@ extension CalendarRepository {
         categoryWeightPercent: Double? = nil,
         weightPercent: Double? = nil,
         estimatedEffortMinutes: Int32? = nil,
-        brightspaceItemId: String? = nil,
+        lmsItemId: String? = nil,
         id: UUID = UUID()
     ) throws -> PlannerTask {
         let now = Date()
@@ -39,7 +39,7 @@ extension CalendarRepository {
         task.categoryWeightPercent = categoryWeightPercent
         task.weightPercent = weightPercent
         task.estimatedEffortMinutes = estimatedEffortMinutes
-        task.brightspaceItemId = brightspaceItemId
+        task.lmsItemId = lmsItemId
         task.semester = semester
         task.course = course
         context.insert(task)
@@ -85,11 +85,11 @@ extension CalendarRepository {
         ModelMergeCoalescer.scheduleSave(context)
     }
 
-    func taskExists(brightspaceItemId: String) throws -> Bool {
-        let trimmed = brightspaceItemId.trimmingCharacters(in: .whitespacesAndNewlines)
+    func taskExists(lmsItemId: String) throws -> Bool {
+        let trimmed = lmsItemId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         var descriptor = FetchDescriptor<PlannerTask>(
-            predicate: #Predicate { $0.brightspaceItemId == trimmed }
+            predicate: #Predicate { $0.lmsItemId == trimmed }
         )
         descriptor.fetchLimit = 1
         return try !context.fetch(descriptor).isEmpty

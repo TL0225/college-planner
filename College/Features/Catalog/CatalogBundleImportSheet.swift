@@ -54,32 +54,34 @@ final class CatalogImportCoordinator {
         trustOnceAccepted = false
         trustLabel = ""
 
-        do {
-            let (bundle, envelope, fingerprint) = try CatalogBundleSecurity.verifyFile(at: url)
-            switch CatalogBundleValidator.validate(bundle) {
-            case .valid:
-                break
-            case .invalid(let reason):
-                loadError = reason
+        Task { @MainActor in
+            do {
+                let (bundle, envelope, fingerprint) = try await CatalogBundleSecurity.verifyFileOffMain(at: url)
+                switch CatalogBundleValidator.validate(bundle) {
+                case .valid:
+                    break
+                case .invalid(let reason):
+                    loadError = reason
+                    isErrorAlertPresented = true
+                    return
+                }
+                let existing = persistence.existingCatalogCourseCount(for: bundle.schoolName)
+                preview = CatalogBundleImportPreview(
+                    bundle: bundle,
+                    envelope: envelope,
+                    fingerprint: fingerprint,
+                    signatureValid: true,
+                    existingCourseCount: existing
+                )
+                if CatalogBundleTrustStore.shared.isTrusted(fingerprint: fingerprint) || trustOnceAccepted {
+                    isConfirmSheetPresented = true
+                } else {
+                    isTrustSheetPresented = true
+                }
+            } catch {
+                loadError = error.localizedDescription
                 isErrorAlertPresented = true
-                return
             }
-            let existing = persistence.existingCatalogCourseCount(for: bundle.schoolName)
-            preview = CatalogBundleImportPreview(
-                bundle: bundle,
-                envelope: envelope,
-                fingerprint: fingerprint,
-                signatureValid: true,
-                existingCourseCount: existing
-            )
-            if CatalogBundleTrustStore.shared.isTrusted(fingerprint: fingerprint) || trustOnceAccepted {
-                isConfirmSheetPresented = true
-            } else {
-                isTrustSheetPresented = true
-            }
-        } catch {
-            loadError = error.localizedDescription
-            isErrorAlertPresented = true
         }
     }
 
@@ -216,7 +218,7 @@ private struct CatalogBundleTrustSheet: View {
                 .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
+        .padding(DesignSystem.Spacing.xl)
         .frame(minWidth: 420)
     }
 }
@@ -282,7 +284,7 @@ private struct CatalogBundleConfirmImportSheet: View {
                 .disabled(coordinator.preview?.signatureValid != true || coordinator.isImporting)
             }
         }
-        .padding(24)
+        .padding(DesignSystem.Spacing.xl)
         .frame(minWidth: 440)
     }
 

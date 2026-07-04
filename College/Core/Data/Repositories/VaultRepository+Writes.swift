@@ -9,6 +9,35 @@ import SwiftData
 // MARK: - Phase 7f vault writes (local store-native)
 
 extension VaultRepository {
+    /// Keeps `parentFolderID` and `@Relationship parentFolder` aligned (DM-R1).
+    func syncParentFolderRelationship(for document: VaultDocument) {
+        guard let parentID = document.parentFolderID else {
+            document.parentFolder = nil
+            return
+        }
+        document.parentFolder = try? fetchDocument(id: parentID)
+    }
+
+    /// Returns human-readable violations when `parentFolderID` and `parentFolder` diverge (DM-R1).
+    func hierarchyViolations() throws -> [String] {
+        let items = try fetchAllVaultItems(limit: 500)
+        var violations: [String] = []
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        for item in items {
+            if let parentID = item.parentFolderID {
+                if item.parentFolder?.id != parentID {
+                    violations.append("\(item.id): parentFolder mismatch (id=\(parentID))")
+                }
+                if byID[parentID] == nil {
+                    violations.append("\(item.id): orphan parentFolderID \(parentID)")
+                }
+            } else if item.parentFolder != nil {
+                violations.append("\(item.id): parentFolder set without parentFolderID")
+            }
+        }
+        return violations
+    }
+
     /// Uppercase, collapsed whitespace — matches vault course-link writes.
     static func normalizedCourseCode(_ raw: String?) -> String? {
         let normalized = raw?
@@ -48,6 +77,7 @@ extension VaultRepository {
         )
         folder.source = "vault"
         folder.parentFolderID = parentFolderID
+        syncParentFolderRelationship(for: folder)
         context.insert(folder)
         ModelMergeCoalescer.scheduleSave(context)
         return folder
@@ -81,6 +111,7 @@ extension VaultRepository {
         } else {
             for child in allItems where child.parentFolderID == id {
                 child.parentFolderID = folder.parentFolderID
+                syncParentFolderRelationship(for: child)
             }
         }
         context.delete(folder)
@@ -90,6 +121,7 @@ extension VaultRepository {
     func moveVaultDocument(id: UUID, toFolderID folderID: UUID?) throws {
         guard let doc = try fetchDocument(id: id) else { return }
         doc.parentFolderID = folderID
+        syncParentFolderRelationship(for: doc)
         ModelMergeCoalescer.scheduleSave(context)
     }
 
@@ -100,14 +132,16 @@ extension VaultRepository {
     }
 
     @MainActor
+    @discardableResult
     func addVaultDocument(
         fromSelectedURL url: URL,
         category: VaultDocumentCategory = .other,
         source: String = "vault",
         parentFolderID: UUID? = nil
-    ) throws {
+    ) async throws -> VaultDocument {
         let fileName = url.lastPathComponent
-        let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { Int64($0) } ?? 0
+        let plaintext = try await VaultSourceFileMaterializer.materializedDataAsync(from: url)
+        let fileSize = Int64(plaintext.count)
         let vaultDir = try Self.documentVaultDirectoryURL()
         let id = UUID()
         let storedFileName = "\(id.uuidString)-\(fileName).colenc"
@@ -117,10 +151,6 @@ extension VaultRepository {
             try FileManager.default.removeItem(at: destination)
         }
 
-        let accessed = url.startAccessingSecurityScopedResource()
-        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-
-        let plaintext = try Data(contentsOf: url)
         let stored = SecurityManager.shared.encryptBlobForStorage(plaintext) ?? plaintext
         try stored.write(to: destination, options: [.atomic])
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
@@ -134,7 +164,22 @@ extension VaultRepository {
         )
         document.source = source
         document.parentFolderID = parentFolderID
+        syncParentFolderRelationship(for: document)
         context.insert(document)
+        ModelMergeCoalescer.scheduleSave(context)
+        return document
+    }
+
+    @MainActor
+    func replaceVaultDocumentContent(documentID: UUID, fromSelectedURL url: URL) async throws {
+        guard let document = try fetchDocument(id: documentID), !document.isFolder else { return }
+        guard let storedURL = urlForVaultRelativePath(document.localRelativePath) else { return }
+
+        let plaintext = try await VaultSourceFileMaterializer.materializedDataAsync(from: url)
+        let stored = SecurityManager.shared.encryptBlobForStorage(plaintext) ?? plaintext
+        try stored.write(to: storedURL, options: [.atomic])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: storedURL.path)
+        document.fileSizeBytes = Int64(plaintext.count)
         ModelMergeCoalescer.scheduleSave(context)
     }
 

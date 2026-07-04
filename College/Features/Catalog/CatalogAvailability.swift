@@ -16,11 +16,12 @@ enum CatalogAvailability {
     ) -> Bool {
         let trimmed = universityName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        guard let repo = appDataStore.catalogRepository else { return false }
-        guard let active = try? repo.fetchActiveUniversity(),
-              active.name.caseInsensitiveCompare(trimmed) == .orderedSame else {
+        guard let (repo, universityID) = CatalogStoreSnapshotBridge.attachUniversity(
+            named: trimmed,
+            appDataStore: appDataStore
+        ) else {
             return false
         }
-        return (try? repo.hasPrograms(universityID: active.id)) == true
+        return (try? repo.hasPrograms(universityID: universityID)) == true
     }
 }

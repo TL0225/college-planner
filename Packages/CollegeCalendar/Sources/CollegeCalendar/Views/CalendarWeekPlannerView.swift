@@ -35,7 +35,7 @@ struct CalendarWeekPlannerView: View {
                 }
             }
         }
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
     }
 
     private var weekDays: [Date] {

@@ -39,9 +39,14 @@ import Combine
     // MARK: - Vault Root
 
     private var vaultRootPath: String {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents/College", isDirectory: true)
+        if let configured = try? VaultRepository.documentVaultDirectoryURL() {
+            return configured.deletingLastPathComponent().path
+        }
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        return appSupport?
+            .appendingPathComponent("College", isDirectory: true)
             .path
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
     }
 
     // MARK: - Monitoring Lifecycle

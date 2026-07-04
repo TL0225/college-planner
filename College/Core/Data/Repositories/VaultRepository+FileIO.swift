@@ -13,6 +13,7 @@ extension VaultRepository {
         case transcripts = "Transcripts"
         case calendar = "Calendar"
         case careerResume = "Career Resume"
+        case transferProof = "Transfer Proof"
         case other = "Other"
     }
 
@@ -42,6 +43,16 @@ extension VaultRepository {
     }
 
     func decryptedTempURLForStoredRelativePath(_ relativePath: String, displayFileName: String) -> URL? {
+        guard let plaintext = plaintextDataForStoredRelativePath(relativePath) else { return nil }
+        return writeDecryptedTempFile(plaintext: plaintext, displayFileName: displayFileName)
+    }
+
+    func decryptedTempURLForStoredRelativePath(_ relativePath: String, displayFileName: String) async -> URL? {
+        guard let plaintext = await plaintextDataForStoredRelativePath(relativePath) else { return nil }
+        return writeDecryptedTempFile(plaintext: plaintext, displayFileName: displayFileName)
+    }
+
+    func plaintextDataForStoredRelativePath(_ relativePath: String) -> Data? {
         guard let storedURL = urlForVaultRelativePath(relativePath) else { return nil }
         let stored: Data
         do {
@@ -49,8 +60,31 @@ extension VaultRepository {
         } catch {
             return nil
         }
-        guard BlobCrypto.isEncryptedBlob(stored) else { return storedURL }
-        guard let plaintext = SecurityManager.shared.decryptBlobFromStorage(stored) else { return nil }
+        return Self.decryptStoredVaultPayload(stored)
+    }
+
+    func plaintextDataForStoredRelativePath(_ relativePath: String) async -> Data? {
+        guard let storedURL = urlForVaultRelativePath(relativePath) else { return nil }
+        let stored = await Self.readStoredVaultData(from: storedURL)
+        return Self.decryptStoredVaultPayload(stored)
+    }
+
+    private static func readStoredVaultData(from storedURL: URL) async -> Data? {
+        await Task.detached(priority: .utility) {
+            guard let stored = try? Data(contentsOf: storedURL), !stored.isEmpty else { return nil }
+            return stored
+        }.value
+    }
+
+    private static func decryptStoredVaultPayload(_ stored: Data?) -> Data? {
+        guard let stored, !stored.isEmpty else { return nil }
+        if BlobCrypto.isEncryptedBlob(stored) {
+            return SecurityManager.shared.decryptBlobFromStorage(stored)
+        }
+        return stored
+    }
+
+    func writeDecryptedTempFile(plaintext: Data, displayFileName: String) -> URL? {
         let tempDir = Self.decryptedVaultTempDirectoryURL()
         let name = displayFileName.isEmpty ? "Document" : displayFileName
         let tempURL = tempDir.appendingPathComponent("\(UUID().uuidString)-\(name)")

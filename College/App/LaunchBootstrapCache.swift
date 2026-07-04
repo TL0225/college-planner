@@ -30,7 +30,7 @@ enum LaunchBootstrapCache {
     static func fetchProfileIfNeeded() {
         guard !didFetchProfile else { return }
         didFetchProfile = true
-        persistence.fetchProfile()
+        _ = persistence.ensurePrimaryProfile()
     }
 
     static func fetchVaultDocumentsIfNeeded() {

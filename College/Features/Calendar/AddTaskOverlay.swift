@@ -401,7 +401,7 @@ struct AddTaskOverlay: View {
 
         static let accentYellow = Color(hex: "e8f000")
         static let accentYellowSoft = Color(hex: "fff9c4")
-        static let orange = Color(hex: "f59e0b")
+        static let orange = DesignSystem.Colors.warning
 
         static let corner: CGFloat = 24
         static let fieldCorner: CGFloat = 14
@@ -477,8 +477,8 @@ struct AddTaskOverlay: View {
             roundedField {
                 TextField("e.g. Essay Draft", text: $title)
                     .textFieldStyle(PlainTextFieldStyle())
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(Visual.text)
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                    .foregroundStyle(Visual.text)
             }
         }
     }
@@ -490,8 +490,8 @@ struct AddTaskOverlay: View {
                 if prefillCourseID != nil {
                     HStack(spacing: 10) {
                         Text(selectedCourseTitle())
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(selectedCourseID == nil ? Visual.muted : Visual.text)
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                            .foregroundStyle(selectedCourseID == nil ? Visual.muted : Visual.text)
                             .lineLimit(1)
                         Spacer(minLength: 0)
                     }
@@ -516,15 +516,15 @@ struct AddTaskOverlay: View {
                         } label: {
                             HStack(spacing: 10) {
                                 Text(selectedCourseTitle())
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(selectedCourseID == nil ? Visual.muted : Visual.text)
+                                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                    .foregroundStyle(selectedCourseID == nil ? Visual.muted : Visual.text)
                                     .lineLimit(1)
 
                                 Spacer(minLength: 0)
 
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(Visual.muted)
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                                    .foregroundStyle(Visual.muted)
                             }
                         }
                         .menuStyle(.borderlessButton)
@@ -598,25 +598,25 @@ struct AddTaskOverlay: View {
     private func categoryVisuals(for name: String) -> (systemImage: String, accent: Color) {
         let s = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if s.contains("exam") || s.contains("final") || s.contains("midterm") {
-            return ("stopwatch", Color(hex: "64748b"))
+            return ("stopwatch", DesignSystem.Colors.careerLaneInterested)
         }
         if s.contains("quiz") {
-            return ("questionmark.circle", Color(hex: "64748b"))
+            return ("questionmark.circle", DesignSystem.Colors.careerLaneInterested)
         }
         if s.contains("homework") || s.contains("assignment") || s.contains("problem") {
-            return ("doc.text", Color(hex: "f59e0b"))
+            return ("doc.text", DesignSystem.Colors.warning)
         }
         if s.contains("project") || s.contains("paper") || s.contains("presentation") {
-            return ("paperplane", Color(hex: "8b5cf6"))
+            return ("paperplane", DesignSystem.Colors.careerLaneInterviewing)
         }
         if s.contains("reading") {
-            return ("book", Color(hex: "3b82f6"))
+            return ("book", DesignSystem.Colors.careerLaneApplied)
         }
         if s.contains("lab") {
-            return ("testtube.2", Color(hex: "06b6d4"))
+            return ("testtube.2", DesignSystem.Colors.info)
         }
         if s.contains("discussion") {
-            return ("text.bubble", Color(hex: "10b981"))
+            return ("text.bubble", DesignSystem.Colors.success)
         }
         return ("tag", Color(hex: "94a3b8"))
     }
@@ -641,20 +641,20 @@ struct AddTaskOverlay: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: visuals.systemImage)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
 
                 Text(trimmed)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     .lineLimit(1)
 
                 if let w = opt.weightPercent {
                     Spacer(minLength: 0)
                     Text(String(format: "%.0f%%", w))
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(isSelected ? visuals.accent : Visual.muted)
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                        .foregroundStyle(isSelected ? visuals.accent : Visual.muted)
                 }
             }
-            .foregroundColor(isSelected ? visuals.accent : Visual.muted)
+            .foregroundStyle(isSelected ? visuals.accent : Visual.muted)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background(
@@ -678,10 +678,10 @@ struct AddTaskOverlay: View {
                     HStack(spacing: 10) {
                         TextField("mm/dd/yyyy", text: $dueDateText)
                             .textFieldStyle(PlainTextFieldStyle())
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 15, weight: .semibold))
                             .monospacedDigit()
                             .kerning(0.6)
-                            .foregroundColor(dueDateEnabled ? Visual.text : Visual.muted)
+                            .foregroundStyle(dueDateEnabled ? Visual.text : Visual.muted)
                             .onChange(of: dueDateText) { _, newValue in
                                 let formatted = Self.formatDueDateDigitsAsText(newValue)
                                 if formatted != newValue {
@@ -704,8 +704,8 @@ struct AddTaskOverlay: View {
                             isDueDatePopoverPresented.toggle()
                         } label: {
                             Image(systemName: "calendar")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Visual.muted)
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                .foregroundStyle(Visual.muted)
                                 .frame(width: 28, height: 24)
                                 .contentShape(Rectangle())
                         }
@@ -715,7 +715,7 @@ struct AddTaskOverlay: View {
                                 selectedDate: $dueDate,
                                 dueDateEnabled: $dueDateEnabled
                             )
-                            .padding(14)
+                            .padding(DesignSystem.Spacing.md)
                             .frame(width: 320)
                         }
                     }
@@ -798,8 +798,8 @@ struct AddTaskOverlay: View {
                     displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color.black.opacity(0.55))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.55))
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -808,8 +808,8 @@ struct AddTaskOverlay: View {
                 Spacer(minLength: 0)
 
                 Text(monthTitle(displayedMonth))
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(Color.black.opacity(0.80))
+                    .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
+                    .foregroundStyle(Color.black.opacity(0.80))
 
                 Spacer(minLength: 0)
 
@@ -817,8 +817,8 @@ struct AddTaskOverlay: View {
                     displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color.black.opacity(0.55))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.55))
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -831,8 +831,8 @@ struct AddTaskOverlay: View {
             return HStack(spacing: 0) {
                 ForEach(symbols, id: \.self) { s in
                     Text(s)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color.black.opacity(0.40))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                        .foregroundStyle(Color.black.opacity(0.40))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -875,9 +875,9 @@ struct AddTaskOverlay: View {
                         selectedDate = calendar.startOfDay(for: date)
                     } label: {
                         Text("\(day)")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                             .monospacedDigit()
-                            .foregroundColor(isSelected ? Color.black.opacity(0.85) : Color.black.opacity(0.70))
+                            .foregroundStyle(isSelected ? Color.black.opacity(0.85) : Color.black.opacity(0.70))
                             .frame(width: 32, height: 32)
                             .background(
                                 Circle()
@@ -919,8 +919,8 @@ struct AddTaskOverlay: View {
         private func quickPill(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
             Button(action: action) {
                 Text(title)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(isActive ? Color.black.opacity(0.85) : Color.black.opacity(0.55))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundStyle(isActive ? Color.black.opacity(0.85) : Color.black.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .background(
@@ -942,8 +942,8 @@ struct AddTaskOverlay: View {
     private func quickDateButton(_ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(Visual.muted)
+                .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
+                .foregroundStyle(Visual.muted)
         }
         .buttonStyle(.plain)
     }
@@ -954,7 +954,7 @@ struct AddTaskOverlay: View {
             priorityPill(title: "Med", value: 1)
             priorityPill(title: "High", value: 2)
         }
-        .padding(4)
+        .padding(DesignSystem.Spacing.xs)
         .background(
             RoundedRectangle(cornerRadius: 999, style: .continuous)
                 .fill(Color.black.opacity(0.04))
@@ -971,8 +971,8 @@ struct AddTaskOverlay: View {
             priority = value
         } label: {
             Text(title)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(isSelected ? Visual.orange : Visual.muted)
+                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                .foregroundStyle(isSelected ? Visual.orange : Visual.muted)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background(
@@ -991,8 +991,8 @@ struct AddTaskOverlay: View {
                     HStack(spacing: 10) {
                         TextField("0", text: $weightPercentText)
                             .textFieldStyle(PlainTextFieldStyle())
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Visual.text)
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                            .foregroundStyle(Visual.text)
                             .onChange(of: weightPercentText) { _, newValue in
                                 weightPercentText = newValue.filter { $0.isNumber }
                             }
@@ -1000,8 +1000,8 @@ struct AddTaskOverlay: View {
                         Spacer(minLength: 0)
 
                         Text("%")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Visual.muted)
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                            .foregroundStyle(Visual.muted)
                     }
                 }
             }
@@ -1014,8 +1014,8 @@ struct AddTaskOverlay: View {
                         HStack(spacing: 10) {
                             TextField("0", text: $effortHoursText)
                                 .textFieldStyle(PlainTextFieldStyle())
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Visual.text)
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                .foregroundStyle(Visual.text)
                                 .onChange(of: effortHoursText) { _, newValue in
                                     effortHoursText = newValue.filter { $0.isNumber }
                                 }
@@ -1023,8 +1023,8 @@ struct AddTaskOverlay: View {
                             Spacer(minLength: 0)
 
                             Text("HR")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Visual.muted)
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                                .foregroundStyle(Visual.muted)
                         }
                     }
 
@@ -1032,8 +1032,8 @@ struct AddTaskOverlay: View {
                         HStack(spacing: 10) {
                             TextField("0", text: $effortMinutesText)
                                 .textFieldStyle(PlainTextFieldStyle())
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Visual.text)
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                                .foregroundStyle(Visual.text)
                                 .onChange(of: effortMinutesText) { _, newValue in
                                     effortMinutesText = newValue.filter { $0.isNumber }
                                 }
@@ -1041,8 +1041,8 @@ struct AddTaskOverlay: View {
                             Spacer(minLength: 0)
 
                             Text("MIN")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Visual.muted)
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                                .foregroundStyle(Visual.muted)
                         }
                     }
                 }
@@ -1068,7 +1068,7 @@ struct AddTaskOverlay: View {
 
     private func preferredHeightSizingProbe(maxWidth: CGFloat) -> some View {
         editorCardContent
-            .padding(18)
+            .padding(DesignSystem.Spacing.lg)
             .frame(width: maxWidth)
             .fixedSize(horizontal: false, vertical: true)
             .background(
@@ -1212,7 +1212,7 @@ struct AddTaskOverlay: View {
         } message: {
             Text("This cannot be undone.")
         }
-        .alert("Discard changes?", isPresented: $showDiscardConfirmation) {
+        .confirmationDialog("Discard changes?", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
             Button("Discard", role: .destructive) {
                 isPresented = false
             }
@@ -1249,7 +1249,7 @@ struct AddTaskOverlay: View {
 
     private func editorCard(maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
         editorCardContent
-        .padding(18)
+        .padding(DesignSystem.Spacing.lg)
         .frame(width: maxWidth, height: maxHeight)
         .background {
             if presentationStyle == .anchoredPanel {
@@ -1257,7 +1257,7 @@ struct AddTaskOverlay: View {
             }
         }
         .background(Visual.card)
-        .cornerRadius(Visual.corner)
+        .clipShape(.rect(cornerRadius: Visual.corner))
         .overlay(
             RoundedRectangle(cornerRadius: Visual.corner)
                 .stroke(Visual.border, lineWidth: 1)
@@ -1272,26 +1272,26 @@ struct AddTaskOverlay: View {
                     .fill(Visual.accentYellowSoft)
                     .frame(width: 44, height: 44)
                 Image(systemName: "checkmark.circle.badge.plus")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(Color.black.opacity(0.65))
+                    .font(DesignSystem.Fonts.main(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.black.opacity(0.65))
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(taskToEdit == nil ? "Create Task" : "Edit Task")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(Visual.text)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                    .foregroundStyle(Visual.text)
 
                 Text(taskToEdit == nil ? "Add a new assignment to your schedule" : "Update details for your task")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Visual.muted)
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                    .foregroundStyle(Visual.muted)
             }
 
             Spacer(minLength: 0)
 
             Button(action: { requestDismiss() }) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(Visual.muted)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+                    .foregroundStyle(Visual.muted)
                     .frame(width: 30, height: 30)
                     .contentShape(Rectangle())
             }
@@ -1306,8 +1306,8 @@ struct AddTaskOverlay: View {
                     showDeleteConfirmation = true
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(Visual.muted)
+                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                .foregroundStyle(Visual.muted)
             }
 
             Spacer(minLength: 0)
@@ -1315,11 +1315,11 @@ struct AddTaskOverlay: View {
             Button(action: { save() }) {
                 HStack(spacing: 10) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                     Text("Save Task")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                 }
-                .foregroundColor(Color.black.opacity(0.80))
+                .foregroundStyle(Color.black.opacity(0.80))
                 .padding(.horizontal, 18)
                 .padding(.vertical, 12)
                 .background(
@@ -1334,8 +1334,8 @@ struct AddTaskOverlay: View {
 
     private func fieldLabel(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundColor(Visual.muted)
+            .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+            .foregroundStyle(Visual.muted)
             .kerning(1)
     }
 

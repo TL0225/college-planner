@@ -7,11 +7,47 @@ import CryptoKit
 import Foundation
 
 struct CatalogLayoutFingerprint: Codable, Sendable, Equatable {
+    let signatureVersion: Int
     let schoolID: String
     let catalogVersionID: String
     let layoutProfileID: String
     let featureSignature: String
     let recordedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case signatureVersion
+        case schoolID
+        case catalogVersionID
+        case layoutProfileID
+        case featureSignature
+        case recordedAt
+    }
+
+    init(
+        signatureVersion: Int,
+        schoolID: String,
+        catalogVersionID: String,
+        layoutProfileID: String,
+        featureSignature: String,
+        recordedAt: Date
+    ) {
+        self.signatureVersion = signatureVersion
+        self.schoolID = schoolID
+        self.catalogVersionID = catalogVersionID
+        self.layoutProfileID = layoutProfileID
+        self.featureSignature = featureSignature
+        self.recordedAt = recordedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        signatureVersion = try container.decodeIfPresent(Int.self, forKey: .signatureVersion) ?? 1
+        schoolID = try container.decode(String.self, forKey: .schoolID)
+        catalogVersionID = try container.decode(String.self, forKey: .catalogVersionID)
+        layoutProfileID = try container.decode(String.self, forKey: .layoutProfileID)
+        featureSignature = try container.decode(String.self, forKey: .featureSignature)
+        recordedAt = try container.decode(Date.self, forKey: .recordedAt)
+    }
 
     static func from(
         metrics: CatalogExtractorMetrics,
@@ -32,7 +68,9 @@ struct CatalogLayoutFingerprint: Codable, Sendable, Equatable {
             ]
         } else {
             material = [
+                "v2",
                 profile,
+                "source:\(metrics.source)",
                 "p:\(metrics.programsFound)",
                 "c:\(metrics.coursesFound)",
                 "r:\(metrics.requirementsFound)",
@@ -42,6 +80,7 @@ struct CatalogLayoutFingerprint: Codable, Sendable, Equatable {
         let digest = SHA256.hash(data: Data(material.joined(separator: "|").utf8))
         let signature = digest.map { String(format: "%02x", $0) }.joined()
         return CatalogLayoutFingerprint(
+            signatureVersion: 2,
             schoolID: metrics.schoolID,
             catalogVersionID: metrics.catalogVersionID,
             layoutProfileID: profile.isEmpty ? "unknown" : profile,
@@ -144,10 +183,10 @@ enum CatalogLayoutDriftDetector {
             )
         }
 
-        if previous.featureSignature != current.featureSignature {
+        if previous.signatureVersion != current.signatureVersion || previous.featureSignature != current.featureSignature {
             return Result(
                 detected: true,
-                message: "Catalog layout fingerprint changed for profile \(current.layoutProfileID).",
+                message: "Catalog layout fingerprint v\(current.signatureVersion) changed for profile \(current.layoutProfileID).",
                 previousProfileID: previous.layoutProfileID,
                 currentProfileID: current.layoutProfileID
             )

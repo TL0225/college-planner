@@ -1,19 +1,15 @@
 // AssistantInferenceSessionTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AssistantInferenceSessionTests.
-// Data: CollegePersistence / repositories when applicable.
+// Inference session stub behavior (Swift Testing).
 
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class AssistantInferenceSessionTests: XCTestCase {
+@Suite("Assistant Inference Session")
+struct AssistantInferenceSessionTests {
 
-    override func tearDown() {
-        AssistantInferenceAvailability.testSystemLanguageModelAvailable = nil
-        super.tearDown()
-    }
-
-    func testStubSessionReturnsToolCall() async {
+    @Test("Stub session returns tool call")
+    func stubSessionReturnsToolCall() async {
         let request = AssistantPlanningRequest(
             message: "UITEST_STUB get program progress",
             role: .academicAdvisor,
@@ -30,13 +26,16 @@ final class AssistantInferenceSessionTests: XCTestCase {
 
         let result = await StubAssistantInferenceSession().plan(request: request)
         guard case .toolCall(let envelope)? = result.action else {
-            return XCTFail("expected tool call")
+            Issue.record("expected tool call")
+            return
         }
-        XCTAssertEqual(envelope.tool, "getProgramProgress")
-        XCTAssertEqual(result.backend, .stub)
+        #expect(envelope.tool == "getProgramProgress")
+        #expect(result.backend == .stub)
     }
 
-    func testPlanResponseDelegatesToStubBackend() async {
+    @Test("Plan response delegates to stub backend")
+    @MainActor
+    func planResponseDelegatesToStubBackend() async {
         let previous = ProcessInfo.processInfo.environment["COLLEGE_ASSISTANT_INFERENCE_BACKEND"]
         setenv("COLLEGE_ASSISTANT_INFERENCE_BACKEND", "stub", 1)
         defer {
@@ -45,6 +44,7 @@ final class AssistantInferenceSessionTests: XCTestCase {
             } else {
                 unsetenv("COLLEGE_ASSISTANT_INFERENCE_BACKEND")
             }
+            AssistantInferenceAvailability.testSystemLanguageModelAvailable = nil
         }
 
         let outcome = await AIAssistantService.shared.planResponse(
@@ -57,12 +57,14 @@ final class AssistantInferenceSessionTests: XCTestCase {
         )
 
         guard case .toolCall(let envelope)? = outcome.action else {
-            return XCTFail("expected tool call from stub session")
+            Issue.record("expected tool call from stub session")
+            return
         }
-        XCTAssertEqual(envelope.tool, "getProgramProgress")
+        #expect(envelope.tool == "getProgramProgress")
     }
 
-    func testStubHopFinalAnswerAfterToolContext() async {
+    @Test("Stub hop final answer after tool context")
+    func stubHopFinalAnswerAfterToolContext() async {
         let request = AssistantPlanningRequest(
             message: "summarize",
             role: .academicAdvisor,
@@ -78,8 +80,9 @@ final class AssistantInferenceSessionTests: XCTestCase {
         )
         let result = await StubAssistantInferenceSession().plan(request: request)
         guard case .finalAnswer(let text)? = result.action else {
-            return XCTFail("expected final answer")
+            Issue.record("expected final answer")
+            return
         }
-        XCTAssertTrue(text.contains("Stub summary"))
+        #expect(text.contains("Stub summary"))
     }
 }

@@ -64,7 +64,7 @@ struct AssistantWebMemoryLibraryView: View {
                         HStack {
                             if row.isPinned {
                                 Image(systemName: "pin.fill")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                     .foregroundStyle(DesignSystem.Colors.info)
                             }
                             Text(row.title)
@@ -93,7 +93,7 @@ struct AssistantWebMemoryLibraryView: View {
                     .padding(.vertical, 4)
                     .contextMenu {
                         Button {
-                            Task {
+                            Task { @MainActor in
                                 await AssistantWebMemoryStore.shared.setEntryPinned(id: row.id, pinned: !row.isPinned)
                                 await reload()
                             }
@@ -101,7 +101,7 @@ struct AssistantWebMemoryLibraryView: View {
                             Label(row.isPinned ? "Unpin" : "Pin", systemImage: row.isPinned ? "pin.slash" : "pin")
                         }
                         Button {
-                            Task {
+                            Task { @MainActor in
                                 await AssistantWebMemoryStore.shared.setEntryIncludedInContext(id: row.id, included: !row.isIncludedInContext)
                                 await reload()
                             }
@@ -112,7 +112,7 @@ struct AssistantWebMemoryLibraryView: View {
                             )
                         }
                         Button(role: .destructive) {
-                            Task { await deleteEntry(row.id) }
+                            Task { @MainActor in await deleteEntry(row.id) }
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -142,6 +142,7 @@ struct AssistantWebMemoryLibraryView: View {
         return f.string(from: d)
     }
 
+    @MainActor
     private func reload() async {
         isLoading = true
         loadError = nil

@@ -30,7 +30,7 @@ struct GPACalculatorPopoverView: View {
             HStack {
                 Text("GPA Calculator")
                     .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
 
                 Spacer()
             }
@@ -49,10 +49,10 @@ struct GPACalculatorPopoverView: View {
             }
             .animation(.easeInOut(duration: 0.18), value: selectedTab)
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .frame(width: 420, height: 420)
         .background(DesignSystem.Colors.surface)
-        .cornerRadius(16)
+        .clipShape(.rect(cornerRadius: 16))
         .onAppear { collegePersistence.fetchPlans() }
     }
 
@@ -61,9 +61,9 @@ struct GPACalculatorPopoverView: View {
             tabButton(.gpa)
             tabButton(.gpaTable)
         }
-        .padding(4)
+        .padding(DesignSystem.Spacing.xs)
         .background(DesignSystem.Colors.bgMain)
-        .cornerRadius(12)
+        .clipShape(.rect(cornerRadius: 12))
     }
 
     private func tabButton(_ tab: Tab) -> some View {
@@ -73,7 +73,7 @@ struct GPACalculatorPopoverView: View {
             VStack(spacing: 6) {
                 Text(tab.rawValue)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                    .foregroundColor(selectedTab == tab ? DesignSystem.Colors.textMain : DesignSystem.Colors.textLight)
+                    .foregroundStyle(selectedTab == tab ? DesignSystem.Colors.textMain : DesignSystem.Colors.textLight)
 
                 Rectangle()
                     .fill(selectedTab == tab ? DesignSystem.Colors.primary : Color.clear)
@@ -90,7 +90,7 @@ struct GPACalculatorPopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Enter your university’s grade-to-points system.")
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             gradePointsTable
 
@@ -104,12 +104,12 @@ struct GPACalculatorPopoverView: View {
             HStack(spacing: 10) {
                 Text("Grade")
                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text("Points")
                     .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(width: 90, alignment: .leading)
             }
             .padding(.horizontal, 10)
@@ -128,7 +128,7 @@ struct GPACalculatorPopoverView: View {
                         ))
                         .textFieldStyle(.plain)
                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 10)
                         .background(DesignSystem.Colors.surface)
@@ -146,7 +146,7 @@ struct GPACalculatorPopoverView: View {
                         ))
                         .textFieldStyle(.plain)
                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .padding(.vertical, 8)
                         .padding(.horizontal, 10)
                         .frame(width: 90)
@@ -172,7 +172,7 @@ struct GPACalculatorPopoverView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Current GPA (completed, letter-graded courses).")
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             let mapping = scaleStore.gradePointsMapping
             let summary = cumulativeGPASummary(mapping: mapping)
@@ -180,26 +180,26 @@ struct GPACalculatorPopoverView: View {
             HStack(alignment: .lastTextBaseline) {
                 Text(summary.map { String(format: "%.2f", $0.gpa) } ?? "—")
                     .font(DesignSystem.Fonts.main(size: 28, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .foregroundStyle(DesignSystem.Colors.primary)
 
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 4) {
                     Text("Credits: \(String(format: "%.1f", summary?.creditsCounted ?? 0.0))")
                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                     Text("Courses: \(summary?.coursesCounted ?? 0)")
                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
             }
-            .padding(14)
+            .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.surface)
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
             )
-            .cornerRadius(14)
+            .clipShape(.rect(cornerRadius: 14))
 
             Spacer(minLength: 0)
         }
@@ -236,34 +236,34 @@ struct GPACalculatorPopoverView: View {
             HStack {
                 Text(semesterDisplayName(semester))
                     .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
 
                 Spacer()
 
                 Text(summary.map { String(format: "%.2f", $0.gpa) } ?? "—")
                     .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .foregroundStyle(DesignSystem.Colors.primary)
             }
 
             HStack {
                 Text("Credits: \(String(format: "%.1f", summary?.creditsCounted ?? 0.0))")
                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 Spacer()
 
                 Text("Courses: \(summary?.coursesCounted ?? 0)")
                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             }
         }
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface)
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
         )
-        .cornerRadius(14)
+        .clipShape(.rect(cornerRadius: 14))
     }
 
     private struct GPASemesterSummary: Equatable {
@@ -327,6 +327,7 @@ struct GPACalculatorPopoverView: View {
     }
 }
 
+@MainActor
 final class GPAGradeScaleStore: ObservableObject {
     struct Row: Codable, Hashable {
         var grade: String

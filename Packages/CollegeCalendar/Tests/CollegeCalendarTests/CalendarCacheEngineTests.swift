@@ -28,6 +28,21 @@ final class CalendarCacheEngineTests: XCTestCase {
         }
     }
 
+    func testCacheKeyPrefersCalendarEventID() {
+        let id = UUID()
+        let event = CalendarCalEvent(
+            title: "Lecture",
+            type: .lecture,
+            isImportant: false,
+            startDate: Date(timeIntervalSince1970: 1000),
+            endDate: Date(timeIntervalSince1970: 2000),
+            isAllDay: false,
+            calendarEventID: id
+        )
+        XCTAssertEqual(event.cacheKey, id.uuidString)
+        XCTAssertEqual(event.id, id.uuidString)
+    }
+
     func testICSParser_parsesMinimalEvent() throws {
         let ics = """
         BEGIN:VCALENDAR

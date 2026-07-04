@@ -38,9 +38,9 @@ enum CalendarReadBridge {
         calendarManager: CalendarIntegrationManager
     ) async -> [CalendarEventSnapshot] {
         let container = await MainActor.run { AppDataStore.shared.profileContainer }
-        let visibility = await calendarManager.makeCacheRebuildVisibilityFilter()
+        let visibility = calendarManager.makeCacheRebuildVisibilityFilter()
         return await Task.detached(priority: .userInitiated) {
-            let context = ModelContext(container)
+            let context = BackgroundModelContextPolicy.makeReadContext(container: container)
             guard (try? CalendarFetchQuery.hasMirroredCalendarRows(context: context)) == true else {
                 return [CalendarEventSnapshot]()
             }
@@ -72,7 +72,7 @@ enum CalendarReadBridge {
     ) async -> [CalendarTaskSnapshot] {
         let container = await MainActor.run { AppDataStore.shared.profileContainer }
         return await Task.detached(priority: .userInitiated) {
-            let context = ModelContext(container)
+            let context = BackgroundModelContextPolicy.makeReadContext(container: container)
             guard (try? CalendarFetchQuery.hasMirroredPlannerTaskRows(context: context)) == true else {
                 return [CalendarTaskSnapshot]()
             }

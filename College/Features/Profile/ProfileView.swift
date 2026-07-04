@@ -49,24 +49,53 @@ struct CardSurfaceModifier: ViewModifier {
 }
 
 extension View {
-    func cardSurface(padding: CGFloat = 24) -> some View {
-        self.modifier(CardSurfaceModifier(padding: padding))
+    func profileCardSurface(padding: CGFloat = 24) -> some View {
+        modifier(CardSurfaceModifier(padding: padding))
+    }
+}
+
+private enum ProfileActiveSheet: Identifiable {
+    case advisorPrep
+    case editProfile(Profile)
+    case addProject(Profile)
+    case editProject(Profile, PortfolioProject)
+    case addExperience
+    case editExperience(Experience)
+    case addAchievement
+    case editAchievement(Achievement)
+
+    var id: String {
+        switch self {
+        case .advisorPrep: return "advisorPrep"
+        case .editProfile: return "editProfile"
+        case .addProject: return "addProject"
+        case .editProject(_, let project): return "editProject-\(project.id.uuidString)"
+        case .addExperience: return "addExperience"
+        case .editExperience(let experience): return "editExperience-\(experience.id.uuidString)"
+        case .addAchievement: return "addAchievement"
+        case .editAchievement(let achievement): return "editAchievement-\(achievement.id.uuidString)"
+        }
     }
 }
 
 struct ProfileView: View {
     @Environment(AppContainer.self) private var container
+    @Environment(\.openWindow) private var openWindow
     private var persistence: CollegePersistence { container.persistence }
     @Binding var activePage: AppPage
     private var academicMetricsStore: AcademicMetricsStore { container.academicMetricsStore }
     private var collegePersistence: CollegePersistence { container.persistence }
-            @State private var isAdvisorMeetingPrepPresented = false
-    @State private var isEditingProfile = false
-    @State private var isAddingPortfolioProject = false
-    @State private var sheetProfile: Profile?
+    @State private var activeSheet: ProfileActiveSheet?
+    @State private var toolbarHandlerToken: ToolbarHandlerToken?
     /// Primary-major degree audit credits (same source as Academics `LandscapeDashboard` major ring).
     @State private var primaryMajorProgress = CollegePersistence.CreditsProgressSummary(completed: 0, required: 0, fraction: 0)
     @State private var plannerRefreshToken = 0
+
+    private var resumeAvailability: ResumeAvailability {
+        _ = plannerRefreshToken
+        _ = collegePersistence.careerDidChangeToken
+        return CareerReadBridge.resumeAvailability(collegePersistence: collegePersistence)
+    }
 
     private var profile: Profile? {
         _ = plannerRefreshToken
@@ -120,6 +149,15 @@ struct ProfileView: View {
         NSWorkspace.shared.open(url)
     }
 
+    private func openResumeBuilder() {
+        if let documentID = resumeAvailability.draftDocumentID
+            ?? resumeAvailability.primaryDocumentID {
+            ResumeNavigationPort.openResumeBuilder(openWindow: openWindow, documentID: documentID)
+        } else {
+            ResumeNavigationPort.openResumeBuilder(openWindow: openWindow)
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -150,13 +188,24 @@ struct ProfileView: View {
                     )
                     .frame(maxWidth: .infinity)
 
-                        TechnicalPortfolioCard(profile: profile) {
-                        openPortfolioProjectSheet()
-                    }
+                        TechnicalPortfolioCard(profile: profile, onAddProject: {
+                            openPortfolioProjectSheet()
+                        }, onEditProject: { project in
+                            openPortfolioProjectEditor(project)
+                        })
                     .frame(maxWidth: .infinity)
                 }
 
+                ProfileResumeCard(
+                    availability: resumeAvailability,
+                    onBuildResume: openResumeBuilder,
+                    onOpenCareerResumes: { activePage = .career }
+                )
+
                 if let profile {
+                    ProfileSkillsCard(profile: profile)
+                        .frame(maxWidth: .infinity)
+
                     HStack(alignment: .top, spacing: 24) {
                         ExperienceView(profile: profile)
                             .frame(maxWidth: .infinity)
@@ -201,9 +250,10 @@ struct ProfileView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .padding(40)
+            .padding(DesignSystem.Spacing.section)
         }
         .background(.windowBackground)
+        .shellDynamicTypeReadable()
         .onAppear {
             Task { @MainActor in
                 academicMetricsStore.refresh()
@@ -211,6 +261,9 @@ struct ProfileView: View {
             }
         }
         .onChange(of: collegePersistence.profileRevision) { _, _ in
+            plannerRefreshToken &+= 1
+        }
+        .onChange(of: collegePersistence.careerDidChangeToken) { _, _ in
             plannerRefreshToken &+= 1
         }
         .background {
@@ -225,34 +278,124 @@ struct ProfileView: View {
             loadPrimaryMajorProgress()
         }
         .onReceive(NotificationCenter.default.publisher(for: .profileOpenAdvisorPrep)) { _ in
-            isAdvisorMeetingPrepPresented = true
+            activeSheet = .advisorPrep
         }
-        .sheet(isPresented: $isAdvisorMeetingPrepPresented) {
-            AdvisorMeetingPrepView()
-                .dismissOnOutsideClickForSheet()
+        .onReceive(NotificationCenter.default.publisher(for: .collegeProfileEditProfile)) { _ in
+            openProfileEditor()
         }
-        .sheet(isPresented: $isEditingProfile) {
-            if let sheetProfile {
-                ProfileEditSheet(profile: sheetProfile)
-                    .dismissOnOutsideClickForSheet()
+        .onChange(of: container.modalCoordinator.activeModal) { _, modal in
+            guard let modal else { return }
+            switch modal {
+            case .addExperience:
+                activeSheet = .addExperience
+                container.modalCoordinator.activeModal = nil
+            case .editExperience(let experience):
+                activeSheet = .editExperience(experience)
+                container.modalCoordinator.activeModal = nil
+            case .addAchievement:
+                activeSheet = .addAchievement
+                container.modalCoordinator.activeModal = nil
+            case .editAchievement(let achievement):
+                activeSheet = .editAchievement(achievement)
+                container.modalCoordinator.activeModal = nil
+            default:
+                break
             }
         }
-        .sheet(isPresented: $isAddingPortfolioProject) {
-            if let sheetProfile {
-                AddProjectSheet(profile: sheetProfile)
+        .onAppear {
+            registerProfileToolbar()
+        }
+        .onDisappear {
+            toolbarHandlerToken?.invalidate()
+            toolbarHandlerToken = nil
+        }
+        // Single sheet host: multiple `.sheet` modifiers stacked on one view conflict
+        // on macOS, so all profile sheets are routed through one enum-driven presenter.
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .advisorPrep:
+                AdvisorMeetingPrepView()
                     .dismissOnOutsideClickForSheet()
+            case .editProfile(let editedProfile):
+                ProfileEditSheet(profile: editedProfile)
+                    .dismissOnOutsideClickForSheet()
+            case .addProject(let owner):
+                AddEditProjectSheet(profile: owner)
+                    .dismissOnOutsideClickForSheet()
+            case .editProject(let owner, let project):
+                AddEditProjectSheet(profile: owner, existingProject: project)
+                    .dismissOnOutsideClickForSheet()
+            case .addExperience:
+                AddExperienceView(
+                    isPresented: profileSheetDismissBinding,
+                    experience: nil,
+                    embedInSheet: true
+                )
+                .frame(minWidth: 520, idealWidth: 560, minHeight: 560, idealHeight: 700)
+                .dismissOnOutsideClickForSheet()
+            case .editExperience(let experience):
+                AddExperienceView(
+                    isPresented: profileSheetDismissBinding,
+                    experience: experience,
+                    embedInSheet: true
+                )
+                .frame(minWidth: 520, idealWidth: 560, minHeight: 560, idealHeight: 700)
+                .dismissOnOutsideClickForSheet()
+            case .addAchievement:
+                AddAchievementOverlay(
+                    isPresented: profileSheetDismissBinding,
+                    achievement: nil,
+                    embedInSheet: true
+                )
+                .frame(minWidth: 520, idealWidth: 640, minHeight: 520, idealHeight: 640)
+                .dismissOnOutsideClickForSheet()
+            case .editAchievement(let achievement):
+                AddAchievementOverlay(
+                    isPresented: profileSheetDismissBinding,
+                    achievement: achievement,
+                    embedInSheet: true
+                )
+                .frame(minWidth: 520, idealWidth: 640, minHeight: 520, idealHeight: 640)
+                .dismissOnOutsideClickForSheet()
+            }
+        }
+    }
+
+    private var profileSheetDismissBinding: Binding<Bool> {
+        Binding(
+            get: { activeSheet != nil },
+            set: { isPresented in
+                if !isPresented { activeSheet = nil }
+            }
+        )
+    }
+
+    private func registerProfileToolbar() {
+        toolbarHandlerToken?.invalidate()
+        toolbarHandlerToken = container.toolbarDispatcher.register(owner: .profile) { action in
+            guard case .profile(let profileAction) = action else { return }
+            switch profileAction {
+            case .advisorPrep:
+                activeSheet = .advisorPrep
+            case .editProfile:
+                openProfileEditor()
             }
         }
     }
 
     private func openProfileEditor() {
-        sheetProfile = collegePersistence.ensurePrimaryProfile()
-        isEditingProfile = sheetProfile != nil
+        guard let owner = collegePersistence.ensurePrimaryProfile() else { return }
+        activeSheet = .editProfile(owner)
     }
 
     private func openPortfolioProjectSheet() {
-        sheetProfile = collegePersistence.ensurePrimaryProfile()
-        isAddingPortfolioProject = sheetProfile != nil
+        guard let owner = collegePersistence.ensurePrimaryProfile() else { return }
+        activeSheet = .addProject(owner)
+    }
+
+    private func openPortfolioProjectEditor(_ project: PortfolioProject) {
+        guard let owner = collegePersistence.ensurePrimaryProfile() else { return }
+        activeSheet = .editProject(owner, project)
     }
 
     private func loadPrimaryMajorProgress() {
@@ -361,19 +504,19 @@ struct IdentityCard: View {
 
                     Image(systemName: "checkmark.seal.fill")
                         .foregroundStyle(Color.accentColor)
-                        .font(.system(size: 18))
-                        .background(Circle().fill(.background).padding(2))
+                        .font(DesignSystem.Fonts.main(size: 18))
+                        .background(Circle().fill(.background).padding(DesignSystem.Spacing.xs))
                         .offset(x: -4, y: -4)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     if let name = profile?.trimmedDisplayName, !name.isEmpty {
                         Text(name)
-                            .font(.system(size: 28, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 28, weight: .bold))
                             .foregroundStyle(.primary)
                     } else {
                         Text(String(localized: "profile.identity.placeholder_name"))
-                            .font(.system(size: 28, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 28, weight: .bold))
                             .foregroundStyle(.tertiary)
                     }
 
@@ -383,11 +526,11 @@ struct IdentityCard: View {
                         Group {
                             if !degreeType.isEmpty || !major.isEmpty {
                                 Text(compactDegreeLine(degreeType: degreeType, major: major))
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(DesignSystem.Fonts.main(size: 15, weight: .medium))
                                     .foregroundStyle(.secondary)
                             } else {
                                 Text(String(localized: "profile.identity.placeholder_degree"))
-                                    .font(.system(size: 15, weight: .medium))
+                                    .font(DesignSystem.Fonts.main(size: 15, weight: .medium))
                                     .foregroundStyle(.tertiary)
                             }
                         }
@@ -404,7 +547,7 @@ struct IdentityCard: View {
                 Spacer()
             }
             .frame(maxHeight: .infinity, alignment: .leading)
-            .cardSurface(padding: 28)
+            .profileCardSurface(padding: 28)
 
             HStack(spacing: 8) {
                 Button(action: onEditProfile) {
@@ -417,13 +560,13 @@ struct IdentityCard: View {
                 Button(action: onEditProfile) {
                     Image(systemName: "pencil")
                         .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 20))
+                        .font(DesignSystem.Fonts.main(size: 20))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
                 .help(String(localized: "profile.edit.open_help"))
             }
-            .padding(16)
+            .padding(DesignSystem.Spacing.lg)
         }
     }
 
@@ -432,9 +575,9 @@ struct IdentityCard: View {
         HStack(spacing: 5) {
             Image(systemName: icon)
                 .foregroundStyle(isPlaceholder ? .tertiary : .secondary)
-                .font(.system(size: 13))
+                .font(DesignSystem.Fonts.main(size: 13))
             Text(text)
-                .font(.system(size: 13, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                 .foregroundStyle(isPlaceholder ? .tertiary : .secondary)
         }
     }
@@ -460,12 +603,12 @@ struct GPAStandingCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("GPA STANDING")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .foregroundStyle(.tertiary)
                     .kerning(1)
                 Spacer()
                 Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                     .foregroundStyle(.secondary)
             }
             .padding(.bottom, 4)
@@ -479,7 +622,7 @@ struct GPAStandingCard: View {
             DashboardGPAScaleBar(gpa: gpa)
                 .padding(.top, 8)
         }
-        .cardSurface(padding: 24)
+        .profileCardSurface(padding: 24)
     }
 }
 
@@ -501,28 +644,28 @@ struct DegreeProgressCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("DEGREE PROGRESS")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .foregroundStyle(.tertiary)
                     .kerning(1)
                 Spacer()
                 Image(systemName: "graduationcap.fill")
-                    .font(.system(size: 14))
+                    .font(DesignSystem.Fonts.main(size: 14))
                     .foregroundStyle(Color.accentColor)
             }
             .padding(.bottom, 4)
 
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(creditsEarned)")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(DesignSystem.Fonts.main(size: 32, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                 Text("/ \(creditsRequired)")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 18, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
 
             if let progressSubtitle, !progressSubtitle.isEmpty {
                 Text(progressSubtitle)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }
 
@@ -537,7 +680,7 @@ struct DegreeProgressCard: View {
             .frame(height: 6)
             .padding(.top, 12)
         }
-        .cardSurface(padding: 24)
+        .profileCardSurface(padding: 24)
     }
 }
 
@@ -576,12 +719,12 @@ struct CurrentTermCard: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 Text(String(localized: "profile.pulse.card_title"))
-                    .font(.system(size: 20, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
                     .foregroundStyle(.primary)
                 Spacer()
                 if let termLabel, !termLabel.isEmpty {
                     Text(termLabel)
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
                         .background(.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
@@ -603,12 +746,12 @@ struct CurrentTermCard: View {
                         VStack(spacing: 8) {
                             HStack {
                                 Text(rowTitle(row))
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Spacer()
                                 Text("\(Int(frac * 100))%")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                                     .monospacedDigit()
                                     .foregroundStyle(frac >= 1.0 ? AnyShapeStyle(.green) : AnyShapeStyle(Color.accentColor))
                             }
@@ -628,27 +771,27 @@ struct CurrentTermCard: View {
             Spacer()
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .cardSurface(padding: 28)
+        .profileCardSurface(padding: 28)
     }
 
     @ViewBuilder
     private func emptyStateBox(title: String, message: String, systemImage: String) -> some View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 24, weight: .regular))
+                .font(DesignSystem.Fonts.main(size: 24, weight: .regular))
                 .foregroundStyle(.tertiary)
 
             Text(title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
 
             Text(message)
-                .font(.system(size: 12))
+                .font(DesignSystem.Fonts.main(size: 12))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
@@ -662,6 +805,9 @@ struct CurrentTermCard: View {
 struct TechnicalPortfolioCard: View {
     let profile: Profile?
     var onAddProject: () -> Void
+    var onEditProject: (PortfolioProject) -> Void = { _ in }
+
+    @State private var expandedProjectIDs: Set<UUID> = []
 
     private var projects: [PortfolioProject] {
         profile?.portfolioProjectsList ?? []
@@ -671,12 +817,12 @@ struct TechnicalPortfolioCard: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
                 Text(String(localized: "profile.portfolio.title"))
-                    .font(.system(size: 20, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
                     .foregroundStyle(.primary)
                 Spacer()
                 Button(action: onAddProject) {
                     Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 18))
+                        .font(DesignSystem.Fonts.main(size: 18))
                         .symbolRenderingMode(.hierarchical)
                 }
                 .buttonStyle(.borderless)
@@ -689,12 +835,15 @@ struct TechnicalPortfolioCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(projects) { project in
                         portfolioProjectRow(project)
+                            .onTapGesture {
+                                onEditProject(project)
+                            }
                     }
                 }
             }
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)
-        .cardSurface(padding: 28)
+        .profileCardSurface(padding: 28)
     }
 
     // MARK: Rich empty state
@@ -702,19 +851,19 @@ struct TechnicalPortfolioCard: View {
     private var portfolioEmptyState: some View {
         VStack(spacing: 10) {
             Image(systemName: "folder.badge.plus")
-                .font(.system(size: 28, weight: .light))
+                .font(DesignSystem.Fonts.main(size: 28, weight: .light))
                 .foregroundStyle(.tertiary)
             Text(String(localized: "profile.portfolio.empty_title"))
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(String(localized: "profile.portfolio.empty_message"))
-                .font(.system(size: 12, weight: .regular))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
@@ -730,11 +879,11 @@ struct TechnicalPortfolioCard: View {
                     .fill(color.opacity(0.10))
                     .frame(width: 40, height: 40)
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .medium))
                     .foregroundStyle(color)
             }
             Text(label)
-                .font(.system(size: 11, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
         }
     }
@@ -743,38 +892,84 @@ struct TechnicalPortfolioCard: View {
 
     @ViewBuilder
     private func portfolioProjectRow(_ project: PortfolioProject) -> some View {
+        let isExpanded = expandedProjectIDs.contains(project.id)
+        let visibleBullets = isExpanded ? project.bullets : Array(project.bullets.prefix(3))
+
         VStack(alignment: .leading, spacing: 5) {
-            Text(project.title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.primary)
+            HStack(alignment: .firstTextBaseline) {
+                Text(project.title)
+                    .font(DesignSystem.Fonts.main(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if let start = project.startDateString, !start.isEmpty {
+                    let end = project.endDateString ?? ""
+                    Text(end.isEmpty ? start : "\(start) – \(end)")
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+            }
             if !project.role.isEmpty {
                 Text(project.role)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             if !project.technologies.isEmpty {
                 Text(project.technologies)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                     .foregroundStyle(.tertiary)
             }
             if !project.summary.isEmpty {
                 Text(project.summary)
-                    .font(.system(size: 13))
+                    .font(DesignSystem.Fonts.main(size: 13))
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
-            if !project.projectURL.isEmpty, let url = URL(string: project.projectURL), url.scheme != nil {
-                Link(project.projectURL, destination: url)
-                    .font(.system(size: 13, weight: .medium))
+            if !visibleBullets.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(visibleBullets.indices, id: \.self) { index in
+                        Text("• \(visibleBullets[index])")
+                            .font(DesignSystem.Fonts.main(size: 12))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if project.bullets.count > 3 {
+                        Button(isExpanded ? "Show less" : "Show more") {
+                            if isExpanded {
+                                expandedProjectIDs.remove(project.id)
+                            } else {
+                                expandedProjectIDs.insert(project.id)
+                            }
+                        }
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            HStack(spacing: 8) {
+                if let github = project.githubURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !github.isEmpty,
+                   let url = URL(string: github), url.scheme != nil {
+                    Link(destination: url) {
+                        Label("GitHub", systemImage: "link")
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
+                    }
+                }
+                if !project.projectURL.isEmpty,
+                   let url = URL(string: project.projectURL), url.scheme != nil {
+                    Link(project.projectURL, destination: url)
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
+                        .lineLimit(1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         )
+        .contentShape(Rectangle())
     }
 }
 
@@ -797,21 +992,21 @@ struct QuickAccessCard: View {
                         .frame(width: 44, height: 44)
                     Image(systemName: icon)
                         .foregroundStyle(color)
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .semibold))
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
                         .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.system(size: 13))
+                        .font(DesignSystem.Fonts.main(size: 13))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
             }
-            .padding(14)
+            .padding(DesignSystem.Spacing.md)
             .frame(maxWidth: .infinity)
-            .cardSurface(padding: 0)
+            .profileCardSurface(padding: 0)
         }
         .buttonStyle(.plain)
     }

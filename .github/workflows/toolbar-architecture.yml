@@ -51,5 +51,8 @@ jobs:
       - name: Cross-feature imports (warn-only)
         run: bash scripts/check-feature-imports.sh warn
 
+      - name: Toolbar menu parity
+        run: bash scripts/check-toolbar-menu-parity.sh
+
       - name: Toolbar XCTest suite
         run: bash scripts/run_toolbar_tests.sh

@@ -34,6 +34,19 @@ enum WidgetCategory: String, CaseIterable, Identifiable {
         case .custom:       return "puzzlepiece.fill"
         }
     }
+
+    /// Canonical accent color for the category. Overview widget headers bind their
+    /// accent to this so header color encodes *domain* (academic vs productivity vs …)
+    /// rather than being a per-widget decorative choice.
+    var accentColor: Color {
+        switch self {
+        case .academic:     return .accentColor
+        case .productivity: return .orange
+        case .media:        return .pink
+        case .information:  return .teal
+        case .custom:       return .indigo
+        }
+    }
 }
 
 // MARK: - WidgetSize

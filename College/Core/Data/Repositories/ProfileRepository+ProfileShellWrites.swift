@@ -53,7 +53,9 @@ extension ProfileRepository {
         permanentAddress: String?,
         advisorName: String?,
         studentId: String?,
-        profilePhotoData: Data?
+        profilePhotoData: Data?,
+        skillsJSON: String? = nil,
+        linksJSON: String? = nil
     ) throws {
         guard let profile = try fetchProfile(id: id) else { return }
         profile.name = name
@@ -64,6 +66,8 @@ extension ProfileRepository {
         profile.advisorName = advisorName
         profile.studentId = studentId
         profile.profilePhotoData = profilePhotoData
+        if let skillsJSON { profile.skillsJSON = skillsJSON }
+        if let linksJSON { profile.linksJSON = linksJSON }
         ModelMergeCoalescer.scheduleSave(context)
     }
 }

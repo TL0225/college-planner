@@ -59,6 +59,16 @@ struct WebNavigationToolbar: View {
             .help("Reload")
             .accessibilityLabel("Reload")
             .accessibilityIdentifier("toolbar.web.reload")
+
+            Button {
+                toolbarDispatcher.dispatch(.web(.findInPage))
+            } label: {
+                ToolbarMetrics.glassIconLabel(systemName: "magnifyingglass")
+            }
+            .toolbarIconButtonStyle()
+            .help("Find on Page")
+            .accessibilityLabel("Find on Page")
+            .accessibilityIdentifier("toolbar.web.find")
         }
     }
 }
@@ -75,8 +85,8 @@ struct PortalHomeToolbarButton: View {
             ToolbarMetrics.glassIconLabel(systemName: "house")
         }
         .toolbarIconButtonStyle()
-        .help(String(localized: "brightspace.toolbar.portal_home_help"))
-        .accessibilityLabel(String(localized: "brightspace.toolbar.portal_home_a11y"))
+        .help(String(localized: "lms.toolbar.portal_home_help"))
+        .accessibilityLabel(String(localized: "lms.toolbar.portal_home_a11y"))
         .accessibilityIdentifier("toolbar.web.portalHome")
     }
 }

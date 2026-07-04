@@ -1,0 +1,328 @@
+{
+  "cases" : [
+    {
+      "id" : "multi_001",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "fall"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What classes do I need?"
+        },
+        {
+          "user" : "Only show fall courses"
+        },
+        {
+          "user" : "I'm transferring from community college"
+        }
+      ]
+    },
+    {
+      "id" : "multi_002",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What's my major?"
+        },
+        {
+          "user" : "Help me plan next semester"
+        }
+      ]
+    },
+    {
+      "id" : "multi_003",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "tomorrow"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What is due?"
+        },
+        {
+          "user" : "What's tomorrow?"
+        }
+      ]
+    },
+    {
+      "id" : "multi_004",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "stub"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "Explain my degree requirements"
+        },
+        {
+          "user" : "Focus on cybersecurity electives"
+        }
+      ]
+    },
+    {
+      "id" : "multi_005",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "fall"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "Am I ready to graduate?"
+        },
+        {
+          "user" : "What about next fall only?"
+        }
+      ]
+    },
+    {
+      "id" : "multi_006",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_007",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_008",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_009",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_010",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_011",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_012",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_013",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_014",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_015",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_016",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_017",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_018",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_019",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    },
+    {
+      "id" : "multi_020",
+      "quality" : {
+        "finalReplyContainsAny" : [
+          "next"
+        ]
+      },
+      "turns" : [
+        {
+          "user" : "What should I take?"
+        },
+        {
+          "user" : "Next semester only"
+        }
+      ]
+    }
+  ],
+  "version" : 1
+}

@@ -9,6 +9,7 @@
 //   defaults write Timothy.College catalog.ingest.gate.enabled -bool true
 //   defaults write Timothy.College catalog.layoutLLM.enabled -bool true
 //   defaults write Timothy.College catalog.entityLLM.enabled -bool true
+//   defaults write Timothy.College catalog.scraper.fullSummary.enabled -bool true
 //
 // Flag matrix:
 //   documentIR OFF, modernCampusIR OFF → UniversalCatalogScraper + legacy CourseLeaf crawl
@@ -25,6 +26,7 @@ enum CatalogPlatformFlags {
     private static let ingestGateKey = "catalog.ingest.gate.enabled"
     private static let layoutLLMKey = "catalog.layoutLLM.enabled"
     private static let entityLLMKey = "catalog.entityLLM.enabled"
+    private static let universalScraperFullSummaryKey = "catalog.scraper.fullSummary.enabled"
 
     /// When true, Document IR pipelines run for supported engines (CourseLeaf + Modern Campus when `modernCampusIREnabled`).
     /// Default **true** when the key is unset (post–golden-parity rollout); set explicitly to opt out.
@@ -71,5 +73,14 @@ enum CatalogPlatformFlags {
     static var entityLLMEnabled: Bool {
         get { UserDefaults.standard.bool(forKey: entityLLMKey) }
         set { UserDefaults.standard.set(newValue, forKey: entityLLMKey) }
+    }
+
+    /// When true, UniversalCatalogScraper emits the full program/school debug dump (DEBUG builds default on).
+    static var universalScraperFullSummaryEnabled: Bool {
+        #if DEBUG
+        return true
+        #else
+        return UserDefaults.standard.bool(forKey: universalScraperFullSummaryKey)
+        #endif
     }
 }

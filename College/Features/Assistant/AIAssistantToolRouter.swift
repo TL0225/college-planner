@@ -110,6 +110,13 @@ enum AIAssistantToolRouter {
             return .none
         }
 
+        // Embedding / keyword intents before legacy keyword shortcuts (fixes robotic major dumps).
+        if AssistantIntentSemantics.isEnabled,
+           let semantic = AssistantIntentSemantics.classify(message: message, role: role),
+           AssistantIntentSemantics.shouldShortCircuitRouter(semantic) {
+            return semantic.decision
+        }
+
         if let semantic = AssistantIntentSemantics.classify(message: message, role: role),
            case .llmPreferred = semantic.decision,
            [
@@ -153,14 +160,46 @@ enum AIAssistantToolRouter {
             return .deterministic(dueItems(snapshot: snapshot))
         }
 
+        if isSimpleProgramLookup(normalized) {
+            return .deterministic(AssistantGuidedResponse.wrapSimpleLookupProgram(snapshot: snapshot))
+        }
+
         if normalized.contains("major") || normalized.contains("minor") || normalized.contains("program") || normalized.contains("degree") {
-            if isReasoningHeavyPrompt(normalized) {
-                return .llmPreferred(seed: currentPrograms(snapshot: snapshot))
+            if snapshot.majors.isEmpty,
+               matchesAny(normalized, ["career", "job", "breakdown", "semester", "plan", "path", "lead to"]) {
+                return .deterministic(AssistantGuidedResponse.text(for: .missingMajorFirstSession, snapshot: snapshot))
             }
-            return .deterministic(currentPrograms(snapshot: snapshot))
+            return .llmPreferred(seed: currentPrograms(snapshot: snapshot))
         }
 
         return .none
+    }
+
+    static func isSimpleProgramLookup(_ normalized: String) -> Bool {
+        let simplePhrases = [
+            "what's my major",
+            "what is my major",
+            "whats my major",
+            "what are my majors",
+            "what's my minor",
+            "what is my minor",
+            "what are my minors",
+            "what programs am i in",
+            "what program am i in",
+            "current major",
+            "declared major"
+        ]
+        if simplePhrases.contains(where: { normalized.contains($0) }) {
+            return true
+        }
+        if normalized == "major" || normalized == "minor" || normalized == "my major?" {
+            return true
+        }
+        return false
+    }
+
+    private static func matchesAny(_ normalized: String, _ phrases: [String]) -> Bool {
+        phrases.contains { normalized.contains($0) }
     }
 
     static func reply(
@@ -184,7 +223,8 @@ enum AIAssistantToolRouter {
 
     private static func isReasoningHeavyPrompt(_ normalizedMessage: String) -> Bool {
         let markers = [
-            "why", "how", "explain", "compare", "tradeoff", "strategy", "optimi", "best way", "recommend"
+            "why", "how", "explain", "compare", "tradeoff", "strategy", "optimi", "best way", "recommend",
+            "create", "breakdown", "semester by semester", "walk me through", "career", "lead to", "path"
         ]
         return markers.contains { normalizedMessage.contains($0) }
     }
@@ -227,9 +267,7 @@ enum AIAssistantToolRouter {
             }
 
         if tomorrowEvents.isEmpty && tomorrowTasks.isEmpty {
-            return role == .financialAid
-                ? "Tomorrow looks clear in your planner. No pending due items or scheduled events were found."
-                : "You're clear for tomorrow. I didn't find any events or due tasks on your calendar."
+            return AssistantGuidedResponse.wrapSimpleLookupAgendaEmpty(scope: .tomorrow)
         }
 
         let formatter = DateFormatter()
@@ -269,7 +307,7 @@ enum AIAssistantToolRouter {
             .prefix(6)
 
         if events.isEmpty && tasks.isEmpty {
-            return "No upcoming events or open tasks were found in the next 7 days."
+            return AssistantGuidedResponse.wrapSimpleLookupAgendaEmpty(scope: .week)
         }
 
         let formatter = DateFormatter()
@@ -298,7 +336,7 @@ enum AIAssistantToolRouter {
             .prefix(8)
 
         if tasks.isEmpty {
-            return "I don't see any open tasks with due dates right now."
+            return AssistantGuidedResponse.wrapSimpleLookupAgendaEmpty(scope: .dueList)
         }
 
         let formatter = DateFormatter()
@@ -606,8 +644,8 @@ Load check:
                 return "Calendar view is active, so scheduling pressure and deadline timing are the primary context."
             case .documents:
                 return "Documents view is active, so supporting artifacts and source materials are the primary context."
-            case .brightspace:
-                return "Brightspace view is active, so LMS-linked workload and timeline risk are the primary context."
+            case .lms:
+                return "Learning Management System view is active, so LMS-linked workload and timeline risk are the primary context."
             default:
                 return "General planner context is active across academics, calendar, and tasks."
             }

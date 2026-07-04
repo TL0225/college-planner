@@ -78,16 +78,16 @@ struct AcademicsBottomSummaryStrip: View {
             HStack(spacing: 6) {
                 if let kind = program.kindLabel {
                     Text(kind.uppercased())
-                        .font(.system(size: 9, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                         .foregroundStyle(isSelected ? Color.accentColor : Color.secondary.opacity(0.65))
                 }
                 Text(program.id == ProgramCreditStatusStripRow.allProgramsID ? "All" : program.title)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .font(DesignSystem.Fonts.main(size: 12, weight: isSelected ? .semibold : .medium))
                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                     .lineLimit(1)
                 if program.isGraduationTarget {
                     Text("DEGREE")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 8, weight: .bold))
                         .foregroundStyle(isSelected ? Color.accentColor.opacity(0.9) : Color.secondary.opacity(0.65))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 2)
@@ -128,17 +128,17 @@ struct AcademicsBottomSummaryStrip: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(row.title)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if row.id == ProgramCreditStatusStripRow.allProgramsID {
                     Text("· planner totals")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
                         .foregroundStyle(Color.secondary.opacity(0.65))
                 } else if let kind = row.kindLabel {
                     Text("· \(kind.lowercased()) requirements")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
                         .foregroundStyle(Color.secondary.opacity(0.65))
                 }
             }
@@ -159,11 +159,11 @@ struct AcademicsBottomSummaryStrip: View {
                 .frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 0) {
                 Text("\(value) cr")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
                     .foregroundStyle(.primary)
                     .monospacedDigit()
                 Text(AcademicsStatusPalette.label(for: state))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
         }
@@ -213,22 +213,11 @@ extension CollegePersistence {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty && $0.lowercased() != "none" }
 
-        let combinedRemaining = max(0, combinedRequired - combinedCompleted - combinedInProgress - combinedPlanned)
-        var rows: [ProgramCreditStatusStripRow] = [
-            ProgramCreditStatusStripRow(
-                id: ProgramCreditStatusStripRow.allProgramsID,
-                title: "All programs",
-                kindLabel: nil,
-                isGraduationTarget: false,
-                completed: combinedCompleted,
-                inProgress: combinedInProgress,
-                remaining: combinedRemaining
-            ),
-        ]
+        var programRows: [ProgramCreditStatusStripRow] = []
 
         for (idx, major) in majorList.enumerated() {
             let buckets = majorProgramCreditStatusBuckets(forMajorDisplay: major, academicProfile: academicProfile)
-            rows.append(
+            programRows.append(
                 ProgramCreditStatusStripRow(
                     id: "major|\(major)",
                     title: major,
@@ -243,7 +232,7 @@ extension CollegePersistence {
 
         for minor in minorList {
             let buckets = minorProgramCreditStatusBuckets(forMinorDisplay: minor, academicProfile: academicProfile)
-            rows.append(
+            programRows.append(
                 ProgramCreditStatusStripRow(
                     id: "minor|\(minor)",
                     title: minor,
@@ -256,7 +245,29 @@ extension CollegePersistence {
             )
         }
 
-        return rows
+        let combinedRemaining = max(0, combinedRequired - combinedCompleted - combinedInProgress - combinedPlanned)
+        let aggregate: (completed: Int, inProgress: Int, remaining: Int) = {
+            guard !programRows.isEmpty else {
+                return (combinedCompleted, combinedInProgress, combinedRemaining)
+            }
+            return (
+                programRows.reduce(0) { $0 + $1.completed },
+                programRows.reduce(0) { $0 + $1.inProgress },
+                programRows.reduce(0) { $0 + $1.remaining }
+            )
+        }()
+
+        let allPrograms = ProgramCreditStatusStripRow(
+            id: ProgramCreditStatusStripRow.allProgramsID,
+            title: "All programs",
+            kindLabel: nil,
+            isGraduationTarget: false,
+            completed: aggregate.completed,
+            inProgress: aggregate.inProgress,
+            remaining: aggregate.remaining
+        )
+
+        return [allPrograms] + programRows
     }
 
     private func majorProgramCreditStatusBuckets(

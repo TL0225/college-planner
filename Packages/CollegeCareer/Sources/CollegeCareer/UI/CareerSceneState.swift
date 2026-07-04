@@ -1,6 +1,6 @@
 // CareerSceneState.swift
 // Feature: App / Toolbar
-// Owner: CareerWorkspaceView — College/Features/Career/CareerWorkspaceView.swift
+// Owner: CareerWorkspaceView — College/Features/Career/Workspace/CareerWorkspaceView.swift
 
 import Foundation
 import Observation

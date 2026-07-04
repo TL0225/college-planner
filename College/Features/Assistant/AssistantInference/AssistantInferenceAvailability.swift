@@ -16,6 +16,7 @@ enum AssistantInferenceAvailability: Sendable, Equatable {
         case modelNotInstalled
         case localLLMDisabled
         case requiresAppleSilicon
+        case mlxIncompatibleGPU
     }
 
     #if DEBUG || COLLEGE_TEST_HOOKS
@@ -23,12 +24,28 @@ enum AssistantInferenceAvailability: Sendable, Equatable {
     nonisolated(unsafe) static var testSystemLanguageModelAvailable: Bool?
     #endif
 
+    /// Whether the assistant chat shell can open (Apple Intelligence and/or on-device JSON worker).
+    static func isChatReady() async -> Bool {
+        if UITestLaunchFlags.forcesMainUI, UITestLaunchFlags.fakeAssistantModelForUITest {
+            return true
+        }
+        // Avoid probing Apple Intelligence during the same render pass as assistant mount.
+        await Task.yield()
+        switch await current() {
+        case .foundationModels, .jsonWorkerFallback:
+            return true
+        case .unavailable:
+            return false
+        }
+    }
+
     static func current() async -> AssistantInferenceAvailability {
         if UITestLaunchFlags.assistantInferenceStubEnabled {
             return .unavailable(reason: .appleIntelligenceUnavailable)
         }
 
-        if resolvesFoundationModels() {
+        let foundationModelsAvailable = await MainActor.run { resolvesFoundationModels() }
+        if foundationModelsAvailable {
             return .foundationModels
         }
 
@@ -41,10 +58,13 @@ enum AssistantInferenceAvailability: Sendable, Equatable {
         }
 
         if jsonWorkerInstalled, localEnabled {
-            if AppleSiliconPlatform.isSupported {
+            if AppleSiliconPlatform.isMLXCompatible {
                 return .jsonWorkerFallback
             }
-            return .unavailable(reason: .requiresAppleSilicon)
+            if !AppleSiliconPlatform.isSupported {
+                return .unavailable(reason: .requiresAppleSilicon)
+            }
+            return .unavailable(reason: .mlxIncompatibleGPU)
         }
         if !jsonWorkerInstalled {
             return .unavailable(reason: .modelNotInstalled)
@@ -61,10 +81,23 @@ enum AssistantInferenceAvailability: Sendable, Equatable {
             return testSystemLanguageModelAvailable
         }
         #endif
+        guard AppleSiliconPlatform.isSupported else { return false }
         if #available(macOS 26.0, *) {
             return SystemLanguageModel.default.isAvailable
         }
         return false
+    }
+
+    /// Short label for assistant chrome (M30-079 generative-AI identification).
+    var displayLabel: String {
+        switch self {
+        case .foundationModels:
+            return "Apple Intelligence"
+        case .jsonWorkerFallback:
+            return "On-device model"
+        case .unavailable:
+            return "AI unavailable"
+        }
     }
 
     var jsonWorkerFallbackBanner: String? {
@@ -83,6 +116,8 @@ enum AssistantInferenceAvailability: Sendable, Equatable {
             return "Enable the on-device assistant in College Settings → AI & Storage, or turn on Apple Intelligence in System Settings."
         case .requiresAppleSilicon:
             return AppleSiliconPlatform.requirementMessage
+        case .mlxIncompatibleGPU:
+            return AppleSiliconPlatform.mlxRequirementMessage
         }
     }
 }

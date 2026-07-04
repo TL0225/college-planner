@@ -57,6 +57,12 @@ enum CrashReportStore {
         )
 
         persist(report, synchronous: true)
+        DiagnosticsEvent.emit(
+            subsystem: .crash,
+            severity: .critical,
+            code: "CRASH_DETECTED",
+            message: report.summary
+        )
     }
 
     static func recordAbruptTerminationNoteIfNeeded() {

@@ -1,0 +1,20 @@
+---
+description: Test standards for CollegeTests
+globs: CollegeTests/**/*.swift
+alwaysApply: false
+---
+
+# Testing
+
+## What to test
+- Regressions and contracts: merge behavior, sync state machines, parsing edge cases, persistence invariants.
+- Skip tests that only restate the compiler or mirror a single constant.
+
+## How to test
+- Follow existing suite patterns: `@Suite`, Swift Testing `#expect`, `AppDataStore.shared.clearProfileStoreForUnitTesting()` in setup.
+- Isolate side effects — clean `UserDefaults` keys and store state in `tearDown` when tests write them.
+- Name tests after the behavior: `partialPagePreservesActiveUntilFinalize`, not `testImportSession2`.
+
+## Sync and import tests
+- Cover the dangerous paths: empty scrape must not wipe board, partial page must not deactivate unseen rows, finalize applies removals.
+- Use deterministic fixtures (`ScrapedJobListing` with stable `listingHash`) instead of live network scrapes unless gated behind `COLLEGE_RUN_LIVE_TESTS`.

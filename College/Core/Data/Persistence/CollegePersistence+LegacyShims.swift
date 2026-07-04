@@ -17,6 +17,15 @@ extension CollegePersistence {
         bumpProfileRevision()
     }
 
+    /// Reverses `archiveCourse`, restoring planner visibility and the prior status.
+    func unarchiveCourse(_ course: PlannerCourse, restoringStatus previousStatus: String) {
+        course.isArchived = false
+        course.status = previousStatus
+        _ = try? appDataStore.profileSave()
+        fetchSemesters()
+        bumpProfileRevision()
+    }
+
     func ensureCourseScheduledInPlanner(
         courseCode: String,
         courseName: String,
@@ -209,7 +218,7 @@ extension CollegePersistence {
         categoryWeightPercent: Double? = nil,
         weightPercent: Double? = nil,
         estimatedEffortMinutes: Int32? = nil,
-        brightspaceItemId: String? = nil
+        lmsItemId: String? = nil
     ) -> UUID {
         do {
             let task = try calendarRepository.createPlannerTask(
@@ -224,7 +233,7 @@ extension CollegePersistence {
                 categoryWeightPercent: categoryWeightPercent,
                 weightPercent: weightPercent,
                 estimatedEffortMinutes: estimatedEffortMinutes,
-                brightspaceItemId: brightspaceItemId
+                lmsItemId: lmsItemId
             )
             _ = try? appDataStore.profileSave()
             notifyCalendarDidChange()
@@ -277,7 +286,7 @@ extension CollegePersistence {
         notifyCalendarDidChange()
     }
 
-    func cleanupWorkdayRelationshipOrphans() {
-        try? careerRepository.cleanupWorkdayRelationshipOrphans()
+    func cleanupJobBoardRelationshipOrphans() {
+        try? careerRepository.cleanupJobBoardRelationshipOrphans()
     }
 }

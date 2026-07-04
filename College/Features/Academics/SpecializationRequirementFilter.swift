@@ -78,13 +78,39 @@ enum SpecializationRequirementFilter {
             categories: placeholders,
             groupDescriptions: descriptions
         )
+        func isSpecializationGroupHeaderTitle(_ title: String) -> Bool {
+            let lower = title.lowercased()
+            return SpecializationGroupDetector.xorDescriptionPhrases.contains { lower.contains($0) }
+        }
+
+        func isSpecializationSubRowTitle(_ title: String) -> Bool {
+            let lower = title
+                .replacingOccurrences(of: "\u{00A0}", with: " ")
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard !lower.isEmpty else { return false }
+            return lower.contains("choose")
+                || lower.contains("select")
+                || lower.contains("elective")
+                || lower.contains("credits")
+                || lower.contains("prefix")
+        }
+
         let groupedCategories = tagged.filter { $0.specializationGroupKey != nil }
         guard !groupedCategories.isEmpty else { return requirements }
 
-        let groupKeys = Set(groupedCategories.compactMap(\.specializationGroupKey))
+        // The detector may tag the XOR banner itself ("Choose one of the following
+        // Specializations 18 credits") because it contains the keyword. That row is
+        // a group header, not an option, so picker defaults and credit filtering must
+        // only choose between concrete specialization/concentration titles.
+        let concreteGroupedCategories = groupedCategories.filter {
+            !isSpecializationGroupHeaderTitle($0.title)
+        }
+        let groupKeys = Set(concreteGroupedCategories.compactMap(\.specializationGroupKey))
         var keepInGroup: [String: Set<String>] = [:]
         for groupKey in groupKeys {
-            let options = groupedCategories.filter { $0.specializationGroupKey == groupKey }
+            let options = concreteGroupedCategories.filter { $0.specializationGroupKey == groupKey }
             let chosenTitle: String = AuditSpecializationStore
                 .selectedOptionTitle(degreeKey: resolvedKey, groupKey: groupKey)
                 ?? options.first?.title
@@ -95,8 +121,48 @@ enum SpecializationRequirementFilter {
         var dropTitles = Set<String>()
         for cat in groupedCategories {
             guard let groupKey = cat.specializationGroupKey else { continue }
+            if isSpecializationGroupHeaderTitle(cat.title) { continue }
             if let keep = keepInGroup[groupKey], !keep.contains(cat.title) {
                 dropTitles.insert(cat.title)
+            }
+        }
+
+        // Catalogs like DSU flatten subordinate specialization rows:
+        //
+        //   Security Management and Compliance Specialization
+        //   Choose two 700-800 level courses ...
+        //   Technical Specialization
+        //   Choose two 700-800 level courses ...
+        //
+        // with no explicit parent link. Assign those subordinate rows to the
+        // preceding concrete option by document order, matching the UI hide logic.
+        let concreteTitlesByGroup = Dictionary(grouping: concreteGroupedCategories) {
+            $0.specializationGroupKey ?? ""
+        }.mapValues { Set($0.map(\.title)) }
+        for groupKey in groupKeys {
+            guard let concreteTitles = concreteTitlesByGroup[groupKey],
+                  let chosen = keepInGroup[groupKey]?.first,
+                  !concreteTitles.isEmpty else { continue }
+            var inGroupRegion = false
+            var currentOwner: String?
+            for title in orderedTitles {
+                if groupedCategories.contains(where: { $0.title == title && isSpecializationGroupHeaderTitle($0.title) }) {
+                    inGroupRegion = true
+                    currentOwner = nil
+                    continue
+                }
+                if concreteTitles.contains(title) {
+                    inGroupRegion = true
+                    currentOwner = title
+                    continue
+                }
+                guard inGroupRegion, let owner = currentOwner else { continue }
+                if isSpecializationSubRowTitle(title) {
+                    if owner != chosen { dropTitles.insert(title) }
+                } else {
+                    inGroupRegion = false
+                    currentOwner = nil
+                }
             }
         }
         guard !dropTitles.isEmpty else { return requirements }

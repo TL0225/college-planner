@@ -17,6 +17,11 @@ final class CourseLeafRoutingTests: XCTestCase {
         XCTAssertFalse(SchoolManifestSelection.isScraperBacked(manifest))
     }
 
+    func testScraperBackedSelectionIncludesCoursedog() {
+        let manifest = makeManifest(format: "coursedog", url: "https://catalogs.rutgers.edu/")
+        XCTAssertTrue(SchoolManifestSelection.isScraperBacked(manifest))
+    }
+
     func testCatalogIngestEngineNormalization() {
         XCTAssertEqual(CatalogIngestEngine(manifestFormat: "acalog"), .modernCampus)
         XCTAssertEqual(CatalogIngestEngine(manifestFormat: "moderncampus"), .modernCampus)
@@ -29,6 +34,7 @@ final class CourseLeafRoutingTests: XCTestCase {
         XCTAssertTrue(CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: "acalog"))
         XCTAssertTrue(CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: "moderncampus"))
         XCTAssertTrue(CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: "courseleaf"))
+        XCTAssertTrue(CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: "coursedog"))
         XCTAssertFalse(CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: "pdf"))
         XCTAssertFalse(CatalogBackgroundSyncRunner.supportsLiveIngestCoordinator(format: "banner"))
     }
@@ -54,6 +60,8 @@ final class CourseLeafRoutingTests: XCTestCase {
             opeID: nil,
             profileURL: "https://example.edu/profile.json",
             catalogURL: url,
+            academicCalendarURL: nil,
+            timeZoneID: nil,
             countryCode: nil,
             stateCode: nil,
             officialWebsiteURL: nil,

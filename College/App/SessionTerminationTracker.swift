@@ -9,6 +9,11 @@ import Foundation
 enum SessionTerminationTracker {
     private static let lastExitWasCleanKey = "College.session.lastExitWasClean"
 
+    /// Call once at process start so the next clean termination can be distinguished from a crash.
+    static func markSessionStarted() {
+        UserDefaults.standard.set(false, forKey: lastExitWasCleanKey)
+    }
+
     /// Call once after the app is ready to show UI (e.g. preload finished). Returns `true` when the prior session did not exit cleanly.
     static func consumePendingAbruptTerminationPrompt() -> Bool {
         let defaults = UserDefaults.standard

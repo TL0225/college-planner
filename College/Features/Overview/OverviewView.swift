@@ -20,23 +20,33 @@ import Quartz
 // MARK: - Shimmer Modifier
 
 struct ShimmerEffect: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("ui.reduceMotion") private var appReduceMotion = false
     @State private var phase: CGFloat = 0
 
+    private var motionReduced: Bool {
+        reduceMotion || appReduceMotion
+    }
+
     func body(content: Content) -> some View {
-        content
-            .mask(
-                LinearGradient(
-                    gradient: Gradient(colors: [.black.opacity(0.3), .black, .black.opacity(0.3)]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+        if motionReduced {
+            content
+        } else {
+            content
+                .mask(
+                    LinearGradient(
+                        gradient: Gradient(colors: [.black.opacity(0.3), .black, .black.opacity(0.3)]),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .offset(x: phase * 200, y: 0)
                 )
-                .offset(x: phase * 200, y: 0)
-            )
-            .onAppear {
-                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    phase = 1
+                .onAppear {
+                    withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
+                        phase = 1
+                    }
                 }
-            }
+        }
     }
 }
 
@@ -84,15 +94,7 @@ private struct OverviewEntranceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity((isVisible || reduceMotion) ? 1 : 0)
-            .offset(y: (isVisible || reduceMotion) ? 0 : 10)
-            .scaleEffect((isVisible || reduceMotion) ? 1 : 0.985)
-            .animation(
-                reduceMotion
-                ? .easeOut(duration: OverviewMotion.reducedRevealDuration)
-                : .spring(response: OverviewMotion.revealDuration, dampingFraction: 0.88)
-                    .delay(Double(index) * OverviewMotion.cardStaggerStep),
-                value: isVisible
-            )
+            .animation(CollegeMotion.standardOrNone(reduced: reduceMotion), value: isVisible)
     }
 }
 
@@ -108,7 +110,7 @@ private struct AnimatedMetricValueText: View {
 
     var body: some View {
         Text(displayText)
-            .font(.system(size: 38, weight: .heavy))
+            .font(DesignSystem.Fonts.main(size: 38, weight: .heavy))
             .foregroundStyle(.primary)
             .monospacedDigit()
             .contentTransition(reduceMotion ? .opacity : .numericText(value: value ?? 0))
@@ -132,7 +134,6 @@ struct OverviewView: View {
             @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @Binding var activePage: AppPage
-    var searchText: String = ""
 
     @State private var isShowingProfileSheet = false
     @State private var isShowingOfficeHoursPopover = false
@@ -141,12 +142,18 @@ struct OverviewView: View {
     @State private var minorProgramsOverflowPopover = false
     @State private var selectedOverviewDegreePage = 0
     @State private var isBuildingSyllabusPreview = false
+    @AppStorage("overview.gettingStarted.dismissed.v1") private var gettingStartedDismissed = false
 
     private enum DashboardWidgetPreferences {
         static let assignments = "Upcoming Assignments"
         static let nextClass = "Next Class"
         static let gpaSnapshot = "GPA Snapshot"
         static let deadlines = "Deadlines"
+        static let careerPipeline = "Career Pipeline"
+        static let careerFollowUps = "Career Follow-ups"
+        static let recentDocuments = "Recent Documents"
+        static let academicCalendar = "Academic Calendar"
+        static let quickActions = "Quick Actions"
     }
 
     private enum OverviewDeclaredProgramKind {
@@ -199,6 +206,26 @@ struct OverviewView: View {
         selectedDashboardWidgets.contains(DashboardWidgetPreferences.deadlines)
     }
 
+    private var showsCareerPipelineWidget: Bool {
+        selectedDashboardWidgets.contains(DashboardWidgetPreferences.careerPipeline)
+    }
+
+    private var showsCareerFollowUpsWidget: Bool {
+        selectedDashboardWidgets.contains(DashboardWidgetPreferences.careerFollowUps)
+    }
+
+    private var showsRecentDocumentsWidget: Bool {
+        selectedDashboardWidgets.contains(DashboardWidgetPreferences.recentDocuments)
+    }
+
+    private var showsAcademicCalendarWidget: Bool {
+        selectedDashboardWidgets.contains(DashboardWidgetPreferences.academicCalendar)
+    }
+
+    private var showsQuickActionsWidget: Bool {
+        selectedDashboardWidgets.contains(DashboardWidgetPreferences.quickActions)
+    }
+
     private var currentResolvedSemester: PlannerSemester? {
         let activePlanSemesters = collegePersistence.getActivePlan()?.semestersArray ?? []
         let source = activePlanSemesters.isEmpty ? collegePersistence.semesters : activePlanSemesters
@@ -207,9 +234,114 @@ struct OverviewView: View {
             ?? source.last
     }
 
+    // MARK: - Content presence (empty-state collapsing)
+
+    private var hasActiveCourses: Bool {
+        !(currentResolvedSemester?.coursesArray.isEmpty ?? true)
+    }
+
+    private var hasTodayEvents: Bool {
+        !OverviewReadBridge.todayEventSummaries(
+            calendarManager: container.calendarManager,
+            collegePersistence: collegePersistence
+        ).isEmpty
+    }
+
+    private var hasUpcomingDeadlines: Bool {
+        OverviewReadBridge.hasPendingTasks(collegePersistence: collegePersistence)
+    }
+
+    private var hasCareerData: Bool {
+        OverviewReadBridge.hasCareerActivity(collegePersistence: collegePersistence)
+    }
+
+    private var hasAcademicProfiles: Bool {
+        !OverviewReadBridge.academicProfiles(collegePersistence: collegePersistence).isEmpty
+    }
+
+    private var hasRecentDocuments: Bool {
+        OverviewReadBridge.recentDocuments(limit: 2, collegePersistence: collegePersistence).count >= 2
+    }
+
+    private func routeAttentionItem(_ item: OverviewAttentionItem) {
+        switch item.kind {
+        case .event, .deadline:
+            activePage = .calendar
+        case .interview:
+            activePage = .career
+        }
+    }
+
     private func shortProgramName(from rawName: String, fallbackKey: String) -> String {
         rawName.components(separatedBy: " ").first(where: { $0.count > 3 })
         ?? String(localized: LocalizedStringResource(stringLiteral: fallbackKey))
+    }
+
+    // MARK: - Getting Started Checklist
+
+    private var hasConnectedCalendar: Bool {
+        let manager = container.calendarManager
+        return manager.googleStatus == .connected
+            || manager.appleStatus == .connected
+            || manager.outlookStatus == .connected
+            || manager.iCloudStatus == .connected
+    }
+
+    private var hasUploadedResume: Bool {
+        CareerReadBridge.hasCareerResume(collegePersistence: collegePersistence)
+    }
+
+    private var hasVisitedJobBoards: Bool {
+        UserDefaults.standard.bool(forKey: "career.jobBoards.visited.v1")
+    }
+
+    private var hasLinkedLMS: Bool {
+        LMSProvider.allCases.contains { !LMSPortalConfiguration.portalURLString(for: $0).isEmpty }
+    }
+
+    private var gettingStartedItems: [GettingStartedItem] {
+        [
+            GettingStartedItem(
+                id: "semesters",
+                title: String(localized: "overview.getting_started.semesters", defaultValue: "Add your first semester and courses"),
+                systemImage: "calendar.badge.plus",
+                isComplete: !collegePersistence.semesters.isEmpty,
+                action: { activePage = .academics }
+            ),
+            GettingStartedItem(
+                id: "calendar",
+                title: String(localized: "overview.getting_started.calendar", defaultValue: "Connect your calendar"),
+                systemImage: "calendar",
+                isComplete: hasConnectedCalendar,
+                action: { MacPreferencesWindow.show(section: .calendar) }
+            ),
+            GettingStartedItem(
+                id: "resume",
+                title: String(localized: "overview.getting_started.resume", defaultValue: "Upload your resume"),
+                systemImage: "doc.text",
+                isComplete: hasUploadedResume,
+                action: { activePage = .career }
+            ),
+            GettingStartedItem(
+                id: "jobBoards",
+                title: String(localized: "overview.getting_started.job_boards", defaultValue: "Configure job boards"),
+                systemImage: "briefcase",
+                isComplete: hasVisitedJobBoards,
+                action: { MacPreferencesWindow.show(section: .career) }
+            ),
+            GettingStartedItem(
+                id: "lms",
+                title: String(localized: "overview.getting_started.lms", defaultValue: "Link your LMS"),
+                systemImage: "link",
+                isComplete: hasLinkedLMS,
+                action: { activePage = .lms }
+            ),
+        ]
+    }
+
+    private var shouldShowGettingStarted: Bool {
+        guard !gettingStartedDismissed else { return false }
+        return gettingStartedItems.contains { !$0.isComplete }
     }
 
     var body: some View {
@@ -222,123 +354,33 @@ struct OverviewView: View {
                         header
                             .modifier(OverviewEntranceModifier(index: 0, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
 
-                        OverviewDeepCatalogPrompt()
-                            .modifier(OverviewEntranceModifier(index: 6, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
-
-                        HStack(alignment: .top, spacing: 24) {
-                            VStack(spacing: 24) {
-                                AcademicStandingCard(
-                                    selectedDegreePage: $selectedOverviewDegreePage
-                                ) {
-                                    isShowingProfileSheet = true
-                                }
-                                .modifier(OverviewEntranceModifier(index: 1, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
-
-                                if showsNextClassWidget {
-                                    UnifiedTimelineCard()
-                                        .frame(maxHeight: .infinity)
-                                        .modifier(OverviewEntranceModifier(index: 2, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
-                                }
-                            }
-                            .frame(minWidth: 320, maxWidth: 360)
-
-                            VStack(spacing: 24) {
-                                if showsAssignmentsWidget {
-                                    ActiveCoursesCard(searchText: searchText)
-                                        .modifier(OverviewEntranceModifier(index: 3, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
-                                }
-
-                                if showsGPASnapshotWidget {
-                                    if OverviewReadBridge.academicProfiles(collegePersistence: collegePersistence).count > 1 {
-                                        AllDegreesProgressCard(
-                                            profiles: OverviewReadBridge.academicProfiles(collegePersistence: collegePersistence),
-                                            onSelect: { id in
-                                                let profiles = OverviewReadBridge.academicProfiles(collegePersistence: collegePersistence)
-                                                if let index = profiles.firstIndex(where: { $0.id == id }) {
-                                                    selectedOverviewDegreePage = index
-                                                }
-                                            }
-                                        )
-                                        .modifier(OverviewEntranceModifier(index: 4, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
-                                    } else {
-                                        let majors = collegePersistence.resolvedMajorNames()
-                                        let minors = collegePersistence.resolvedMinorNames()
-                                        let majorColors: [Color] = [Color.accentColor, .orange, .green]
-                                        let minorColors: [Color] = [.teal, .purple, .indigo]
-
-                                        ViewThatFits(in: .horizontal) {
-                                            VStack(spacing: 24) {
-                                                declaredProgramsEqualWidthRow(
-                                                    kind: .major,
-                                                    names: majors,
-                                                    palette: majorColors,
-                                                    overflowPopover: $majorProgramsOverflowPopover
-                                                )
-                                                declaredProgramsEqualWidthRow(
-                                                    kind: .minor,
-                                                    names: minors,
-                                                    palette: minorColors,
-                                                    overflowPopover: $minorProgramsOverflowPopover
-                                                )
-                                            }
-
-                                            VStack(spacing: 24) {
-                                                declaredProgramsStackedColumns(
-                                                    kind: .major,
-                                                    names: majors,
-                                                    palette: majorColors,
-                                                    overflowPopover: $majorProgramsOverflowPopover
-                                                )
-                                                declaredProgramsStackedColumns(
-                                                    kind: .minor,
-                                                    names: minors,
-                                                    palette: minorColors,
-                                                    overflowPopover: $minorProgramsOverflowPopover
-                                                )
-                                            }
-                                        }
-                                        .modifier(OverviewEntranceModifier(index: 4, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                        if shouldShowGettingStarted {
+                            GettingStartedChecklist(
+                                items: gettingStartedItems,
+                                onDismiss: {
+                                    withAnimation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced)) {
+                                        gettingStartedDismissed = true
                                     }
                                 }
+                            )
+                            .modifier(OverviewEntranceModifier(index: 1, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+                        }
 
-                                if showsDeadlinesWidget {
-                                    HStack(spacing: 24) {
-                                        Button {
-                                            Task {
-                                                guard !isBuildingSyllabusPreview else { return }
-                                                isBuildingSyllabusPreview = true
-                                                defer { isBuildingSyllabusPreview = false }
-                                                await presentCombinedSyllabusQuickLook()
-                                            }
-                                        } label: {
-                                            ActionCard(
-                                                title: String(localized: "overview.action.combined_syllabus.title"),
-                                                subtitle: String(localized: "overview.action.combined_syllabus.subtitle"),
-                                                systemImage: "doc.text.fill"
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
+                        NeedsAttentionCard(
+                            onSelect: { routeAttentionItem($0) },
+                            onAskAssistant: { activePage = .assistant }
+                        )
+                        .modifier(OverviewEntranceModifier(index: 2, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
 
-                                        Button {
-                                            isShowingOfficeHoursPopover.toggle()
-                                        } label: {
-                                            ActionCard(
-                                                title: String(localized: "overview.action.office_hours.title"),
-                                                subtitle: String(localized: "overview.action.office_hours.subtitle"),
-                                                systemImage: "message.fill"
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                        .popover(isPresented: $isShowingOfficeHoursPopover, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
-                                            OfficeHoursPopoverContent(courses: academicMetricsStore.snapshot?.currentTermCourses ?? [])
-                                                .padding(16)
-                                                .frame(minWidth: 280, maxWidth: 340)
-                                        }
-                                    }
-                                    .modifier(OverviewEntranceModifier(index: 5, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .top)
+                        academicStandingAndCoursesRow
+                            .modifier(OverviewEntranceModifier(index: 3, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+
+                        secondaryStatusGrid
+                            .modifier(OverviewEntranceModifier(index: 4, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
+
+                        if showsQuickActionsWidget {
+                            quickAccessTier
+                                .modifier(OverviewEntranceModifier(index: 5, isVisible: hasAnimatedIn, reduceMotion: motionReduced))
                         }
                     }
                     .padding(.horizontal, 24)
@@ -346,6 +388,8 @@ struct OverviewView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
+        .accessibilityIdentifier("overview.root")
+        .shellDynamicTypeReadable()
         .onAppear {
             WidgetRegistry.shared.bootstrapBuiltIns()
             Task { @MainActor in
@@ -536,11 +580,11 @@ struct OverviewView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(extraNames, id: \.self) { name in
                         Text(name)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .padding(16)
+                .padding(DesignSystem.Spacing.lg)
             }
             .frame(minWidth: 280, minHeight: 140)
         }
@@ -594,26 +638,180 @@ struct OverviewView: View {
         }
     }
 
+    // MARK: - Tier 2: status
+
+    @ViewBuilder
+    private var academicStandingAndCoursesRow: some View {
+        let standing = AcademicStandingCard(
+            selectedDegreePage: $selectedOverviewDegreePage
+        ) {
+            isShowingProfileSheet = true
+        }
+
+        if showsAssignmentsWidget && hasActiveCourses {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: 24) {
+                    standing.frame(minWidth: 320, maxWidth: 380)
+                    ActiveCoursesCard().frame(maxWidth: .infinity)
+                }
+                VStack(spacing: 24) {
+                    standing
+                    ActiveCoursesCard()
+                }
+            }
+        } else {
+            standing.frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var secondaryStatusGrid: some View {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 340), spacing: 24)],
+            alignment: .leading,
+            spacing: 24
+        ) {
+            if showsCareerPipelineWidget && hasCareerData {
+                CareerSummaryWidget(onNavigateToCareer: { _ in activePage = .career })
+                    .frame(minHeight: 180)
+                    .overviewWidgetSurface(id: "career_summary", title: "Career")
+            }
+
+            if showsNextClassWidget && hasTodayEvents {
+                UnifiedTimelineCard()
+                    .frame(minHeight: 300)
+                    .accessibilityIdentifier("overview.widget.schedule")
+            }
+
+            if showsDeadlinesWidget && hasUpcomingDeadlines {
+                DeadlinesWidget()
+                    .frame(minHeight: 200)
+                    .overviewWidgetSurface(id: "deadlines", title: "Upcoming Deadlines")
+            }
+
+            if showsAcademicCalendarWidget && hasAcademicProfiles {
+                AcademicCalendarWidget()
+                    .frame(minHeight: 180)
+                    .overviewWidgetSurface(id: "academic_calendar", title: "Academic Calendar")
+            }
+
+            if showsRecentDocumentsWidget && hasRecentDocuments {
+                Button {
+                    activePage = .documents
+                } label: {
+                    DocumentsWidget()
+                        .frame(minHeight: 190)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Recent Documents")
+                .accessibilityHint("Opens Documents")
+                .overviewWidgetSurface(id: "documents", title: "Recent Documents")
+            }
+        }
+    }
+
+    // MARK: - Tier 3: quick access
+
+    @ViewBuilder
+    private var quickAccessTier: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("QUICK ACCESS")
+                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 220), spacing: 16)],
+                alignment: .leading,
+                spacing: 16
+            ) {
+                Button {
+                    activePage = .assistant
+                } label: {
+                    ActionCard(
+                        title: String(localized: "overview.action.ask_assistant.title", defaultValue: "Ask Assistant"),
+                        subtitle: String(localized: "overview.action.ask_assistant.subtitle", defaultValue: "Plan, search, or summarize"),
+                        systemImage: "sparkles",
+                        accent: .accentColor
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    Task {
+                        guard !isBuildingSyllabusPreview else { return }
+                        isBuildingSyllabusPreview = true
+                        defer { isBuildingSyllabusPreview = false }
+                        await presentCombinedSyllabusQuickLook()
+                    }
+                } label: {
+                    ActionCard(
+                        title: String(localized: "overview.action.combined_syllabus.title"),
+                        subtitle: String(localized: "overview.action.combined_syllabus.subtitle"),
+                        systemImage: "doc.text.fill",
+                        accent: .accentColor
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    isShowingOfficeHoursPopover.toggle()
+                } label: {
+                    ActionCard(
+                        title: String(localized: "overview.action.office_hours.title"),
+                        subtitle: String(localized: "overview.action.office_hours.subtitle"),
+                        systemImage: "message.fill",
+                        accent: .accentColor
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $isShowingOfficeHoursPopover, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
+                    OfficeHoursPopoverContent(courses: academicMetricsStore.snapshot?.currentTermCourses ?? [])
+                        .padding(DesignSystem.Spacing.lg)
+                        .frame(minWidth: 280, maxWidth: 340)
+                }
+            }
+
+            Divider()
+                .overlay(Color.primary.opacity(0.06))
+                .padding(.vertical, 2)
+
+            Button {
+                activePage = .lms
+            } label: {
+                ActionCard(
+                    title: String(localized: "overview.action.open_lms.title", defaultValue: "Open LMS"),
+                    subtitle: String(localized: "overview.action.open_lms.subtitle", defaultValue: "Opens your course portal"),
+                    systemImage: "graduationcap.circle.fill",
+                    accent: .secondary,
+                    isExternal: true
+                )
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private var header: some View {
         let currentTerm = currentAcademicTerm
         let termText = "ACADEMIC TERM \(currentTerm.season.uppercased()) \(currentTerm.year.formatted(.number.grouping(.never)))"
-        return UnifiedActionHeader(
-            title: collegePersistence.profile?.overviewWelcomeTitle ?? Profile.welcomePlaceholder,
-            subtitle: termText,
-            titleFont: .largeTitle.weight(.semibold),
-            subtitleFont: .system(size: 13, weight: .bold),
-            subtitleColor: .secondary.opacity(0.8),
-            topPadding: 0,
-            horizontalPadding: 0,
-            bottomPadding: 0,
-            titleToContentSpacing: 6
-        ) {
-            HStack {
-                Spacer()
-                NextUpPill()
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(collegePersistence.profile?.overviewWelcomeTitle ?? Profile.welcomePlaceholder)
+                    .font(.largeTitle.weight(.semibold))
+                Text(termText)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.secondary.opacity(0.8))
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            Spacer(minLength: 12)
+            NextUpPill()
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Overview welcome")
     }
 
     private var currentAcademicTerm: (season: String, year: Int) {
@@ -736,7 +934,7 @@ private struct OfficeHoursPopoverContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Office hours")
-                .font(.system(size: 14, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                 .foregroundStyle(.primary)
 
             if withHours.isEmpty {
@@ -749,15 +947,15 @@ private struct OfficeHoursPopoverContent: View {
                 ForEach(withHours) { c in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(courseLineTitle(c))
-                            .font(.system(size: 13, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                             .foregroundStyle(.primary)
                         if let professor = c.professor, !professor.isEmpty {
                             Text(professor)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
                         Text(c.officeHours ?? "")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -820,11 +1018,11 @@ private struct NextUpPill: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("NEXT UP")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                             .foregroundStyle(.green)
 
                         Text("\(nextEvent.title) (\(Self.nextUpFormatter.string(from: nextEvent.startDate)))")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                             .foregroundStyle(.primary)
                     }
                 }
@@ -836,10 +1034,10 @@ private struct NextUpPill: View {
 
                     HStack(spacing: 6) {
                         Image(systemName: "mappin.and.ellipse")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                             .foregroundStyle(.tertiary)
                         Text(location)
-                            .font(.system(size: 13, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -868,7 +1066,7 @@ private struct CardSurface<Content: View>: View {
 
     var body: some View {
         content
-            .padding(20)
+            .padding(DesignSystem.Spacing.lg)
             .background(DesignSystem.Colors.glassCardBase.background(.ultraThinMaterial))
             .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
             .overlay(
@@ -888,7 +1086,6 @@ private struct AcademicStandingCard: View {
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
     @Binding var selectedDegreePage: Int
     let onOpenProfile: () -> Void
-    @State private var isHovered = false
     @State private var standingPageCache: [String: StandingPageSnapshot] = [:]
 
     private struct GPAMetrics {
@@ -1093,18 +1290,18 @@ private struct AcademicStandingCard: View {
                     }
                 }
             }
-            .scaleEffect(isHovered ? 1.02 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.78), value: isHovered)
-            .onHover { hovering in
-                isHovered = hovering
-            }
         }
         .buttonStyle(.plain)
         .onChange(of: degreeProfiles.count) { _, newCount in
             selectedDegreePage = min(selectedDegreePage, max(0, newCount - 1))
         }
         .task(id: standingCacheRefreshToken) {
-            rebuildStandingPageCache()
+            try? await Task.sleep(nanoseconds: 32_000_000)
+            guard !Task.isCancelled else { return }
+            await Task.yield()
+            await Task(priority: .utility) { @MainActor in
+                rebuildStandingPageCache()
+            }.value
         }
     }
 
@@ -1113,7 +1310,7 @@ private struct AcademicStandingCard: View {
             Image(systemName: "graduationcap.fill")
                 .foregroundStyle(Color.accentColor)
             Text("Academic Standing")
-                .font(.system(size: 18, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
                 .foregroundStyle(.primary)
             Spacer()
         }
@@ -1133,7 +1330,7 @@ private struct AcademicStandingCard: View {
         VStack(alignment: .leading, spacing: 22) {
             if usesDegreePaging, let academicProfile {
                 Text(academicProfile.resolvedShortLabel(among: degreeProfiles))
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                     .foregroundStyle(academicProfile.accentColor)
             } else if !usesDegreePaging {
                 standingHeader
@@ -1146,17 +1343,17 @@ private struct AcademicStandingCard: View {
                     reduceMotion: motionReduced
                 )
                 Image(systemName: "circlebadge.fill")
-                    .font(.system(size: 10))
+                    .font(DesignSystem.Fonts.main(size: 10))
                     .foregroundStyle(academicProfile?.accentColor ?? Color.accentColor)
                     .padding(.top, 8)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(usesDegreePaging ? "DEGREE GPA" : "CUMULATIVE GPA")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.secondary)
                     if !usesDegreePaging, let n = academicMetricsStore.snapshot?.gpaCoursesCounted, n > 0 {
                         Text("\(n) course\(n == 1 ? "" : "s") graded")
-                            .font(.system(size: 10))
+                            .font(DesignSystem.Fonts.main(size: 10))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -1184,7 +1381,7 @@ private struct AcademicStandingCard: View {
             }
         }) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .foregroundStyle(enabled ? Color.primary : Color.secondary.opacity(0.35))
                 .frame(width: 28, height: 28)
                 .background(Circle().fill(Color.primary.opacity(enabled ? 0.06 : 0.03)))
@@ -1204,7 +1401,7 @@ private struct AcademicStandingCard: View {
             Spacer()
             if degreeProfiles.indices.contains(selectedDegreePage) {
                 Text(degreeProfiles[selectedDegreePage].resolvedShortLabel(among: degreeProfiles))
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -1238,11 +1435,11 @@ private struct AcademicStandingCard: View {
     private func achievementPill(title: String, subtitle: String, color: Color, alignment: HorizontalAlignment) -> some View {
         VStack(alignment: alignment, spacing: 2) {
             Text(title)
-                .font(.system(size: 14, weight: .bold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
                 .foregroundStyle(color)
             if !subtitle.isEmpty {
                 Text(subtitle.uppercased())
-                    .font(.system(size: 10, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -1270,15 +1467,15 @@ private struct ProgressItem: View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(label)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 4) {
                     Text(value)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                         .foregroundStyle(color)
                     if let note {
                         Text(note)
-                            .font(.system(size: 11))
+                            .font(DesignSystem.Fonts.main(size: 11))
                             .foregroundStyle(.tertiary)
                     }
                 }
@@ -1331,7 +1528,7 @@ private struct ProgramStandingRow: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(row.shortLabel)
-                            .font(.system(size: 9, weight: .heavy))
+                            .font(DesignSystem.Fonts.main(size: 9, weight: .heavy))
                             .foregroundStyle(row.color)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
@@ -1339,13 +1536,13 @@ private struct ProgramStandingRow: View {
                             .clipShape(Capsule())
                         if row.creditProgress.required > 0 {
                             Text("\(row.creditProgress.completedRoundedInt) / \(row.creditProgress.requiredRoundedInt) cr")
-                                .font(.system(size: 9, weight: .bold))
+                                .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                                 .foregroundStyle(.secondary)
                                 .monospacedDigit()
                         }
                     }
                     Text(row.name.uppercased())
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.primary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1357,7 +1554,7 @@ private struct ProgramStandingRow: View {
                 VStack(alignment: .trailing, spacing: 1) {
                     HStack(alignment: .top, spacing: 3) {
                         Text(row.gpa.map { String(format: "%.3f", $0) } ?? "—")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .font(DesignSystem.Fonts.main(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(gpaColor)
                             .monospacedDigit()
                             .contentTransition(motionReduced ? .opacity : .numericText(value: row.gpa ?? 0))
@@ -1367,13 +1564,13 @@ private struct ProgramStandingRow: View {
                             )
                         if row.gpa != nil {
                             Image(systemName: "circlebadge.fill")
-                                .font(.system(size: 9))
+                                .font(DesignSystem.Fonts.main(size: 9))
                                 .foregroundStyle(gpaColor)
                                 .padding(.top, 5)
                         }
                     }
                     Text("/ 4.000")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .medium))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -1510,17 +1707,17 @@ private struct UnifiedTimelineCard: View {
                     Image(systemName: "clock.fill")
                         .foregroundStyle(.orange)
                     Text("Today's Timeline")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
                     Spacer()
                     Text("Click row for details")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                         .foregroundStyle(.tertiary)
                 }
 
                 if todayEvents.isEmpty {
                     Text("No events scheduled for today.")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 20)
                 } else {
@@ -1629,18 +1826,18 @@ private struct UnifiedTimelineCard: View {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(eventTitle)
-                                .font(.system(size: 15, weight: .bold))
+                                .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
                                 .foregroundStyle(.primary)
 
                             Text("\(timeText) • \(eventLocation)")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
                         HStack(spacing: 8) {
                             if !isPast {
                                 Text(countdown)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                                     .foregroundStyle(countdownForeground)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
@@ -1649,7 +1846,7 @@ private struct UnifiedTimelineCard: View {
                             }
 
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                 .foregroundStyle(.tertiary)
                                 .rotationEffect(.degrees(isExpanded ? 180 : 0))
                                 .animation(motionReduced ? nil : .easeInOut(duration: 0.2), value: isExpanded)
@@ -1664,17 +1861,17 @@ private struct UnifiedTimelineCard: View {
                                     .foregroundStyle(.tertiary)
                                 Label(Self.eventTimeFormatter.string(from: endDate), systemImage: "clock.badge.checkmark")
                             }
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
 
                             HStack(spacing: 12) {
                                 Label(formatDuration(start: startDate, end: endDate), systemImage: "hourglass")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                     .foregroundStyle(.secondary)
 
                                 if let location = event.location, !location.isEmpty {
                                     Label(location, systemImage: "mappin.and.ellipse")
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -1731,9 +1928,7 @@ private struct ActiveCoursesCard: View {
     private var collegePersistence: CollegePersistence { container.persistence }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
-    let searchText: String
     @State private var cachedVisibleCourses: [PlannerCourse] = []
-    @State private var filterWorkItem: DispatchWorkItem?
 
     private var motionReduced: Bool {
         reduceMotion || appReduceMotion
@@ -1791,35 +1986,13 @@ private struct ActiveCoursesCard: View {
         cachedVisibleCourses.reduce(0) { $0 + Int($1.credits) }
     }
 
-    private func applyCourseFilter(courses: [PlannerCourse], query: String) -> [PlannerCourse] {
-        guard !query.isEmpty else { return courses }
-        return courses.filter { course in
-            let name = course.name.lowercased()
-            let code = course.code.lowercased()
-            return name.contains(query) || code.contains(query)
-        }
-    }
-
-    private func scheduleVisibleCourseRefresh(courses: [PlannerCourse], animated: Bool) {
-        let normalizedQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        filterWorkItem?.cancel()
-
-        let work = DispatchWorkItem {
-            let filtered = applyCourseFilter(courses: courses, query: normalizedQuery)
-            if animated {
-                withAnimation(motionReduced ? nil : .easeInOut(duration: 0.18)) {
-                    cachedVisibleCourses = filtered
-                }
-            } else {
-                cachedVisibleCourses = filtered
+    private func refreshVisibleCourses(courses: [PlannerCourse], animated: Bool) {
+        if animated {
+            withAnimation(motionReduced ? nil : .easeInOut(duration: 0.18)) {
+                cachedVisibleCourses = courses
             }
-        }
-        filterWorkItem = work
-
-        if normalizedQuery.isEmpty {
-            work.perform()
         } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+            cachedVisibleCourses = courses
         }
     }
 
@@ -1837,17 +2010,17 @@ private struct ActiveCoursesCard: View {
             VStack(spacing: 0) {
                 HStack {
                     Image(systemName: "calendar")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Text("Active Courses")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
                     Spacer()
                     if !visibleCourses.isEmpty {
                         HStack(spacing: 6) {
                             Circle().fill(Color.accentColor).frame(width: 6, height: 6)
                             Text("\(totalSemesterCredits) Total Credits")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -1856,13 +2029,13 @@ private struct ActiveCoursesCard: View {
 
                 if visibleCourses.isEmpty {
                     VStack(spacing: 16) {
-                        Text(activeCourses.isEmpty ? "No courses for \(currentSemester?.name ?? "this semester")." : "No courses match \"\(searchText)\".")
-                            .font(.system(size: 16, weight: .semibold))
+                        Text("No courses for \(currentSemester?.name ?? "this semester").")
+                            .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
                             .multilineTextAlignment(.center)
                         
-                        Text(activeCourses.isEmpty ? "Ready to get started?" : "Try a broader search.")
-                            .font(.system(size: 14, weight: .medium))
+                        Text("Ready to get started?")
+                            .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.bottom, 4)
@@ -1874,23 +2047,23 @@ private struct ActiveCoursesCard: View {
                         TableColumn("Course") { course in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(course.code)
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                                     .foregroundStyle(.primary)
                                 Text(resolvedTitle(for: course))
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, 6)
                         }
                         TableColumn("Credits") { course in
                             Text("\(Int(course.credits))")
-                                .font(.system(size: 12))
+                                .font(DesignSystem.Fonts.main(size: 12))
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 6)
                         }
                         TableColumn("Requirement") { course in
                             Text(requirementText(for: course))
-                                .font(.system(size: 11, weight: .medium))
+                                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 6)
                         }
@@ -1899,7 +2072,7 @@ private struct ActiveCoursesCard: View {
                                 Image(systemName: course.isCompleted ? "checkmark.circle.fill" : "clock.fill")
                                 Text(course.isCompleted ? "Completed" : "Active")
                             }
-                            .font(.system(size: 11, weight: .medium))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
                             .foregroundStyle(course.isCompleted ? .green : Color.accentColor)
                             .padding(.vertical, 6)
                         }
@@ -1911,16 +2084,10 @@ private struct ActiveCoursesCard: View {
             }
         }
         .onAppear {
-            scheduleVisibleCourseRefresh(courses: activeCourses, animated: false)
-        }
-        .onChange(of: searchText) { _, _ in
-            scheduleVisibleCourseRefresh(courses: activeCourses, animated: true)
+            refreshVisibleCourses(courses: activeCourses, animated: false)
         }
         .onChange(of: activeCourseIDs) { _, _ in
-            scheduleVisibleCourseRefresh(courses: activeCourses, animated: false)
-        }
-        .onDisappear {
-            filterWorkItem?.cancel()
+            refreshVisibleCourses(courses: activeCourses, animated: false)
         }
     }
 }
@@ -1959,7 +2126,7 @@ private struct DegreeJourneyCard: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     Image(systemName: usesMinorChrome ? "chart.bar.fill" : "network")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                         .foregroundStyle(accent)
                         .frame(width: 40, height: 40)
                         .background(accent.opacity(0.1))
@@ -1968,19 +2135,19 @@ private struct DegreeJourneyCard: View {
                     Spacer()
 
                     Text(resolvedRoleLabel)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.tertiary)
                         .tracking(0.5)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1989,14 +2156,14 @@ private struct DegreeJourneyCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Image(systemName: "checklist")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 10, weight: .semibold))
                             .foregroundStyle(.tertiary)
                         Text(stat)
-                            .font(.system(size: 11, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(percent)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
                             .foregroundStyle(accent)
                     }
 
@@ -2016,7 +2183,6 @@ private struct DegreeJourneyCard: View {
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .scaleEffect(isInteractive && isHovered && !motionReduced ? 1.01 : 1.0)
         .shadow(color: Color.black.opacity(isInteractive && isHovered ? 0.08 : 0.03), radius: isInteractive && isHovered ? 22 : 14, x: 0, y: isInteractive && isHovered ? 10 : 6)
         .overlay {
             RoundedRectangle(cornerRadius: 32, style: .continuous)
@@ -2044,7 +2210,7 @@ private struct DegreeTrackDetailView: View {
         CardSurface {
             VStack(alignment: .leading, spacing: 12) {
                 Text(title)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
                 Text("This detail view is ready for the requirement breakdown list.")
                     .foregroundStyle(.secondary)
                 Text("Courses remaining and requirement nodes will appear here.")
@@ -2052,7 +2218,7 @@ private struct DegreeTrackDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(32)
+        .padding(DesignSystem.Spacing.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
             ZStack {
@@ -2084,7 +2250,7 @@ private struct StudentProfileSheet: View {
 
     var body: some View {
         ProfileView(activePage: $activeSheetPage)
-            .frame(minWidth: 900, minHeight: 640)
+            .frame(minWidth: 760, idealWidth: 900, minHeight: 560, idealHeight: 640)
     }
 }
 
@@ -2094,6 +2260,11 @@ private struct ActionCard: View {
     let title: String
     let subtitle: String
     let systemImage: String
+    var accent: Color = .secondary
+    /// When true the action leaves the app (e.g. opens an external LMS portal).
+    /// Rendered with a distinct outward-arrow affordance so it reads differently
+    /// from in-app actions like Ask Assistant.
+    var isExternal: Bool = false
     @State private var isHovered = false
     @FocusState private var isFocused: Bool
 
@@ -2105,21 +2276,28 @@ private struct ActionCard: View {
         CardSurface {
             HStack(spacing: 16) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(DesignSystem.Fonts.main(size: 18, weight: .semibold))
+                    .foregroundStyle(accent)
+                    .frame(width: 36, height: 36)
+                    .background(accent.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 15, weight: .bold))
                         .foregroundStyle(.primary)
                     Text(subtitle)
-                        .font(.system(size: 10, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if isExternal {
+                    Image(systemName: "arrow.up.forward.app.fill")
+                        .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .scaleEffect(isHovered && !motionReduced ? 1.008 : 1.0)
         .overlay {
             RoundedRectangle(cornerRadius: 32, style: .continuous)
                 .stroke(isFocused ? Color.accentColor.opacity(0.46) : .clear, lineWidth: 1.5)

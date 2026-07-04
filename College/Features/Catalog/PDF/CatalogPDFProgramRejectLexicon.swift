@@ -13,8 +13,8 @@ enum CatalogPDFProgramRejectLexicon {
     "payment", "amount due", "step one", "step two", "step three", "step four",
     "must be submitted", "students must", "you must", "please contact",
     "office of", "registrar", "bursar", "copyright", "disclaimer",
-    "privacy", "ferpa", "veteran", "veterans", "military", "vaccination",
-    "immunization", "housing", "meal plan", "parking", "library hours",
+    "privacy policy", "ferpa rights", "veteran benefits", "military benefits",
+    "vaccination", "immunization", "housing", "meal plan", "parking", "library hours",
     "academic calendar", "holiday", "commencement", "transcript request",
     "ferpa rights", "title ix", "clery", "accessibility", "disability services",
     "student conduct", "disciplinary", "probation", "suspension", "expulsion",
@@ -28,6 +28,10 @@ enum CatalogPDFProgramRejectLexicon {
     }
 
     static func hasStrongNegative(_ text: String) -> Bool {
-        !matchesNegative(text).isEmpty
+        let lower = text.lowercased()
+        // "Interdisciplinary …" is a common legitimate program prefix; do not match the
+        // embedded "disciplinary" policy substring.
+        if lower.contains("interdisciplinary") { return false }
+        return !matchesNegative(text).isEmpty
     }
 }

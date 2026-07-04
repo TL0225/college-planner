@@ -40,7 +40,7 @@ Window toolbar controls use macOS 26 native APIs (`.buttonStyle(.glass)`, `Glass
 
 ### Settings exception
 
-The Settings window (`SettingsSessionController`) retains its own `NSToolbarDelegate` for unified settings chrome. It is **out of scope** for this refactor and does not share `AppToolbarStore`, `ToolbarDispatcher`, or `MainWindowToolbar`.
+The standalone Settings scene is **out of scope** for this refactor and does not share `AppToolbarStore`, `ToolbarDispatcher`, or `MainWindowToolbar`. Its toolbar/sidebar is owned **entirely by SwiftUI**: `NavigationSplitView` in `SettingsView` provides the native sidebar toggle, and `SettingsView` attaches its own SwiftUI `.toolbar` for back/forward history. `SettingsSessionController` no longer installs a custom `NSToolbarDelegate`/`NSToolbar` (doing so previously caused the sidebar button to duplicate and jump sides between sections); it now only tracks section/history state and applies lightweight window chrome.
 
 ## Consequences
 

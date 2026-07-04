@@ -40,7 +40,7 @@ struct AssistantPlannerIndexingConsentSheet: View {
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding(28)
+        .padding(DesignSystem.Spacing.xxl)
         .frame(minWidth: 420, maxWidth: 480)
     }
 }
@@ -81,7 +81,7 @@ struct SettingsAIPrivacySection: View {
                 Button(isRebuilding ? "Rebuilding…" : "Rebuild") {
                     guard plannerIndexingEnabled else { return }
                     isRebuilding = true
-                    Task {
+                    Task { @MainActor in
                         await PlannerVectorIndexer.shared.runFullRebuild(reason: "settings")
                         await refreshCount()
                         isRebuilding = false
@@ -103,7 +103,7 @@ struct SettingsAIPrivacySection: View {
             LabeledContent("Index existing documents") {
                 Button(isBackfilling ? "Indexing…" : "Start") {
                     isBackfilling = true
-                    Task {
+                    Task { @MainActor in
                         await PlannerVectorIndexer.shared.indexVaultBackfill()
                         await refreshCount()
                         isBackfilling = false

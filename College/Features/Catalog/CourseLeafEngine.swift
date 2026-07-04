@@ -85,12 +85,11 @@ enum CourseLeafEngine {
             throw ScraperError.invalidURL
         }
 
-        let pageURLs: [URL]
-        if let preferred = preferredPageURLs, !preferred.isEmpty {
-            pageURLs = preferred
-        } else {
-            pageURLs = try await sitemapPageURLs(baseURL: normalizedBase)
-        }
+        let pageURLs = try await resolveCrawlPageURLs(
+            normalizedBase: normalizedBase,
+            schoolID: schoolID,
+            preferredPageURLs: preferredPageURLs
+        )
         var discoveredCourses: [CatalogCourse] = []
         var discoveredPrograms: [ScrapedProgram] = []
         var signatureMaterial: [String] = []
@@ -149,12 +148,11 @@ enum CourseLeafEngine {
         }
         let crawlConfig = CatalogLayoutProfileRegistry.legacyCrawlConfig(forSchoolID: schoolID)
 
-        let pageURLs: [URL]
-        if let preferred = preferredPageURLs, !preferred.isEmpty {
-            pageURLs = preferred
-        } else {
-            pageURLs = try await sitemapPageURLs(baseURL: normalizedBase)
-        }
+        let pageURLs = try await resolveCrawlPageURLs(
+            normalizedBase: normalizedBase,
+            schoolID: schoolID,
+            preferredPageURLs: preferredPageURLs
+        )
 
         var discoveredCourses: [CatalogCourse] = []
         var discoveredPrograms: [ScrapedProgram] = []
@@ -211,6 +209,77 @@ enum CourseLeafEngine {
 
     static func sitemapPageURLs(baseURL: URL) async throws -> [URL] {
         try await CourseLeafSitemapCache.pageURLs(baseURL: baseURL)
+    }
+
+    /// Orders sitemap pages so program/degree URLs are crawled before course listings.
+    /// Large bulletins (e.g. Fordham) list thousands of course pages before program pages
+    /// alphabetically; program-first ordering surfaces degree data much earlier in a crawl.
+    static func orderPageURLsForIngest(_ urls: [URL], schoolID: String) -> [URL] {
+        let config = CatalogLayoutProfileRegistry.legacyCrawlConfig(forSchoolID: schoolID)
+        func crawlPriority(_ url: URL) -> Int {
+            let path = url.path.lowercased()
+            if config.programPagePathHints.contains(where: { path.contains($0) }) { return 0 }
+            if config.coursePagePathHints.contains(where: { path.contains($0) }) { return 2 }
+            return 1
+        }
+        return urls.sorted { lhs, rhs in
+            let left = crawlPriority(lhs)
+            let right = crawlPriority(rhs)
+            if left != right { return left < right }
+            return lhs.absoluteString < rhs.absoluteString
+        }
+    }
+
+    private static func resolveCrawlPageURLs(
+        normalizedBase: URL,
+        schoolID: String,
+        preferredPageURLs: [URL]?
+    ) async throws -> [URL] {
+        let raw: [URL]
+        if let preferred = preferredPageURLs, !preferred.isEmpty {
+            raw = preferred
+        } else {
+            let sitemapURLs = try await sitemapPageURLs(baseURL: normalizedBase)
+            raw = try await supplementProgramURLs(baseURL: normalizedBase, pageURLs: sitemapURLs)
+        }
+        return orderPageURLsForIngest(raw, schoolID: schoolID)
+    }
+
+    /// When `index.xml` only links a programs hub, crawl that page for program detail URLs.
+    static func supplementProgramURLs(baseURL: URL, pageURLs: [URL]) async throws -> [URL] {
+        var combined = pageURLs
+        let existingPaths = Set(pageURLs.map { $0.path.lowercased() })
+        let hubCandidates = [
+            baseURL.appendingPathComponent("programs"),
+            baseURL.appendingPathComponent("programs/"),
+        ]
+        for hub in hubCandidates where !existingPaths.contains(hub.path.lowercased()) {
+            guard let html = try? await CourseLeafXMLClient.fetchXML(from: hub) else { continue }
+            let discovered = extractProgramPaths(from: html, baseURL: baseURL)
+            for path in discovered {
+                let url = URL(string: path, relativeTo: baseURL) ?? baseURL.appendingPathComponent(path)
+                if !combined.contains(url) {
+                    combined.append(url)
+                }
+            }
+        }
+        return combined
+    }
+
+    private static func extractProgramPaths(from xmlOrHTML: String, baseURL: URL) -> [String] {
+        _ = baseURL
+        let pattern = "href=\"(/[^\"]*program[^\"]*/)\""
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return [] }
+        let range = NSRange(xmlOrHTML.startIndex..<xmlOrHTML.endIndex, in: xmlOrHTML)
+        var paths: [String] = []
+        var seen = Set<String>()
+        for match in regex.matches(in: xmlOrHTML, options: [], range: range) {
+            guard let r = Range(match.range(at: 1), in: xmlOrHTML) else { continue }
+            let path = String(xmlOrHTML[r]).lowercased()
+            guard path.count > 12, path != "/programs/", seen.insert(path).inserted else { continue }
+            paths.append(String(xmlOrHTML[r]))
+        }
+        return paths
     }
 
     private static func fetchXML(from url: URL) async throws -> String {

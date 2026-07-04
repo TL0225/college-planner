@@ -10,11 +10,32 @@ import Combine
 struct AppLogsView: View {
     @Environment(\.dismiss) private var dismiss
 
+    private let initialCategory: AppLogger.Category?
+    private let showTechnicalDetailsByDefault: Bool
+    /// When false, the large title block and panel close button are hidden so the
+    /// view can be embedded inside a host (e.g. the Diagnostics Center) without
+    /// duplicating the title and close affordance.
+    private let showsTitleChrome: Bool
+
     @State private var entries: [AppLogger.Entry] = []
     @State private var isLoading: Bool = false
     @State private var query: String = ""
-    @State private var selectedCategory: AppLogger.Category? = nil
-    @State private var selectedLevel: AppLogger.Level? = nil
+    @State private var selectedCategory: AppLogger.Category?
+    @State private var selectedLevel: AppLogger.Level?
+    @State private var lastRefreshed: Date = Date()
+
+    init(
+        initialCategory: AppLogger.Category? = nil,
+        initialLevel: AppLogger.Level? = nil,
+        showTechnicalDetailsByDefault: Bool = false,
+        showsTitleChrome: Bool = true
+    ) {
+        self.initialCategory = initialCategory
+        self.showTechnicalDetailsByDefault = showTechnicalDetailsByDefault
+        self.showsTitleChrome = showsTitleChrome
+        _selectedCategory = State(initialValue: initialCategory)
+        _selectedLevel = State(initialValue: initialLevel)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,7 +49,7 @@ struct AppLogsView: View {
 
             content
         }
-        .frame(minWidth: 840, minHeight: 620)
+        .frame(minWidth: 720, idealWidth: 840, minHeight: 540, idealHeight: 620)
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
             await refresh()
@@ -43,13 +64,15 @@ struct AppLogsView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Diagnostics Logs")
-                    .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
-                Text("Recent app logs (including performance timings).")
-                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+            if showsTitleChrome {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Diagnostics Logs")
+                        .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.textMain)
+                    Text("Recent app logs (including performance timings).")
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
+                }
             }
 
             Spacer()
@@ -78,22 +101,26 @@ struct AppLogsView: View {
                 }
             }
 
-            Rectangle()
-                .fill(Color(nsColor: .separatorColor).opacity(0.75))
-                .frame(width: 1, height: 18)
-                .padding(.horizontal, 6)
+            if showsTitleChrome {
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor).opacity(0.75))
+                    .frame(width: 1, height: 18)
+                    .padding(.horizontal, 6)
 
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-                    .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Close")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close")
         }
-        .padding(14)
+        .padding(.horizontal, DesignSystem.Spacing.md)
+        .padding(.vertical, showsTitleChrome ? DesignSystem.Spacing.md : 8)
         .background(Color(nsColor: .textBackgroundColor))
     }
 
@@ -104,8 +131,8 @@ struct AppLogsView: View {
 
             HStack(spacing: 10) {
                 Text("CATEGORY")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 Menu {
                     Button("All") { selectedCategory = nil }
@@ -120,8 +147,8 @@ struct AppLogsView: View {
 
             HStack(spacing: 10) {
                 Text("LEVEL")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 Menu {
                     Button("All") { selectedLevel = nil }
@@ -138,29 +165,28 @@ struct AppLogsView: View {
 
             Spacer()
 
+            Text("Updated \(DiagnosticsPlainLanguage.smartTimestamp(lastRefreshed))")
+                .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textLight)
+
             Button {
                 Task { await refresh() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if isLoading {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.white)
                     } else {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                     }
                     Text("Refresh")
-                        .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .frame(height: 34)
-                .background(Color(hex: "2563eb"))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .controlSize(.small)
             .disabled(isLoading)
+            .help("Logs refresh automatically; use this to refresh now.")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -186,11 +212,11 @@ struct AppLogsView: View {
                 if filtered.isEmpty {
                     Text("No logs.")
                         .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
-                        .padding(16)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
+                        .padding(DesignSystem.Spacing.lg)
                 }
                 ForEach(filtered) { entry in
-                    LogRow(entry: entry)
+                    LogRow(entry: entry, showTechnicalDetailsByDefault: showTechnicalDetailsByDefault)
                         .padding(.horizontal, 12)
                 }
             }
@@ -204,6 +230,7 @@ struct AppLogsView: View {
         let recent = await AppLogger.shared.readRecentEntries()
         // Show newest first
         entries = recent.reversed()
+        lastRefreshed = Date()
         isLoading = false
     }
 
@@ -217,7 +244,7 @@ struct AppLogsView: View {
             Label(title, systemImage: systemImage)
                 .labelStyle(.titleAndIcon)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .padding(.horizontal, 8)
                 .frame(height: 28)
                 .contentShape(Rectangle())
@@ -228,21 +255,21 @@ struct AppLogsView: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .padding(.leading, 10)
 
             TextField("Search message…", text: $query)
                 .textFieldStyle(.plain)
                 .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
 
             Menu {
                 Button("Clear search") { query = "" }
             } label: {
                 Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .frame(width: 30, height: 28)
                     .contentShape(Rectangle())
             }
@@ -262,11 +289,11 @@ struct AppLogsView: View {
         HStack(spacing: 8) {
             Text(value)
                 .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .lineLimit(1)
             Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                .foregroundStyle(DesignSystem.Colors.textLight)
         }
         .padding(.horizontal, 10)
         .frame(height: 34)
@@ -281,55 +308,72 @@ struct AppLogsView: View {
 
 private struct LogRow: View {
     let entry: AppLogger.Entry
+    let showTechnicalDetailsByDefault: Bool
     @State private var isHovering: Bool = false
+    @State private var showTechnicalDetails: Bool
+
+    init(entry: AppLogger.Entry, showTechnicalDetailsByDefault: Bool) {
+        self.entry = entry
+        self.showTechnicalDetailsByDefault = showTechnicalDetailsByDefault
+        _showTechnicalDetails = State(initialValue: showTechnicalDetailsByDefault)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
-                Text(entry.timestampISO8601)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                Text(DiagnosticsPlainLanguage.smartTimestamp(isoDate(entry.timestampISO8601)))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .lineLimit(1)
 
-                Text(entry.level.rawValue)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(levelColor(entry.level))
+                Text(DiagnosticsPlainLanguage.levelLabel(entry.level))
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundStyle(DiagnosticsPlainLanguage.levelColor(entry.level))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(levelColor(entry.level).opacity(0.10))
-                    .cornerRadius(6)
+                    .background(DiagnosticsPlainLanguage.levelColor(entry.level).opacity(0.10))
+                    .clipShape(.rect(cornerRadius: 6))
 
                 Text(entry.category.rawValue)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.black.opacity(0.04))
-                    .cornerRadius(6)
+                    .clipShape(.rect(cornerRadius: 6))
 
                 Spacer()
 
-                Text(entry.thread)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                // Expansion affordance: a chevron that rotates when open and stays
+                // dimmed until the row is hovered, so it doesn't form a noisy column.
+                Image(systemName: "chevron.right")
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
+                    .rotationEffect(.degrees(showTechnicalDetails ? 90 : 0))
+                    .opacity(showTechnicalDetails || isHovering ? 1 : 0)
+                    .accessibilityLabel(showTechnicalDetails ? "Hide technical details" : "Show technical details")
             }
 
-            Text(entry.message)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+            Text(DiagnosticsPlainLanguage.summary(for: entry))
+                .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if let md = entry.metadata, !md.isEmpty {
-                Text(md.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " • "))
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if let file = entry.file, let line = entry.line {
-                Text("\(file):\(line) \(entry.function ?? "")")
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundColor(DesignSystem.Colors.textLight.opacity(0.85))
+            if showTechnicalDetails {
+                Text(entry.message)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
+                if let md = entry.metadata, !md.isEmpty {
+                    Text(md.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: " • "))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let file = entry.file, let line = entry.line {
+                    Text("\(file):\(line) \(entry.function ?? "")")
+                        .font(DesignSystem.Fonts.main(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.85))
+                }
             }
         }
         .padding(.vertical, 10)
@@ -344,8 +388,14 @@ private struct LogRow: View {
                     lineWidth: isHovering ? 1.5 : 1
                 )
         )
-        .cornerRadius(12)
+        .clipShape(.rect(cornerRadius: 12))
         .shadow(color: isHovering ? Color.accentColor.opacity(0.08) : .clear, radius: 8, x: 0, y: 2)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.14)) {
+                showTechnicalDetails.toggle()
+            }
+        }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.14)) {
                 isHovering = hovering
@@ -359,14 +409,8 @@ private struct LogRow: View {
         }
     }
 
-    private func levelColor(_ level: AppLogger.Level) -> Color {
-        switch level {
-        case .trace: return DesignSystem.Colors.textLight
-        case .info: return DesignSystem.Colors.info
-        case .warning: return DesignSystem.Colors.warning
-        case .error: return DesignSystem.Colors.error
-        case .fault: return DesignSystem.Colors.error
-        }
+    private func isoDate(_ iso: String) -> Date {
+        ISO8601DateFormatter().date(from: iso) ?? Date()
     }
 }
 

@@ -1,0 +1,20 @@
+---
+description: Background service lifecycle and concurrency guardrails
+globs: College/**/*.swift
+alwaysApply: false
+---
+
+# Background Services
+
+When adding or modifying background/sync/monitor work:
+
+1. **Register in `BackgroundServiceManifest`** — never add `start()`, `startIfNeeded()`, `startWatching()`, or `startMonitoring()` to `CollegeApp`, `CollegeAppDelegate`, or feature `onAppear`.
+2. **Shell vs work** — `@MainActor` for UI hooks and scheduler wiring only. Network/parse uses `actor` or `BackgroundServiceExecutor.fetchOffMain`.
+3. **Persistence** — `BackgroundServiceExecutor.persistOffMain` + `BackgroundModelContextPolicy`. Never `@MainActor` ingest enums.
+4. **Errors in Release** — `BackgroundActivityReporter.finish(succeeded:false)` or `runWorkUnit` `onFailure`. Do not rely on `#if DEBUG` print as the sole failure path.
+5. **Schedulers** — `BackgroundServiceScheduler` + `BackgroundServiceSchedulerIDs`. Never copy-paste `NSBackgroundActivityScheduler`.
+6. **MLX** — route through `MLXTaskQueue`. No parallel bypass.
+7. **Long loops** — cooperative cancellation (`Task.isCancelled` / `Task.checkCancellation`) for work > 1s.
+8. **Forbidden** — `DispatchGroup.wait`, sync `Data(contentsOf:)`, CPU-heavy `group.addTask` on `@MainActor` types, `fatalError`/`try!` on network/disk in service paths.
+
+Start from `College/Core/Platform/Services/BackgroundServiceTemplate.swift`. Module docs: `BackgroundServices.md`.

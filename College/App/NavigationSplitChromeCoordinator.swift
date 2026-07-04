@@ -11,7 +11,7 @@ import AppKit
 // |-----|----------|--------|-----------|------------------------|
 // | Window chrome | `fullSizeContentView`, transparent titlebar via delegate + `WindowChromeSetter` | Same; timing via coordinator | Unified toolbar / full-size content (AppKit) | Pass |
 // | Toolbar style | Scene `.windowToolbarStyle(.unified)` + delegate `toolbarStyle = .unified` | Scene owns style; delegate owns timing flags | UnifiedWindowToolbarStyle | Pass (documented split) |
-// | Split visibility | `NavigationSplitView` + `DefaultToolbarItem(.sidebarToggle)` | Unchanged (Option A) | NavigationSplitView, Toolbars | Pass |
+// | Split visibility | Fixed icon-only sidebar; no toolbar toggle | No hide/resize | NavigationSplitView | Pass |
 // | Bridge triggers | Bridge layout, delegate async, `activePage` | + fullscreen will/did enter/exit, resize on main window only | Lifecycle re-apply (engineering) | Pass |
 // | Calendar 1px rules | Leading `Rectangle`, `Divider()`, card `chromeStroke` + `.thinMaterial` | Solid canvas + glass sidebars + spacing | Materials / spacing, not strokes | Pass (Phase C) |
 // | Academics seams | Inspector chrome (out of Calendar scope) | No change this PR | — | N/A |
@@ -78,7 +78,53 @@ private enum NavigationSplitChromeEngine {
             applyTransparentDividers(to: splitView)
         }
 
+        _ = MainSidebarSplitAutosave.applyTrafficLightCenteredWidthIfNeeded(in: window)
         neutralizeThinRules(in: root, ancestors: [], scope: .all)
+        neutralizeToolbarButtonGlass(in: window)
+    }
+
+    /// Strips Liquid Glass platters from toolbar icon buttons (search, overflow, sidebar toggle)
+    /// so only the glyphs remain. AppKit recreates these controls on resize; re-run on every reapply.
+    static func neutralizeToolbarButtonGlass(in window: NSWindow?) {
+        guard let window else { return }
+        guard let root = window.contentView?.superview ?? window.contentView else { return }
+
+        for view in root.allSubviews(ofType: NSView.self) {
+            guard let button = view as? NSButton else { continue }
+            guard isToolbarRegionButton(button, in: window) else { continue }
+            guard button.isBordered else { continue }
+            button.isBordered = false
+        }
+    }
+
+    private static func isToolbarRegionButton(_ view: NSView, in window: NSWindow) -> Bool {
+        var current: NSView? = view
+        while let node = current {
+            let name = String(describing: type(of: node))
+            if name.contains("ClippedItemsIndicator") || name.contains("OverflowItem") {
+                return true
+            }
+            if name.contains("Toolbar") || name.contains("Titlebar") || name.contains("NSToolbar") {
+                return true
+            }
+            if node === window.contentView {
+                break
+            }
+            current = node.superview
+        }
+        return false
+    }
+
+    /// Strips the Liquid Glass "platter" behind the toolbar's overflow ("»") indicator so
+    /// only the chevron glyph remains, matching the app's otherwise borderless toolbar items.
+    ///
+    /// The overflow control is the private `NSToolbarClippedItemsIndicator`, an `NSButton`
+    /// that AppKit inserts at the trailing edge when items don't fit. Apple's supported way to
+    /// drop a toolbar item's glass is `isBordered = false` (WWDC25 — "Build an AppKit app with
+    /// the new design"), which applies to this button too. The indicator is recreated as the
+    /// window resizes, so this re-runs on every chrome reapply (mount / resize / fullscreen).
+    static func neutralizeToolbarOverflowGlass(in window: NSWindow?) {
+        neutralizeToolbarButtonGlass(in: window)
     }
 
     private enum RuleScope {
@@ -96,13 +142,30 @@ private enum NavigationSplitChromeEngine {
         let isThinVerticalRule = size.width > 0 && size.width <= 4 && size.height >= 24
         let parentIsSplit = view.superview is NSSplitView
 
-        if isKnownDividerType || (parentIsSplit && isThinVerticalRule) {
+        // A real split divider is a leaf rule. A *column* (sidebar/detail) is a
+        // container that hosts SwiftUI content. Toggling the sidebar animates its
+        // hosting column through thin widths (1–4px); without this guard the thin
+        // heuristic would match that column mid-animation and permanently hide it
+        // (`isHidden` is never reset), so the sidebar never reappears.
+        if isKnownDividerType {
+            hideAsTransparentRule(view)
+        } else if parentIsSplit && isThinVerticalRule && view.subviews.isEmpty && !isColumnContainer(typeName) {
             hideAsTransparentRule(view)
         }
 
         for subview in view.subviews {
             neutralizeDividerViews(in: subview)
         }
+    }
+
+    /// True for view classes that host column content (and must never be hidden
+    /// by the thin-rule heuristic), even if momentarily measured as a thin strip.
+    private static func isColumnContainer(_ typeName: String) -> Bool {
+        typeName.contains("Hosting")
+            || typeName.contains("ScrollView")
+            || typeName.contains("ClipView")
+            || typeName.contains("Stack")
+            || typeName.contains("SplitView")
     }
 
     private static func neutralizeThinRules(in view: NSView, ancestors: [NSView], scope: RuleScope) {

@@ -13,8 +13,11 @@ struct CalendarToolbarContent: ToolbarContent {
             CalToolbarChromeView(dispatcher: dispatcher, calendarScene: calendarScene)
         }
         .sharedBackgroundVisibility(.hidden)
-        ToolbarItem(id: "cal.sidebarToggle", placement: .primaryAction) {
-            CalToolbarSidebarToggleView(dispatcher: dispatcher, calendarScene: calendarScene)
+        ToolbarItem(id: "cal.inspectorToggle", placement: .primaryAction) {
+            CalendarToolbarInspectorToggleView(
+                dispatcher: dispatcher,
+                calendarScene: calendarScene
+            )
         }
         .sharedBackgroundVisibility(.hidden)
     }

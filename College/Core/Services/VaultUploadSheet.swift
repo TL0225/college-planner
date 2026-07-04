@@ -39,7 +39,7 @@ enum VaultColorLabel: String, CaseIterable, Identifiable {
         case .red:    return .red
         case .orange: return .orange
         case .yellow: return .yellow
-        case .green:  return Color(hex: "10b981")
+        case .green:  return DesignSystem.Colors.success
         case .blue:   return .blue
         case .purple: return .purple
         case .gray:   return .gray
@@ -112,24 +112,24 @@ struct VaultUploadSheet: View {
                         .fill(fileIconColor.opacity(0.15))
                         .frame(width: 52, height: 52)
                     Image(systemName: fileIcon)
-                        .font(.system(size: 24))
-                        .foregroundColor(fileIconColor)
+                        .font(DesignSystem.Fonts.main(size: 24))
+                        .foregroundStyle(fileIconColor)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(fileName)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .font(DesignSystem.Fonts.main(size: 15, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .lineLimit(1)
                     Text(formatBytes(fileSize))
-                        .font(.system(size: 12))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 12))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
                 Spacer()
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 18)
             .background(Color(NSColor.controlBackgroundColor))
-            .overlay(Rectangle().frame(height: 1).foregroundColor(Color(hex: "e2e8f0")), alignment: .bottom)
+            .overlay(Rectangle().frame(height: 1).foregroundStyle(Color(hex: "e2e8f0")), alignment: .bottom)
 
             // Body
             ScrollView {
@@ -150,11 +150,11 @@ struct VaultUploadSheet: View {
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: cat.icon)
-                                            .font(.system(size: 12))
+                                            .font(DesignSystem.Fonts.main(size: 12))
                                         Text(cat.rawValue)
-                                            .font(.system(size: 12, weight: .medium))
+                                            .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
                                     }
-                                    .foregroundColor(category == cat ? .white : DesignSystem.Colors.textMain)
+                                    .foregroundStyle(category == cat ? .white : DesignSystem.Colors.textMain)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 7)
                                     .background(category == cat ? cat.color : Color(hex: "f1f5f9"))
@@ -188,7 +188,7 @@ struct VaultUploadSheet: View {
                                         if label == .none {
                                             Circle()
                                                 .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [3]))
-                                                .foregroundColor(Color(hex: "94a3b8"))
+                                                .foregroundStyle(Color(hex: "94a3b8"))
                                                 .frame(width: 24, height: 24)
                                         } else {
                                             Circle()
@@ -197,8 +197,8 @@ struct VaultUploadSheet: View {
                                         }
                                         if colorLabel == label {
                                             Image(systemName: "checkmark")
-                                                .font(.system(size: 9, weight: .bold))
-                                                .foregroundColor(label == .none ? DesignSystem.Colors.textLight : .white)
+                                                .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
+                                                .foregroundStyle(label == .none ? DesignSystem.Colors.textLight : .white)
                                         }
                                     }
                                 }
@@ -212,9 +212,9 @@ struct VaultUploadSheet: View {
                     // Notes
                     fieldGroup(title: "Notes (optional)") {
                         TextEditor(text: $notes)
-                            .font(.system(size: 12))
+                            .font(DesignSystem.Fonts.main(size: 12))
                             .frame(height: 64)
-                            .padding(6)
+                            .padding(DesignSystem.Spacing.sm)
                             .background(Color(hex: "f8fafc"))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .overlay(
@@ -223,7 +223,7 @@ struct VaultUploadSheet: View {
                             )
                     }
                 }
-                .padding(24)
+                .padding(DesignSystem.Spacing.xl)
             }
 
             // Footer
@@ -249,7 +249,7 @@ struct VaultUploadSheet: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
             .background(Color(NSColor.controlBackgroundColor))
-            .overlay(Rectangle().frame(height: 1).foregroundColor(Color(hex: "e2e8f0")), alignment: .top)
+            .overlay(Rectangle().frame(height: 1).foregroundStyle(Color(hex: "e2e8f0")), alignment: .top)
         }
         .frame(width: 480)
         .onAppear {
@@ -264,8 +264,8 @@ struct VaultUploadSheet: View {
     private func fieldGroup<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .textCase(.uppercase)
                 .tracking(0.3)
             content()
@@ -317,8 +317,8 @@ private struct FlowTagsView: View {
         HStack(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
                 Text(tag)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(accentColor)
+                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                    .foregroundStyle(accentColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(accentColor.opacity(0.1))

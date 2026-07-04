@@ -8,6 +8,7 @@ public protocol CalendarPersistencePort: AnyObject {
 
     func notifyCalendarDidChange()
     func calendarEventEntity(id: UUID) -> CalendarStoredEvent?
+    func calendarEventEntities(ids: [UUID]) -> [CalendarStoredEvent]
     func semester(id: UUID) -> CalendarSemesterRecord?
     func removeAutoLinkedCourse(code: String)
 

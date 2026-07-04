@@ -28,7 +28,7 @@ struct LocationPickerSheet: View {
                 } label: {
                     Image(systemName: "arrow.left")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .frame(width: 32, height: 32)
                         .background(Circle().fill(Color.black.opacity(0.04)))
                 }
@@ -37,31 +37,31 @@ struct LocationPickerSheet: View {
 
                 Text("Location")
                     .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 
                 Spacer()
             }
-            .padding(12)
+            .padding(DesignSystem.Spacing.md)
 
             Divider().background(Color.black.opacity(0.08))
 
             // Search Bar
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 TextField("Search for a location", text: $searchService.query)
                     .textFieldStyle(.plain)
                     .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                     .focused($isSearchFocused)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(Color.black.opacity(0.06))
-            .cornerRadius(10)
-            .padding(12)
+            .clipShape(.rect(cornerRadius: 10))
+            .padding(DesignSystem.Spacing.md)
             .onChange(of: searchService.query) { _, newValue in
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 showRecents = trimmed.isEmpty
@@ -81,7 +81,7 @@ struct LocationPickerSheet: View {
                 }
             }
         }
-        .background(Color.white)
+        .background(DesignSystem.Colors.surface)
         .onAppear {
             isSearchFocused = true
             searchService.applyLocationBias(from: locationPermissionService.lastLocation)
@@ -106,14 +106,14 @@ struct LocationPickerSheet: View {
         return VStack(alignment: .leading, spacing: 10) {
             Text("Recents")
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
 
             if recents.isEmpty {
                 Text("No recent locations")
                     .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.horizontal, 12)
                     .padding(.top, 6)
             } else {
@@ -125,18 +125,18 @@ struct LocationPickerSheet: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "clock")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(DesignSystem.Fonts.main(size: 14))
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                     .frame(width: 20)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title)
                                         .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textMain)
+                                        .foregroundStyle(DesignSystem.Colors.textMain)
                                     if !item.subtitle.isEmpty {
                                         Text(item.subtitle)
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                                            .foregroundColor(DesignSystem.Colors.textLight)
+                                            .foregroundStyle(DesignSystem.Colors.textLight)
                                     }
                                 }
                                 Spacer()
@@ -158,7 +158,7 @@ struct LocationPickerSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Suggestions")
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .padding(.horizontal, 12)
                 .padding(.top, 4)
 
@@ -172,19 +172,19 @@ struct LocationPickerSheet: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "location.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(DesignSystem.Fonts.main(size: 14))
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                     .frame(width: 20)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     HStack(spacing: 8) {
                                         Text(suggestion.title)
                                             .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                                            .foregroundColor(DesignSystem.Colors.textMain)
+                                            .foregroundStyle(DesignSystem.Colors.textMain)
                                         if index == 0 && locationPermissionService.lastLocation != nil {
                                             Text("Nearest")
                                                 .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                                .foregroundColor(DesignSystem.Colors.primary)
+                                                .foregroundStyle(DesignSystem.Colors.primary)
                                                 .padding(.horizontal, 6)
                                                 .padding(.vertical, 2)
                                                 .background(DesignSystem.Colors.primary.opacity(0.12))
@@ -194,7 +194,7 @@ struct LocationPickerSheet: View {
                                     if !suggestion.subtitle.isEmpty {
                                         Text(suggestion.subtitle)
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                                            .foregroundColor(DesignSystem.Colors.textLight)
+                                            .foregroundStyle(DesignSystem.Colors.textLight)
                                     }
                                 }
                                 Spacer()
@@ -220,18 +220,18 @@ struct LocationPickerSheet: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .font(DesignSystem.Fonts.main(size: 14))
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                     .frame(width: 20)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(completion.title)
                                         .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textMain)
+                                        .foregroundStyle(DesignSystem.Colors.textMain)
                                     if !completion.subtitle.isEmpty {
                                         Text(completion.subtitle)
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                                            .foregroundColor(DesignSystem.Colors.textLight)
+                                            .foregroundStyle(DesignSystem.Colors.textLight)
                                     }
                                 }
                                 Spacer()
@@ -250,7 +250,7 @@ struct LocationPickerSheet: View {
             if searchService.completions.isEmpty && rankedSuggestions.isEmpty {
                 Text(searchService.isSearching ? "Searching…" : "No results")
                     .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.horizontal, 12)
                     .padding(.top, 6)
             }

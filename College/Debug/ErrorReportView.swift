@@ -24,89 +24,80 @@ struct ErrorReportView: View {
     private let githubService = GitHubDataService()
     
     var body: some View {
-        ZStack {
-            // Background blur
-            Color.black.opacity(0.3)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    dismiss()
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Label("Report Policy Error", systemImage: "exclamationmark.triangle.fill")
+                    .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textMain)
+
+                Spacer()
+
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(DesignSystem.Fonts.main(size: 24))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
-            
-            // Modal content
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Label("Report Policy Error", systemImage: "exclamationmark.triangle.fill")
-                        .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
-                    
-                    Spacer()
-                    
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(DesignSystem.Colors.textLight)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding()
-                .background(DesignSystem.Colors.surface)
-                
-                Divider()
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                .buttonStyle(.plain)
+            }
+            .padding()
+            .background(DesignSystem.Colors.surface)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
                         // School Info
                         VStack(alignment: .leading, spacing: 8) {
                             Text("School")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                             
                             HStack {
                                 Image(systemName: "building.columns.fill")
-                                    .foregroundColor(DesignSystem.Colors.primary)
+                                    .foregroundStyle(DesignSystem.Colors.primary)
                                 Text(schoolName)
                                     .font(DesignSystem.Fonts.main(size: 14))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                             }
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color(hex: "f8f9fa"))
-                            .cornerRadius(8)
+                            .clipShape(.rect(cornerRadius: 8))
                         }
                         
                         // Policy Info
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Policy")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                             
                             Text(policyName)
                                 .font(DesignSystem.Fonts.main(size: 14, weight: .medium))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                                 .padding()
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(Color(hex: "f8f9fa"))
-                                .cornerRadius(8)
+                                .clipShape(.rect(cornerRadius: 8))
                         }
                         
                         // Current Value
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Current Value (Incorrect)")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                             
                             HStack {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(DesignSystem.Colors.error)
+                                    .foregroundStyle(DesignSystem.Colors.error)
                                 Text(currentValue)
                                     .font(DesignSystem.Fonts.main(size: 14))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                             }
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(DesignSystem.Colors.error.opacity(0.1))
-                            .cornerRadius(8)
+                            .clipShape(.rect(cornerRadius: 8))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 8)
                                     .stroke(DesignSystem.Colors.error.opacity(0.3), lineWidth: 1)
@@ -117,14 +108,14 @@ struct ErrorReportView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Correct Value *")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                             
                             TextField("Enter correct value", text: $correctedValue)
                                 .textFieldStyle(.plain)
                                 .font(DesignSystem.Fonts.main(size: 14))
                                 .padding()
                                 .background(DesignSystem.Colors.surface)
-                                .cornerRadius(8)
+                                .clipShape(.rect(cornerRadius: 8))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
                                         .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
@@ -135,14 +126,14 @@ struct ErrorReportView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Source (Optional)")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                             
                             TextField("e.g., Advisor meeting, Course catalog page 42", text: $source)
                                 .textFieldStyle(.plain)
                                 .font(DesignSystem.Fonts.main(size: 14))
                                 .padding()
                                 .background(DesignSystem.Colors.surface)
-                                .cornerRadius(8)
+                                .clipShape(.rect(cornerRadius: 8))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 8)
                                         .stroke(Color(hex: "e2e8f0"), lineWidth: 1)
@@ -150,34 +141,34 @@ struct ErrorReportView: View {
                             
                             HStack(spacing: 6) {
                                 Image(systemName: "info.circle")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(DesignSystem.Colors.info)
+                                    .font(DesignSystem.Fonts.main(size: 12))
+                                    .foregroundStyle(DesignSystem.Colors.info)
                                 Text("Adding a source helps verify the correction faster")
                                     .font(DesignSystem.Fonts.main(size: 11))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                             }
                         }
                         
                         // Info Box
                         HStack(alignment: .top, spacing: 12) {
                             Image(systemName: "heart.fill")
-                                .foregroundColor(DesignSystem.Colors.primary)
-                                .font(.system(size: 16))
+                                .foregroundStyle(DesignSystem.Colors.primary)
+                                .font(DesignSystem.Fonts.main(size: 16))
                             
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Help the Community")
                                     .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                                 
                                 Text("Your correction will be reviewed and shared with other students at \(schoolName)")
                                     .font(DesignSystem.Fonts.main(size: 12))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .padding()
                         .background(DesignSystem.Colors.primary.opacity(0.1))
-                        .cornerRadius(12)
+                        .clipShape(.rect(cornerRadius: 12))
                     }
                     .padding()
                 }
@@ -192,12 +183,12 @@ struct ErrorReportView: View {
                             Text("Fix Locally Only")
                         }
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
                         .background(Color(hex: "f1f5f9"))
-                        .cornerRadius(10)
+                        .clipShape(.rect(cornerRadius: 10))
                     }
                     .disabled(correctedValue.isEmpty || isSubmitting)
                     
@@ -212,7 +203,7 @@ struct ErrorReportView: View {
                             Text("Submit to Community")
                         }
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
@@ -221,19 +212,15 @@ struct ErrorReportView: View {
                             ? DesignSystem.Colors.primary.opacity(0.5)
                             : DesignSystem.Colors.primary
                         )
-                        .cornerRadius(10)
+                        .clipShape(.rect(cornerRadius: 10))
                     }
                     .disabled(correctedValue.isEmpty || isSubmitting)
                 }
                 .padding()
                 .background(DesignSystem.Colors.surface)
-            }
-            .frame(width: 600, height: 700)
-            .background(DesignSystem.Colors.surface)
-            .cornerRadius(20)
-            .shadow(color: .black.opacity(0.3), radius: 20)
-            
-            // Success overlay
+        }
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 520, idealHeight: 700)
+        .overlay {
             if showSuccess {
                 SuccessOverlay(message: "Thank you! Your correction has been submitted.")
                     .onAppear {
@@ -309,17 +296,17 @@ struct SuccessOverlay: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 60))
-                .foregroundColor(DesignSystem.Colors.success)
+                .font(DesignSystem.Fonts.main(size: 60))
+                .foregroundStyle(DesignSystem.Colors.success)
             
             Text(message)
                 .font(DesignSystem.Fonts.main(size: 16, weight: .medium))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .multilineTextAlignment(.center)
         }
-        .padding(40)
+        .padding(DesignSystem.Spacing.section)
         .background(DesignSystem.Colors.surface)
-        .cornerRadius(20)
+        .clipShape(.rect(cornerRadius: 20))
         .shadow(color: .black.opacity(0.2), radius: 10)
     }
 }

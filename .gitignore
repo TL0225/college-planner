@@ -13,8 +13,7 @@
 .xcode_derived*
 
 # Xcode / Swift
-College.xcodeproj/
-CollegePlatform/
+# College.xcodeproj is tracked for CI and fresh clones; per-user Xcode state is not.
 DerivedData/
 build/
 *.o
@@ -40,6 +39,10 @@ Package.resolved
 !Packages/**/Tests/**
 Packages/**/.build/
 
+# Rust
+target/
+rust-typst/target/
+
 # CocoaPods / Carthage (uncomment if used)
 # Pods/
 # Carthage/Build/
@@ -60,7 +63,9 @@ __pycache__/
 *.profraw
 
 # Local editor/workspace folders
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .vscode/
 .xcodebuildmcp/
 .artifacts/
@@ -77,6 +82,7 @@ Secrets.xcconfig
 !docs/**/
 !docs/**/*.md
 *.txt
+!docs/skipped-tests-registry.txt
 *.csv
 *.tsv
 !College/Features/Assistant/Resources/IntentTrainingData.csv
@@ -84,5 +90,10 @@ Secrets.xcconfig
 # Scrape / catalog export dumps (local only)
 exports/
 
-# Local scratch / sidebar experiments (not in Xcode target)
+# DeGoog sidecar runtime (fetch via scripts/fetch-degoog-sidecar.sh)
+College/DegoogSidecar/college-degoog-bun
+College/DegoogSidecar/college-degoog-runtime.tar.gz
+College/DegoogSidecar/runtime/
+College/DegoogSidecar/bun
+College/DegoogSidecar/degoog-runtime.tar.gz
 test_sidebar*.swift

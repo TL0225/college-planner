@@ -27,7 +27,7 @@ College/
     Degree/               Degree planner UI (+ MajorMinorDetailsView)
     Settings/             Preferences, catalog sync settings
     SyllabusAI/           Syllabus review flows
-    Brightspace/          LMS import
+    LMS/                  LMS portal + import (Brightspace/Canvas/Moodle providers)
   Core/
     Data/
       Persistence/        CollegePersistence + extensions
@@ -96,6 +96,23 @@ xcodebuild test -scheme College -destination 'platform=macOS'
 - [`docs/phase6-signoff-checklist.md`](phase6-signoff-checklist.md) — release sign-off
 - [`docs/reorg-move-map.csv`](reorg-move-map.csv) — mechanical path map used during reorg
 - [`docs/archive/`](archive/) — superseded migration and audit notes
+
+## Cursor feature boundaries
+
+Agent edit scope is generated from `College/Features/*` plus `scripts/feature-touch-manifest.json`:
+
+```bash
+python3 scripts/generate-cursor-feature-rules.py --write   # after adding a feature folder
+python3 scripts/generate-cursor-feature-rules.py --check # CI gate
+```
+
+Outputs: `.cursor/rules/feature-boundaries-master.mdc` (always on) and `.cursor/rules/features/feature-<name>.mdc` per tab.
+
+Install the pre-commit hook once per clone (regenerates and stages rules when `College/Features/` changes):
+
+```bash
+bash scripts/install-git-hooks.sh
+```
 
 ## Superseded
 

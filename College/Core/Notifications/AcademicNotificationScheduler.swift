@@ -36,23 +36,30 @@ final class AcademicNotificationScheduler: @unchecked Sendable {
     /// Schedules/replaces all academic reminder notifications.
     func reschedule(using collegePersistence: CollegePersistence) {
         Task { @MainActor in
-            let gpa = collegePersistence.primaryGPA()
-            let semesters = collegePersistence.semesters.map {
-                SemesterSnapshot(
-                    name: $0.name,
-                    year: Int($0.year),
-                    season: $0.season,
-                    seasonOrder: Int($0.seasonOrder)
-                )
+            await BackgroundServiceOnDemand.run(id: "academic_notification_reschedule") {
+                AcademicNotificationScheduler.shared.performReschedule(using: collegePersistence)
             }
-            let sap = collegePersistence.sapStats()
-            let sapSnapshot = SAPSnapshot(attempted: sap.attempted, rate: sap.rate)
-            AcademicNotificationScheduler.shared.finishReschedule(
-                gpa: gpa,
-                semesters: semesters,
-                sapSnapshot: sapSnapshot
+        }
+    }
+
+    @MainActor
+    private func performReschedule(using collegePersistence: CollegePersistence) {
+        let gpa = collegePersistence.primaryGPA()
+        let semesters = collegePersistence.semesters.map {
+            SemesterSnapshot(
+                name: $0.name,
+                year: Int($0.year),
+                season: $0.season,
+                seasonOrder: Int($0.seasonOrder)
             )
         }
+        let sap = collegePersistence.sapStats()
+        let sapSnapshot = SAPSnapshot(attempted: sap.attempted, rate: sap.rate)
+        AcademicNotificationScheduler.shared.finishReschedule(
+            gpa: gpa,
+            semesters: semesters,
+            sapSnapshot: sapSnapshot
+        )
     }
 
     @MainActor

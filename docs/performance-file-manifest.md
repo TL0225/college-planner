@@ -1,7 +1,7 @@
 # College App — Performance File Manifest (Phase 5c)
 
-**Generated:** 2026-05-30  
-**Scope:** All **518** Swift files in `College/` (+ **60** in `CollegeTests/` not tabulated here).  
+**Generated:** 2026-06-09  
+**Scope:** All **673** Swift files in `College/` (`find College -name '*.swift' | wc -l`; test targets not tabulated here).  
 **Method:** Phase 5 module agents (deep) + Phase 5b gap inventory + Phase 5c six directory passes (file-level stall/memory notes).
 
 **Machine-readable index:** [`performance-file-manifest-index.tsv`](performance-file-manifest-index.tsv) — every app file with `path`, `lines`, `module`, `coverage` (5b/5c), `risk_hint` (Y/N/P).

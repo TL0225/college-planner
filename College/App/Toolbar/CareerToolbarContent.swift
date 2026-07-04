@@ -31,12 +31,12 @@ struct CareerToolbarContent: ToolbarContent {
                     Text("Openings").tag(CareerSubView.openings)
                     Text("Stats").tag(CareerSubView.stats)
                     Text("Resumes").tag(CareerSubView.resumes)
+                    Text("Apply Profile").tag(CareerSubView.applyProfile)
                     Text("Stories").tag(CareerSubView.stories)
                     Text("Networking").tag(CareerSubView.networking)
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 420)
                 .fixedSize()
             }
         }

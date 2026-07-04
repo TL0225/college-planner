@@ -12,7 +12,7 @@ struct AppleSiliconRequiredView: View {
     var body: some View {
         VStack(spacing: 20) {
             Image(systemName: "desktopcomputer.trianglebadge.exclamationmark")
-                .font(.system(size: 56))
+                .font(DesignSystem.Fonts.main(size: 56))
                 .foregroundStyle(.secondary)
                 .symbolRenderingMode(.hierarchical)
 
@@ -42,7 +42,7 @@ struct AppleSiliconRequiredView: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 440)
         }
-        .padding(40)
+        .padding(DesignSystem.Spacing.section)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignSystem.Colors.bgMain)
     }

@@ -7,7 +7,14 @@ import Foundation
 
 /// Single entry point for posting catalog import progress to the menu bar controller.
 enum CatalogMenuBarProgressNotifier {
-    static func postInProgress(fraction: Double, title: String, indeterminate: Bool = false) {
+    private static let defaultActivityID = "catalog.import"
+
+    static func postInProgress(
+        fraction: Double,
+        title: String,
+        indeterminate: Bool = false,
+        activityID: String = defaultActivityID
+    ) {
         NotificationCenter.default.post(
             name: .collegeCatalogBackgroundImportProgress,
             object: nil,
@@ -16,15 +23,19 @@ enum CatalogMenuBarProgressNotifier {
                 "title": title,
                 "finished": false,
                 "indeterminate": indeterminate,
+                "activityID": activityID,
             ]
         )
     }
 
-    static func postFinished() {
+    static func postFinished(activityID: String = defaultActivityID) {
         NotificationCenter.default.post(
             name: .collegeCatalogBackgroundImportProgress,
             object: nil,
-            userInfo: ["finished": true]
+            userInfo: [
+                "finished": true,
+                "activityID": activityID,
+            ]
         )
     }
 
@@ -33,7 +44,8 @@ enum CatalogMenuBarProgressNotifier {
         completed: Int,
         total: Int,
         title: String,
-        stage: String
+        stage: String,
+        activityID: String = defaultActivityID
     ) {
         let safeTotal = max(0, total)
         let safeCompleted = max(0, min(completed, safeTotal == 0 ? completed : safeTotal))
@@ -55,23 +67,59 @@ enum CatalogMenuBarProgressNotifier {
                 "completedCount": safeCompleted,
                 "totalCount": safeTotal,
                 "stage": stage,
+                "activityID": activityID,
             ]
         )
     }
 
-    static func postSucceeded(title: String = "Catalog sync complete") {
-        postInProgress(fraction: 1, title: title, indeterminate: false)
-        postFinished()
+    static func postSucceeded(
+        title: String = "Catalog sync complete",
+        summary: String? = nil,
+        activityID: String = defaultActivityID
+    ) {
+        postInProgress(fraction: 1, title: title, indeterminate: false, activityID: activityID)
+        NotificationCenter.default.post(
+            name: .collegeCatalogBackgroundImportProgress,
+            object: nil,
+            userInfo: [
+                "finished": true,
+                "title": title,
+                "summary": summary ?? title,
+                "activityID": activityID,
+            ]
+        )
     }
 
-    static func postFailed(message: String) {
+    static func postSkipped(
+        message: String,
+        activityID: String = defaultActivityID
+    ) {
         NotificationCenter.default.post(
             name: .collegeCatalogBackgroundImportProgress,
             object: nil,
             userInfo: [
                 "finished": true,
                 "title": message,
+                "summary": message,
+                "skipped": true,
+                "activityID": activityID,
+            ]
+        )
+    }
+
+    static func postFailed(
+        message: String,
+        activityID: String = defaultActivityID
+    ) {
+        NotificationCenter.default.post(
+            name: .collegeCatalogBackgroundImportProgress,
+            object: nil,
+            userInfo: [
+                "finished": true,
+                "title": message,
+                "message": message,
                 "failed": true,
+                "activityID": activityID,
             ]
         )
     }

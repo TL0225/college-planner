@@ -14,6 +14,9 @@ extension CatalogRepository {
         let name: String
         let code: String?
         let school: String?
+        let extractionConfidence: Double?
+        let signalSource: String?
+        let parserVersion: String?
     }
 
     struct MajorUpsertInput: Sendable {
@@ -32,6 +35,11 @@ extension CatalogRepository {
         let provenanceJSON: String?
         let mappingConfidence: Double?
         let mappingSource: String?
+        let parserVersion: String?
+        let programKind: String?
+        let parentProgramKey: String?
+        let trackVariant: String?
+        let catalogEditionID: String?
     }
 
     func upsertDepartments(universityID: UUID, inputs: [DepartmentUpsertInput]) throws {
@@ -60,6 +68,15 @@ extension CatalogRepository {
             department.code = input.code
             if let school = input.school {
                 department.school = school
+            }
+            if let extractionConfidence = input.extractionConfidence {
+                department.extractionConfidence = extractionConfidence
+            }
+            if let signalSource = input.signalSource {
+                department.signalSource = signalSource
+            }
+            if let parserVersion = input.parserVersion {
+                department.parserVersion = parserVersion
             }
             department.lastUpdated = .now
         }
@@ -121,6 +138,21 @@ extension CatalogRepository {
             }
             if let mappingSource = input.mappingSource {
                 major.mappingSource = mappingSource
+            }
+            if let parserVersion = input.parserVersion {
+                major.parserVersion = parserVersion
+            }
+            if let programKind = input.programKind {
+                major.programKind = programKind
+            }
+            if let parentProgramKey = input.parentProgramKey {
+                major.parentProgramKey = parentProgramKey
+            }
+            if let trackVariant = input.trackVariant {
+                major.trackVariant = trackVariant
+            }
+            if let catalogEditionID = input.catalogEditionID {
+                major.catalogEditionID = catalogEditionID
             }
 
             let linkedDepartments = input.departmentIDs.compactMap { try? fetchDepartment(id: $0) }

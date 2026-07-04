@@ -73,6 +73,7 @@ final class ToolbarArchitectureTests: XCTestCase {
             "AcademicsSceneState.swift",
             "CareerSceneState.swift",
             "WebPortalSceneState.swift",
+            "TransferSceneState.swift",
         ]
         let forbiddenNames: Set<String> = [
             "CalendarToolbarState.swift",
@@ -118,6 +119,7 @@ final class ToolbarArchitectureTests: XCTestCase {
             "CalendarToolbarProvider",
             "AcademicsToolbarProvider",
             "CareerToolbarProvider",
+            "TransferToolbarProvider",
             "WebToolbarProvider",
         ] {
             XCTAssertTrue(
@@ -149,24 +151,36 @@ final class ToolbarArchitectureTests: XCTestCase {
         let source = try String(contentsOf: registry, encoding: .utf8)
         XCTAssertFalse(source.contains("default:"), "Registry must not use default — list every AppPage case explicitly")
         XCTAssertTrue(source.contains("case .degree, .documents"))
-        XCTAssertTrue(source.contains(".brightspace:"))
+        XCTAssertTrue(source.contains(".lms:"))
     }
 
     func testShellToolbarSearchWiring() throws {
         let contentView = repoRoot.appendingPathComponent("College/App/ContentView.swift")
-        let source = try String(contentsOf: contentView, encoding: .utf8)
-        XCTAssertTrue(source.contains("PortalWindowSearchModifier"))
-        XCTAssertTrue(source.contains("toolbarSearchText"))
-        XCTAssertTrue(source.contains("OverviewView("))
-        XCTAssertTrue(source.contains("searchText: toolbarSearchText"))
-        XCTAssertTrue(source.contains("DocumentsView("))
-        XCTAssertTrue(source.contains("searchText: $toolbarSearchText"))
+        let mainToolbar = repoRoot.appendingPathComponent("College/App/MainWindowToolbar.swift")
+        let searchModifier = repoRoot.appendingPathComponent("College/App/ShellToolbarSearchModifier.swift")
+        let contentSource = try String(contentsOf: contentView, encoding: .utf8)
+        let mainToolbarSource = try String(contentsOf: mainToolbar, encoding: .utf8)
+        let searchModifierSource = try String(contentsOf: searchModifier, encoding: .utf8)
+
+        XCTAssertTrue(contentSource.contains("ShellToolbarSearchModifier"))
+        XCTAssertTrue(contentSource.contains("toolbarSearchText"))
+        XCTAssertTrue(contentSource.contains("documentsSearchText: $toolbarSearchText"))
+        XCTAssertTrue(contentSource.contains("DocumentsView("))
+        XCTAssertTrue(contentSource.contains("searchText: $toolbarSearchText"))
+        XCTAssertTrue(contentSource.contains("isShellSearchFocused"))
+        XCTAssertFalse(mainToolbarSource.contains("DocumentsToolbarSearchField"))
+        XCTAssertTrue(searchModifierSource.contains(".searchable("))
+        XCTAssertTrue(searchModifierSource.contains("placement: .toolbar"))
     }
 
     func testFeatureMainViewsDoNotAttachWindowToolbar() throws {
         let featuresDir = repoRoot.appendingPathComponent("College/Features")
-        let allowedSheetToolbarFiles: Set<String> = [
-            "CareerWorkspaceView.swift", // CareerApplicationFormSheet only
+        // SettingsView hosts the standalone Settings *scene* (separate window) and owns its own
+        // SwiftUI toolbar — it is explicitly out of scope for the main-window toolbar (ADR 001).
+        let allowedToolbarFiles: Set<String> = [
+            "CareerApplicationFormSheet.swift",
+            "CareerApplicationProfileView.swift",
+            "SettingsView.swift",
         ]
         let subpaths = try FileManager.default.subpathsOfDirectory(atPath: featuresDir.path)
         let viewFiles = subpaths.filter { $0.hasSuffix("View.swift") || $0.hasSuffix("FullView.swift") }
@@ -174,10 +188,12 @@ final class ToolbarArchitectureTests: XCTestCase {
         var violations: [String] = []
         for relative in viewFiles {
             let fileName = (relative as NSString).lastPathComponent
-            if allowedSheetToolbarFiles.contains(fileName) { continue }
+            if allowedToolbarFiles.contains(fileName) { continue }
             let url = featuresDir.appendingPathComponent(relative)
             let source = try String(contentsOf: url, encoding: .utf8)
             if source.contains(".toolbar {") || source.contains(".toolbar{") {
+                // Inspector-host column chrome is not the main window toolbar (ADR 001).
+                if source.contains(".inspector(") { continue }
                 violations.append(relative)
             }
         }
@@ -194,12 +210,15 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssertNotNil(container.toolbarDispatcher)
         XCTAssertNotNil(container.calendarScene)
         XCTAssertNotNil(container.academicsScene)
+        XCTAssertNotNil(container.assistantScene)
         XCTAssertNotNil(container.careerScene)
         XCTAssertNotNil(container.webPortalScene)
         XCTAssertNotNil(container.modalCoordinator)
         XCTAssertNotNil(container.academicMetricsStore)
         XCTAssertNotNil(container.auditSnapshotStore)
         XCTAssertNotNil(container.launchPreloadCoordinator)
+        XCTAssertNotNil(container.transferScene)
+        XCTAssertNotNil(container.transferCoordinator)
         XCTAssertIdentical(container.appActivity, AppActivityCoordinator.shared)
         XCTAssertIdentical(container.persistence, CollegePersistence.shared)
         XCTAssertIdentical(container.appDataStore, AppDataStore.shared)
@@ -207,7 +226,7 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssertIdentical(container.securityManager, SecurityManager.shared)
         XCTAssertNotNil(container.locationPermissionService)
         XCTAssertNotNil(container.calendarManager)
-        XCTAssertNotNil(container.brightspaceCoordinator)
+        XCTAssertNotNil(container.lmsCoordinator)
     }
 
     func testCalendarShellPortsSurviveAfterWireShell() {
@@ -234,7 +253,7 @@ final class ToolbarArchitectureTests: XCTestCase {
         XCTAssert(first.launchPreloadCoordinator !== second.launchPreloadCoordinator)
         XCTAssert(first.locationPermissionService !== second.locationPermissionService)
         XCTAssert(first.calendarManager !== second.calendarManager)
-        XCTAssert(first.brightspaceCoordinator !== second.brightspaceCoordinator)
+        XCTAssert(first.lmsCoordinator !== second.lmsCoordinator)
     }
 
     func testAppContainerAcceptsInjectedDependencies() {
@@ -379,8 +398,8 @@ final class ToolbarArchitectureTests: XCTestCase {
             "CareerToolbarContent"
         )
         XCTAssertEqual(
-            AppPageToolbarMetadata.entry(for: .webShortcut(id: UUID())).toolbarContentTypeName,
-            "WebToolbarContent"
+            AppPageToolbarMetadata.entry(for: .transferDatabase).toolbarContentTypeName,
+            "TransferToolbarContent"
         )
     }
 }

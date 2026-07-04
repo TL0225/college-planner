@@ -44,21 +44,18 @@ struct SyllabusReviewView: View {
     @State private var selectedSection: SyllabusSection? = nil
 
     // Derived-state caches — recomputed only when dependencies change, not on every render.
-    @State private var cachedSortedDraftIndices: [Int] = []
+    @State private var cachedSortedDraftIDs: [UUID] = []
     @State private var cachedSelectedDraftCount: Int = 0
     @State private var cachedWorkloadProfile: WorkloadProfile? = nil
     @State private var conflictsRefreshTask: Task<Void, Never>? = nil
     @State private var manualLocation: String = ""
 
     var body: some View {
-        ZStack {
-            DesignSystem.Colors.bgMain
-                .ignoresSafeArea()
-
-            workspaceShell
-                .padding(16)
-        }
-        .frame(minWidth: 980, minHeight: 680)
+        workspaceShell
+            .frame(minWidth: 760, idealWidth: 980, minHeight: 560, idealHeight: 680)
+            .background(DesignSystem.Colors.bgMain)
+            .shellDynamicTypeReadable()
+            .accessibilityIdentifier("syllabus.review.root")
         .task { await startIfPossible() }
         .onChange(of: vm.phase) { _, newValue in
             guard case .ready = newValue else { return }
@@ -74,7 +71,7 @@ struct SyllabusReviewView: View {
         }
         .onChange(of: sortAscending) { _, _ in
             // Re-sort without re-fetching CollegePersistence.
-            cachedSortedDraftIndices = computeSortedDraftIndices()
+            cachedSortedDraftIDs = computeSortedDraftIDs()
         }
         .sheet(item: $conflictSheetDraft) { sheet in
             ConflictSheet(
@@ -147,24 +144,16 @@ struct SyllabusReviewView: View {
     }
 
     private var workspaceShell: some View {
-        GeometryReader { proxy in
-            let maxWidth: CGFloat = 1200
-            let height = max(620, proxy.size.height * 0.90)
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 390)
 
-            HStack(spacing: 0) {
-                sidebar
-                    .frame(width: 390)
+            Divider()
 
-                Divider()
-
-                mainPanel
-            }
-            .frame(width: min(maxWidth, proxy.size.width), height: height)
-            .background(DesignSystem.Colors.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .shadow(color: Color.black.opacity(0.10), radius: 26, x: 0, y: 16)
-            .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            mainPanel
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DesignSystem.Colors.surface)
     }
 
     private var sidebar: some View {
@@ -173,7 +162,7 @@ struct SyllabusReviewView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("COURSE ANALYSIS")
                         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.primary)
+                        .foregroundStyle(DesignSystem.Colors.primary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(DesignSystem.Colors.primary.opacity(0.10))
@@ -185,12 +174,12 @@ struct SyllabusReviewView: View {
 
                     Text(defaultCourseName.isEmpty ? "Course" : defaultCourseName)
                         .font(DesignSystem.Fonts.main(size: 26, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(sidebarSubtitle)
                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
 
                 VStack(spacing: 12) {
@@ -209,7 +198,7 @@ struct SyllabusReviewView: View {
 
                 workloadIntensity
             }
-            .padding(22)
+            .padding(DesignSystem.Spacing.xl)
         }
         .background(sidebarBackground)
     }
@@ -227,11 +216,11 @@ struct SyllabusReviewView: View {
                 } label: {
                     HStack(spacing: 10) {
                         Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                         Text("Import Events")
                             .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                     }
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .padding(.vertical, 12)
                     .padding(.leading, 18)
                     .padding(.trailing, 20)
@@ -240,7 +229,7 @@ struct SyllabusReviewView: View {
                     .shadow(color: DesignSystem.Colors.primary.opacity(0.25), radius: 18, x: 0, y: 10)
                 }
                 .buttonStyle(.plain)
-                .padding(18)
+                .padding(DesignSystem.Spacing.lg)
                 .disabled(vm.phase != .ready || selectedDraftCount == 0)
             }
         }
@@ -261,25 +250,25 @@ struct SyllabusReviewView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(mainTab == .events ? "Event Review" : "Professor")
                     .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
 
                 HStack(spacing: 8) {
                     if mainTab == .events {
                         Text("\(selectedDraftCount) items selected")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.primary)
+                            .foregroundStyle(DesignSystem.Colors.primary)
 
                         Text("•")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textLight.opacity(0.4))
+                            .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.4))
 
                         Text("\(vm.draftEvents.count) detected events")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                     } else {
                         Text("Instructor contact details")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                     }
                 }
             }
@@ -293,6 +282,8 @@ struct SyllabusReviewView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 220)
+            .accessibilityLabel("Syllabus section")
+            .accessibilityIdentifier("syllabus.review.mainTab")
 
             Menu {
                 Button {
@@ -308,9 +299,9 @@ struct SyllabusReviewView: View {
             } label: {
                 Image(systemName: "line.3.horizontal.decrease.circle"
                       + (sortAscending ? "" : ".fill"))
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(sortAscending ? DesignSystem.Colors.textLight : DesignSystem.Colors.primary)
-                    .padding(10)
+                    .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
+                    .foregroundStyle(sortAscending ? DesignSystem.Colors.textLight : DesignSystem.Colors.primary)
+                    .padding(DesignSystem.Spacing.md)
                     .background(DesignSystem.Colors.surface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -327,9 +318,9 @@ struct SyllabusReviewView: View {
                 onClose()
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
-                    .padding(10)
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.textLight)
+                    .padding(DesignSystem.Spacing.md)
                     .background(DesignSystem.Colors.surface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -338,6 +329,9 @@ struct SyllabusReviewView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
             .buttonStyle(.plain)
+            .help("Close syllabus review")
+            .accessibilityLabel("Close syllabus review")
+            .accessibilityIdentifier("syllabus.review.close")
             .padding(.trailing, 18)
         }
         .padding(.vertical, 14)
@@ -371,16 +365,15 @@ struct SyllabusReviewView: View {
             if mainTab == .events {
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(sortedDraftIndices, id: \.self) { index in
-                            let id = vm.draftEvents[index].id
+                        ForEach(sortedDraftIDs, id: \.self) { eventID in
                             EventReviewRow(
-                                event: $vm.draftEvents[index],
-                                conflictCount: conflictLookup[id]?.count ?? 0,
-                                onViewConflict: { conflictSheetDraft = ConflictSheetDraft(id: id) }
+                                event: draftEventBinding(for: eventID),
+                                conflictCount: conflictLookup[eventID]?.count ?? 0,
+                                onViewConflict: { conflictSheetDraft = ConflictSheetDraft(id: eventID) }
                             )
                         }
                     }
-                    .padding(18)
+                    .padding(DesignSystem.Spacing.lg)
                     .padding(.bottom, 84)
                 }
                 .background(DesignSystem.Colors.bgMain.opacity(0.20))
@@ -392,9 +385,30 @@ struct SyllabusReviewView: View {
     }
 
     // Thin accessors — body reads the cached @State, avoiding per-render O(n log n) work.
-    private var sortedDraftIndices: [Int] { cachedSortedDraftIndices }
+    private var sortedDraftIDs: [UUID] { cachedSortedDraftIDs }
 
-    private func computeSortedDraftIndices() -> [Int] {
+    private func draftEventBinding(for id: UUID) -> Binding<SyllabusAnalysisViewModel.DraftSyllabusEvent> {
+        Binding(
+            get: {
+                vm.draftEvents.first(where: { $0.id == id })
+                    ?? SyllabusAnalysisViewModel.DraftSyllabusEvent(
+                        title: "",
+                        kind: .other,
+                        startDate: Date(),
+                        endDate: Date(),
+                        allDay: false,
+                        notes: nil,
+                        include: false
+                    )
+            },
+            set: { newValue in
+                guard let index = vm.draftEvents.firstIndex(where: { $0.id == id }) else { return }
+                vm.draftEvents[index] = newValue
+            }
+        )
+    }
+
+    private func computeSortedDraftIDs() -> [UUID] {
         vm.draftEvents.indices.sorted { lhs, rhs in
             let l = vm.draftEvents[lhs]
             let r = vm.draftEvents[rhs]
@@ -407,6 +421,7 @@ struct SyllabusReviewView: View {
             let cmp = l.title.localizedCaseInsensitiveCompare(r.title)
             return sortAscending ? cmp == .orderedAscending : cmp == .orderedDescending
         }
+        .map { vm.draftEvents[$0].id }
     }
 
     private var professorPanel: some View {
@@ -418,7 +433,7 @@ struct SyllabusReviewView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Professor")
                             .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
 
                         professorRow(label: "Name", value: instructor?.name)
                         professorRow(label: "Email", value: instructor?.email)
@@ -428,7 +443,7 @@ struct SyllabusReviewView: View {
                         if instructor == nil {
                             Text("No instructor contact details were detected in this syllabus.")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                         }
                     }
                 }
@@ -437,18 +452,18 @@ struct SyllabusReviewView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Sync")
                             .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
 
                         Text("These fields automatically sync into Course Details when detected.")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
 
                         Button("Sync Now") {
                             didPersistInstructor = false
                             persistInstructorIfPossible()
                         }
                         .buttonStyle(.plain)
-                        .foregroundColor(DesignSystem.Colors.primary)
+                        .foregroundStyle(DesignSystem.Colors.primary)
                         .disabled(vm.syllabusData.instructor == nil)
                         .opacity(vm.syllabusData.instructor == nil ? 0.4 : 1.0)
                     }
@@ -456,7 +471,7 @@ struct SyllabusReviewView: View {
 
                 Spacer(minLength: 24)
             }
-            .padding(18)
+            .padding(DesignSystem.Spacing.lg)
         }
     }
 
@@ -465,12 +480,12 @@ struct SyllabusReviewView: View {
         return HStack(alignment: .top, spacing: 12) {
             Text(label)
                 .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .frame(width: 90, alignment: .leading)
 
             Text(trimmed.isEmpty ? "—" : trimmed)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -480,36 +495,36 @@ struct SyllabusReviewView: View {
             HStack {
                 Text("Couldn’t analyze syllabus")
                     .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
             }
 
             Text(message)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
 
             Button(showRawPreview ? "Hide Extracted Text" : "Show Extracted Text") {
                 showRawPreview.toggle()
             }
             .buttonStyle(.plain)
-            .foregroundColor(DesignSystem.Colors.primary)
+            .foregroundStyle(DesignSystem.Colors.primary)
 
             if showRawPreview {
                 ScrollView {
                     Text(vm.extractedPreview)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .font(DesignSystem.Fonts.main(size: 11, design: .monospaced))
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
+                        .padding(DesignSystem.Spacing.md)
                         .background(DesignSystem.Colors.surface)
-                        .cornerRadius(12)
+                        .clipShape(.rect(cornerRadius: 12))
                 }
                 .frame(height: 240)
             }
 
             Spacer()
         }
-        .padding(18)
+        .padding(DesignSystem.Spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DesignSystem.Colors.bgMain.opacity(0.20))
     }
@@ -519,11 +534,11 @@ struct SyllabusReviewView: View {
             HStack {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.pie.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.primary)
+                        .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.primary)
                     Text("Grading Breakdown")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                 }
                 Spacer()
             }
@@ -535,18 +550,18 @@ struct SyllabusReviewView: View {
                     .frame(width: 56, alignment: .trailing)
             }
             .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
-            .foregroundColor(DesignSystem.Colors.textLight.opacity(0.85))
+            .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.85))
             .padding(.horizontal, 2)
 
             if vm.phase != .ready {
                 Text("Waiting for analysis…")
                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.vertical, 8)
             } else if vm.syllabusData.grading.isEmpty {
                 Text("No grading breakdown detected.")
                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.vertical, 8)
             } else {
                 VStack(spacing: 8) {
@@ -562,7 +577,7 @@ struct SyllabusReviewView: View {
                 }
             }
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface)
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -575,11 +590,11 @@ struct SyllabusReviewView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.primary)
                 Text("Workload Intensity")
                     .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
             }
 
             if let profile = workloadProfile {
@@ -588,17 +603,17 @@ struct SyllabusReviewView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("PEAK STRESS")
                                 .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                             Text(profile.peakText)
                                 .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textMain)
+                                .foregroundStyle(DesignSystem.Colors.textMain)
                         }
 
                         Spacer()
 
                         Text(profile.levelText)
                             .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
-                            .foregroundColor(profile.levelColor)
+                            .foregroundStyle(profile.levelColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
                             .background(profile.levelColor.opacity(0.10))
@@ -616,9 +631,9 @@ struct SyllabusReviewView: View {
                         Text("Finals")
                     }
                     .font(DesignSystem.Fonts.main(size: 9, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight.opacity(0.85))
+                    .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.85))
                 }
-                .padding(12)
+                .padding(DesignSystem.Spacing.md)
                 .background(DesignSystem.Colors.surface)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -628,7 +643,7 @@ struct SyllabusReviewView: View {
             } else {
                 Text(vm.phase == .ready ? "Not enough dated items to estimate workload." : "Waiting for analysis…")
                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.vertical, 6)
             }
         }
@@ -660,11 +675,11 @@ struct SyllabusReviewView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "person.badge.clock")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                    .foregroundStyle(DesignSystem.Colors.primary)
                 Text("Your Section")
                     .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
             }
 
@@ -684,11 +699,11 @@ struct SyllabusReviewView: View {
                             Text(section.label)
                             if let days = section.meetingDays, !days.isEmpty {
                                 Text("· " + days.map(\.shortLabel).joined(separator: " "))
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                             if let start = section.startTime, let end = section.endTime {
                                 Text("· \(formatTime(start))–\(formatTime(end))")
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -697,13 +712,13 @@ struct SyllabusReviewView: View {
                 HStack {
                     Text(selectedSection?.label ?? "Select your section…")
                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(selectedSection == nil
+                        .foregroundStyle(selectedSection == nil
                             ? DesignSystem.Colors.textLight
                             : DesignSystem.Colors.textMain)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
@@ -722,7 +737,7 @@ struct SyllabusReviewView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Building / Room")
                         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                     TextField(detectedLoc.isEmpty ? "e.g. Norton 112" : detectedLoc,
                               text: $manualLocation)
                         .font(DesignSystem.Fonts.main(size: 12, weight: .regular))
@@ -743,16 +758,16 @@ struct SyllabusReviewView: View {
                    let start = sel.startTime, let end = sel.endTime {
                     Text("\(days.map(\.shortLabel).joined(separator: " · ")) · \(formatTime(start))–\(formatTime(end))")
                         .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
-                        .foregroundColor(DesignSystem.Colors.primary)
+                        .foregroundStyle(DesignSystem.Colors.primary)
                 }
             } else {
                 Text("Pick your section to add meeting times to calendar events.")
                     .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
@@ -887,7 +902,7 @@ struct SyllabusReviewView: View {
 
     /// Recomputes all derived state that depends on draftEvents / sortAscending / phase.
     private func refreshDerivedState() {
-        cachedSortedDraftIndices = computeSortedDraftIndices()
+        cachedSortedDraftIDs = computeSortedDraftIDs()
         cachedSelectedDraftCount = computeSelectedDraftCount()
         cachedWorkloadProfile    = computedWorkloadProfile
     }
@@ -904,7 +919,7 @@ struct SyllabusReviewView: View {
 
     private func startIfPossible() async {
         // Fast path: restore from per-course cache without touching the PDF.
-        if vm.tryApplyCachedForCourse(
+        if await vm.tryApplyCachedForCourse(
             courseCode: courseCode,
             semesterText: semesterText,
             calendar: calendar,
@@ -1044,9 +1059,9 @@ private struct Card<Content: View>: View {
 
     var body: some View {
         content
-            .padding(14)
+            .padding(DesignSystem.Spacing.md)
             .background(DesignSystem.Colors.surface)
-            .cornerRadius(14)
+            .clipShape(.rect(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(DesignSystem.Colors.textLight.opacity(0.14), lineWidth: 1)
@@ -1073,26 +1088,26 @@ private struct InfoCard: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(DesignSystem.Colors.primary.opacity(0.10))
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.primary)
             }
             .frame(width: 34, height: 34)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
 
                 if let subtitle, !subtitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(subtitle)
                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
             }
 
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface)
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -1110,8 +1125,8 @@ private struct SelectionCircle: View {
             isOn.toggle()
         } label: {
             Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(isOn ? DesignSystem.Colors.primary : DesignSystem.Colors.textLight.opacity(0.75))
+                .font(DesignSystem.Fonts.main(size: 18, weight: .semibold))
+                .foregroundStyle(isOn ? DesignSystem.Colors.primary : DesignSystem.Colors.textLight.opacity(0.75))
         }
         .buttonStyle(.plain)
     }
@@ -1125,7 +1140,7 @@ private struct CenteredPhaseView: View {
             ProgressView()
             Text(title)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignSystem.Colors.bgMain.opacity(0.20))
@@ -1143,11 +1158,11 @@ private struct CenteredDownloadView: View {
 
             Text(detail)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
 
             Text("This runs locally on your Mac once downloaded.")
                 .font(DesignSystem.Fonts.main(size: 11, weight: .regular))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignSystem.Colors.bgMain.opacity(0.20))
@@ -1165,12 +1180,12 @@ private struct GradingRow: View {
 
             Text(item.name)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(item.weightPercent.map { String(format: "%.0f%%", $0) } ?? "—")
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .frame(width: 56, alignment: .trailing)
         }
         .padding(.vertical, 6)
@@ -1269,27 +1284,27 @@ private struct EventReviewRow: View {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(DesignSystem.Colors.primary.opacity(isHovering ? 0.18 : 0.12))
                     Image(systemName: symbolName())
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.primary)
+                        .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
+                        .foregroundStyle(DesignSystem.Colors.primary)
                 }
                 .frame(width: 44, height: 44)
                 .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
-                        Text(event.title)
+                        TranslatableText(text: event.title)
                             .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                             .lineLimit(1)
 
                         Image(systemName: "checkmark.seal")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.primary.opacity(0.55))
+                            .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.primary.opacity(0.55))
                             .help("View in syllabus")
 
                         Text(kindBadge.0)
                             .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
-                            .foregroundColor(kindBadge.1)
+                            .foregroundStyle(kindBadge.1)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(kindBadge.1.opacity(0.10))
@@ -1302,11 +1317,11 @@ private struct EventReviewRow: View {
                         if conflictCount > 0 {
                             HStack(spacing: 6) {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 10, weight: .bold))
+                                    .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
                                 Text("CONFLICT DETECTED")
                                     .font(DesignSystem.Fonts.main(size: 9, weight: .bold))
                             }
-                            .foregroundColor(DesignSystem.Colors.error)
+                            .foregroundStyle(DesignSystem.Colors.error)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(DesignSystem.Colors.error.opacity(0.10))
@@ -1320,20 +1335,20 @@ private struct EventReviewRow: View {
                         Label(dateText, systemImage: "calendar")
                             .labelStyle(.titleAndIcon)
                             .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
 
                         if let t = timeText {
                             Label(t, systemImage: "clock")
                                 .labelStyle(.titleAndIcon)
                                 .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                         }
 
                         let locLabel = event.location?.trimmingCharacters(in: .whitespacesAndNewlines)
                         Label(locLabel.flatMap { $0.isEmpty ? nil : $0 } ?? "—", systemImage: "mappin")
                             .labelStyle(.titleAndIcon)
                             .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                            .foregroundColor(locLabel.flatMap { $0.isEmpty ? nil : $0 } != nil
+                            .foregroundStyle(locLabel.flatMap { $0.isEmpty ? nil : $0 } != nil
                                 ? DesignSystem.Colors.textMain
                                 : DesignSystem.Colors.textLight)
 
@@ -1346,7 +1361,7 @@ private struct EventReviewRow: View {
                         } label: {
                             Label("View Conflict", systemImage: "eye")
                                 .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.error)
+                                .foregroundStyle(DesignSystem.Colors.error)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 7)
                                 .background(DesignSystem.Colors.error.opacity(0.10))
@@ -1363,12 +1378,12 @@ private struct EventReviewRow: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.primary)
+                    .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
+                    .foregroundStyle(DesignSystem.Colors.primary)
                     .opacity(isHovering ? 1 : 0)
                     .padding(.top, 12)
             }
-            .padding(14)
+            .padding(DesignSystem.Spacing.md)
             .background(rowBackground)
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -1476,33 +1491,33 @@ private struct ConflictSheet: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title)
                 .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
 
             if events.isEmpty {
                 Text("No conflicts found.")
                     .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
             } else {
                 ScrollView {
                     VStack(spacing: 10) {
                         ForEach(events) { e in
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(e.title)
+                                TranslatableText(text: e.title)
                                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                    .foregroundColor(DesignSystem.Colors.textMain)
+                                    .foregroundStyle(DesignSystem.Colors.textMain)
                                     .lineLimit(2)
 
                                 Text("\(DateFormatters.monthDayYearTime.string(from: e.start)) → \(DateFormatters.monthDayYearTime.string(from: e.end))")
                                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                                    .foregroundColor(DesignSystem.Colors.textLight)
+                                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                                 if let loc = e.location, !loc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                                     Text(loc)
                                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                                        .foregroundColor(DesignSystem.Colors.textLight)
+                                        .foregroundStyle(DesignSystem.Colors.textLight)
                                 }
                             }
-                            .padding(12)
+                            .padding(DesignSystem.Spacing.md)
                             .background(DesignSystem.Colors.surface)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -1514,7 +1529,7 @@ private struct ConflictSheet: View {
                 }
             }
         }
-        .padding(18)
+        .padding(DesignSystem.Spacing.lg)
         .frame(minWidth: 520, minHeight: 360)
         .background(DesignSystem.Colors.bgMain)
     }

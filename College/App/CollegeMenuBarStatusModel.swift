@@ -34,8 +34,8 @@ final class CollegeMenuBarStatusModel {
     private(set) var catalog: CatalogImportState = .idle
     private(set) var catalogPurge: CatalogPurgeState = .idle
 
-    nonisolated(unsafe) private var importObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var purgeObserver: NSObjectProtocol?
+    @ObservationIgnored private var importObserver: NSObjectProtocol?
+    @ObservationIgnored private var purgeObserver: NSObjectProtocol?
 
     private struct ProgressPayload: Sendable {
         let finished: Bool
@@ -75,6 +75,11 @@ final class CollegeMenuBarStatusModel {
                 NotificationCenter.default.removeObserver(purgeObserver)
             }
         }
+    }
+
+    func resetForTesting() {
+        catalog = .idle
+        catalogPurge = .idle
     }
 
     func startObservingProgressNotifications() {

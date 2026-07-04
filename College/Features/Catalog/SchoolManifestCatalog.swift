@@ -70,6 +70,7 @@ enum SchoolManifestSelection {
             || format == "custom"
             || format == "moderncampus"
             || format == "courseleaf"
+            || format == "coursedog"
     }
 
     static func scraperBackedNames(from schools: [SchoolManifest]) -> [String] {

@@ -1,0 +1,20 @@
+# CollegeTests skipped-test baseline (XCTSkip / XCTSkipUnless)
+# Last updated: 2026-06-09
+#
+# Refresh current count:
+#   rg -n 'XCTSkip|XCTSkipUnless' CollegeTests --glob '*.swift' | wc -l
+#
+# Bump baseline_count only when adding a documented waiver entry below.
+baseline_count=16
+
+# Waivers (file:line — reason)
+# CollegeTests/Support/CollegeTests+LiveNetwork.swift:14 — live network opt-in
+# CollegeTests/Features/Catalog/DSUProgramRequirementsParserTests.swift:80 — missing HTML fixture
+# CollegeTests/Features/Career/CareerResumeTextExtractorTests.swift:12 — local resume fixture
+# CollegeTests/Core/VaultSourceFileMaterializerTests.swift:12,23 — local resume fixture
+# CollegeTests/Features/Catalog/CourseLeafCatalogCatoidMatchingTests.swift:49,54 — Phase 7f rewrite pending
+# CollegeTests/Features/Assistant/QwenJsonWorkerGoldenTests.swift:25 — Qwen worker not installed in CI
+# CollegeTests/Features/Catalog/CatalogIngestFreshnessTests.swift:19 — fixture setup pending
+# CollegeTests/Features/Assistant/AssistantInferenceAvailabilityTests.swift:32 — Qwen worker not installed
+# CollegeTests/Features/Catalog/CourseLeafProgramCoverageTests.swift:54 — live bulletin check
+# CollegeTests/Features/Catalog/PDFCatalogIngestFixtureTests.swift — integration/fixture guards

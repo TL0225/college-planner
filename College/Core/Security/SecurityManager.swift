@@ -38,9 +38,27 @@ final class SecurityManager: ObservableObject {
 
     private var ongoingUnlockTask: Task<Bool, Never>? = nil
 
-    var encryptionEnabled: Bool { false } // Forced to false per user request
+    var encryptionEnabled: Bool { false } // ADR 008: disabled for current release train
 
-    private init() {}
+    private init() {
+        alignShipPostureWhenEncryptionDisabled()
+    }
+
+    /// When encryption is off, backups still need a stable key and the UI must not require unlock.
+    func ensureBackupKeyIfNeeded() {
+        alignShipPostureWhenEncryptionDisabled()
+    }
+
+    private func alignShipPostureWhenEncryptionDisabled() {
+        guard !encryptionEnabled else { return }
+        isUnlocked = true
+        guard masterKey == nil else { return }
+        if let key = try? KeychainMasterKey.getOrCreateMasterKey() {
+            masterKey = key
+        } else {
+            masterKey = SymmetricKey(size: .bits256)
+        }
+    }
 
     func setLastUnlockErrorForDisplay(_ message: String?) {
         lastUnlockError = message

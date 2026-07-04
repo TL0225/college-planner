@@ -90,13 +90,28 @@ final class MemoryPressureHandler {
     private func recordMemoryPressureEvent(_ kind: String) {
         lastMemoryPressureEventAt = Date()
         lastMemoryPressureEventKind = kind
+        DiagnosticsEvent.emit(
+            subsystem: .memory,
+            severity: .warning,
+            code: "MEMORY_PRESSURE_WARNING",
+            message: "Memory pressure event: \(kind)."
+        )
     }
 
     private func clearCatalogCaches(reason: String) {
         ModernCampusEngine.clearAllCourseCachesForMemoryPressure()
         WebShortcutCoordinatorPool.pruneToRegisteredShortcuts()
+        // Unload every background shortcut page (keeps the active one); their DOM/JS heaps
+        // are reclaimed and the pages reload from their last URL when revisited.
+        WebShortcutCoordinatorPool.sleepInactiveForMemoryPressure()
+        // Free reclaimable HTTP/disk/memory caches while preserving cookies (LMS logins).
+        WebShortcutCoordinatorPool.purgeTransientWebCaches()
         CatalogRenderedHTMLFetcher.shared.releaseWebViewForMemoryPressure()
         WebScraperService.releaseAllWebViewsForMemoryPressure()
+        Task { await AssistantWebPageCache.shared.evictAllForMemoryPressure() }
+        TranslationCache.shared.evictAll()
+        VaultThumbnailCache.shared.evictAll()
+        FaviconStore.shared.evictMemoryCache()
         DebugLogger.shared.log(
             "MemoryPressureHandler: cleared catalog course caches (\(reason))",
             category: .system,

@@ -21,7 +21,6 @@ final class CalendarWriteRepositoryTests: PersistenceTestCase {
             ctx.delete(task)
         }
         try ctx.save()
-        ProfilePlannerSyncBridge.resetSyncTokenForTesting()
     }
 
     func testUpsertAndDeleteCalendarEvent() throws {

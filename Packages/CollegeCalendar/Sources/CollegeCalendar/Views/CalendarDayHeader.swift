@@ -78,7 +78,7 @@ struct CalendarDayHeader: View {
         if isCurrentDay {
             Text("\(dayNumber)")
                 .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
                 .background(Color.accentColor)
                 .clipShape(Circle())
@@ -86,7 +86,7 @@ struct CalendarDayHeader: View {
         } else {
             Text("\(dayNumber)")
                 .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                .foregroundColor(eventsEmpty ? Color.secondary.opacity(0.55) : Color.primary.opacity(0.8))
+                .foregroundStyle(eventsEmpty ? Color.secondary.opacity(0.55) : Color.primary.opacity(0.8))
                 .frame(width: 24, height: 24)
                 .background(isHovered ? Color.primary.opacity(0.08) : Color.clear)
                 .clipShape(Circle())

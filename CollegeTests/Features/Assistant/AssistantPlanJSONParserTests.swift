@@ -1,69 +1,78 @@
 // AssistantPlanJSONParserTests.swift
-// Feature: Assistant
-// Purpose: Assistant module — AssistantPlanJSONParserTests.
-// Data: CollegePersistence / repositories when applicable.
-
-import XCTest
+import Foundation
+import Testing
 @testable import College
 
-final class AssistantPlanJSONParserTests: XCTestCase {
+@Suite("Assistant Plan JSON Parser")
+struct AssistantPlanJSONParserTests {
 
-    func testParseReplyAcceptsFencesAndMessageAlias() {
+    @Test("Parse reply accepts fences and message alias")
+    func parseReplyAcceptsFencesAndMessageAlias() {
         let raw = """
         Here you go:
         ```json
         {"message": "Hello from alias."}
         ```
         """
-        XCTAssertEqual(AssistantPlanJSONParser.parseReply(from: raw), "Hello from alias.")
+        #expect(AssistantPlanJSONParser.parseReply(from: raw) == "Hello from alias.")
     }
 
-    func testParseReplyExtraKeys() {
+    @Test("Parse reply extra keys")
+    func parseReplyExtraKeys() {
         let raw = #"{"reply":"ok","tool":"ignored","note":"x"}"#
-        XCTAssertEqual(AssistantPlanJSONParser.parseReply(from: raw), "ok")
+        #expect(AssistantPlanJSONParser.parseReply(from: raw) == "ok")
     }
 
-    func testParseReplyEmptyObjectReturnsNil() {
-        XCTAssertNil(AssistantPlanJSONParser.parseReply(from: "{}"))
+    @Test("Parse reply empty object returns nil")
+    func parseReplyEmptyObjectReturnsNil() {
+        #expect(AssistantPlanJSONParser.parseReply(from: "{}") == nil)
     }
 
-    func testParseActionToolNameWithoutAction() {
+    @Test("Parse action tool name without action")
+    func parseActionToolNameWithoutAction() {
         let raw = #"{"toolName": "getStudentProfile", "arguments": {}}"#
         let allowed: Set<String> = ["getStudentProfile"]
         guard case .toolCall(let env)? = AssistantPlanJSONParser.parseAction(from: raw, allowedToolNames: allowed) else {
-            return XCTFail("expected tool call")
+            Issue.record("expected tool call")
+            return
         }
-        XCTAssertEqual(env.tool, "getStudentProfile")
-        XCTAssertTrue(env.arguments.isEmpty)
+        #expect(env.tool == "getStudentProfile")
+        #expect(env.arguments.isEmpty)
     }
 
-    func testParseActionFinalAnswerCaseInsensitive() {
+    @Test("Parse action final answer case insensitive")
+    func parseActionFinalAnswerCaseInsensitive() {
         let raw = #"{"action": "FinalAnswer", "reply": "Done."}"#
         guard case .finalAnswer(let text)? = AssistantPlanJSONParser.parseAction(from: raw, allowedToolNames: []) else {
-            return XCTFail("expected final answer")
+            Issue.record("expected final answer")
+            return
         }
-        XCTAssertEqual(text, "Done.")
+        #expect(text == "Done.")
     }
 
-    func testParseActionRejectsUnknownToolWhenAllowlisted() {
+    @Test("Parse action rejects unknown tool when allowlisted")
+    func parseActionRejectsUnknownToolWhenAllowlisted() {
         let raw = #"{"action":"tool_call","tool":"fakeTool","arguments":{}}"#
-        XCTAssertNil(AssistantPlanJSONParser.parseAction(from: raw, allowedToolNames: ["getStudentProfile"]))
+        #expect(AssistantPlanJSONParser.parseAction(from: raw, allowedToolNames: ["getStudentProfile"]) == nil)
     }
 
-    func testParseActionArgumentsAsJSONString() {
+    @Test("Parse action arguments as JSON string")
+    func parseActionArgumentsAsJSONString() {
         let raw = #"""
         {"action":"tool_call","tool":"getStudentProfile","arguments":"{\"compact\":true}"}
         """#
         let allowed: Set<String> = ["getStudentProfile"]
         guard case .toolCall(let env)? = AssistantPlanJSONParser.parseAction(from: raw, allowedToolNames: allowed) else {
-            return XCTFail("expected tool call")
+            Issue.record("expected tool call")
+            return
         }
-        XCTAssertEqual(env.arguments["compact"]?.boolValue, true)
+        #expect(env.arguments["compact"]?.boolValue == true)
     }
 
-    func testBoundedRawStringTruncatesExtremelyLongInput() {
+    @Test("Bounded raw string truncates extremely long input")
+    func boundedRawStringTruncatesExtremelyLongInput() {
         let huge = String(repeating: "a", count: AssistantJSONRobustnessSettings.maxRawCharactersForJSONParse + 50)
         let bounded = AssistantPlanJSONParser.boundedRawString(huge)
-        XCTAssertEqual(bounded.count, AssistantJSONRobustnessSettings.maxRawCharactersForJSONParse)
+        #expect(bounded.count == AssistantJSONRobustnessSettings.maxRawCharactersForJSONParse)
     }
 }

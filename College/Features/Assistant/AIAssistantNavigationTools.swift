@@ -9,7 +9,7 @@ import Foundation
 struct NavigateToPageTool: AIAssistantTool {
     let descriptor = AssistantToolDescriptor(
         name: "navigateToPage",
-        description: "Navigate the main app sidebar to a page (degree, academics, calendar, career, documents, profile, assistant). Brightspace is not available via this tool.",
+        description: "Navigate the main app sidebar to a page (degree, academics, calendar, career, documents, profile, assistant). The Learning Management System tab is not available via this tool.",
         allowedPersonas: [.academicAdvisor, .financialAdvisor],
         mode: .read,
         requiresConfirmation: false,
@@ -27,8 +27,23 @@ struct NavigateToPageTool: AIAssistantTool {
               let page = AppPage.fromAssistantNavigationToken(raw) else {
             throw AssistantToolExecutionError.invalidArguments("page is required")
         }
-        if page == .brightspace {
-            throw AssistantToolExecutionError.invalidArguments("Use the Brightspace item in the sidebar for LMS access.")
+        if page == .lms {
+            throw AssistantToolExecutionError.invalidArguments("Use the Learning Management System item in the sidebar for LMS access.")
+        }
+        if page == .settings {
+            let opened = AskCollegeCoordinator.openSettingsSection(.app)
+            return AssistantToolResultEnvelope(
+                tool: descriptor.name,
+                ok: true,
+                result: [
+                    "page": .string(page.rawValue),
+                    "navigated": .bool(opened),
+                    "askCollegeSessionID": context.askCollegeSessionID.map { .string($0.uuidString) } ?? .null,
+                ],
+                source: descriptor.sourceLabel,
+                summary: opened ? "Opened Settings." : "Queued Settings — tap Go when ready.",
+                errorMessage: nil
+            )
         }
         let navigated = context.navigate?(page) ?? false
         let payload: [String: AssistantJSONValue] = [
@@ -99,7 +114,7 @@ extension AppPage {
         case "profile": return .profile
         case "settings": return .settings
         case "documents", "vault": return .documents
-        case "brightspace": return .brightspace
+        case "brightspace": return .lms
         default: return AppPage(rawValue: raw)
         }
     }

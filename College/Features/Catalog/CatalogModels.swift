@@ -15,6 +15,8 @@ struct SchoolManifest: Codable, Identifiable {
     let opeID: String?
     let profileURL: String
     let catalogURL: String?  // Direct URL to school's catalog website
+    let academicCalendarURL: String?
+    let timeZoneID: String?
     let countryCode: String?
     let stateCode: String?
     let officialWebsiteURL: String?
@@ -25,7 +27,20 @@ struct SchoolManifest: Codable, Identifiable {
     let lastUpdated: Date
     let coursesCount: Int
     let verified: Bool
-    
+
+    // MARK: Transfer Database (schema 1.4) — all optional / backward compatible.
+
+    /// Whether an aggregator (e.g. ASSIST.org) covers this institution.
+    let transferAggregatorSupported: Bool?
+    /// Aggregator institution identifier (e.g. ASSIST institution id).
+    let assistInstitutionID: String?
+    /// Base URL for a TES (Transfer Evaluation System) public-view dataset/page.
+    let tesPublicViewURL: String?
+    /// Base URL for a Banner transfer-articulation dataset/page.
+    let bannerArticulationBaseURL: String?
+    /// Banner generation in use (8 or 9) when `bannerArticulationBaseURL` is set.
+    let bannerGeneration: Int?
+
     enum CodingKeys: String, CodingKey {
         case id, name
         case shortName = "short_name"
@@ -33,6 +48,8 @@ struct SchoolManifest: Codable, Identifiable {
         case opeID = "ope_id"
         case profileURL = "profile_url"
         case catalogURL = "catalog_url"
+        case academicCalendarURL = "academic_calendar_url"
+        case timeZoneID = "time_zone_id"
         case countryCode = "country_code"
         case stateCode = "state_code"
         case officialWebsiteURL = "official_website_url"
@@ -43,6 +60,91 @@ struct SchoolManifest: Codable, Identifiable {
         case lastUpdated = "last_updated"
         case coursesCount = "courses_count"
         case verified
+        case transferAggregatorSupported = "transfer_aggregator_supported"
+        case assistInstitutionID = "assist_institution_id"
+        case tesPublicViewURL = "tes_public_view_url"
+        case bannerArticulationBaseURL = "banner_articulation_base_url"
+        case bannerGeneration = "banner_generation"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        shortName = try c.decodeIfPresent(String.self, forKey: .shortName)
+        unitID = try c.decodeIfPresent(String.self, forKey: .unitID)
+        opeID = try c.decodeIfPresent(String.self, forKey: .opeID)
+        profileURL = (try? c.decode(String.self, forKey: .profileURL)) ?? ""
+        catalogURL = try c.decodeIfPresent(String.self, forKey: .catalogURL)
+        academicCalendarURL = try c.decodeIfPresent(String.self, forKey: .academicCalendarURL)
+        timeZoneID = try c.decodeIfPresent(String.self, forKey: .timeZoneID)
+        countryCode = try c.decodeIfPresent(String.self, forKey: .countryCode)
+        stateCode = try c.decodeIfPresent(String.self, forKey: .stateCode)
+        officialWebsiteURL = try c.decodeIfPresent(String.self, forKey: .officialWebsiteURL)
+        financialAidURL = try c.decodeIfPresent(String.self, forKey: .financialAidURL)
+        registrarURL = try c.decodeIfPresent(String.self, forKey: .registrarURL)
+        stateAidAgencyURL = try c.decodeIfPresent(String.self, forKey: .stateAidAgencyURL)
+        catalogFormat = (try? c.decode(String.self, forKey: .catalogFormat)) ?? "custom"
+        lastUpdated = (try? c.decode(Date.self, forKey: .lastUpdated)) ?? .distantPast
+        coursesCount = (try? c.decode(Int.self, forKey: .coursesCount)) ?? 0
+        verified = (try? c.decode(Bool.self, forKey: .verified)) ?? false
+        transferAggregatorSupported = try c.decodeIfPresent(Bool.self, forKey: .transferAggregatorSupported)
+        assistInstitutionID = try c.decodeIfPresent(String.self, forKey: .assistInstitutionID)
+        tesPublicViewURL = try c.decodeIfPresent(String.self, forKey: .tesPublicViewURL)
+        bannerArticulationBaseURL = try c.decodeIfPresent(String.self, forKey: .bannerArticulationBaseURL)
+        bannerGeneration = try c.decodeIfPresent(Int.self, forKey: .bannerGeneration)
+    }
+
+    init(
+        id: String,
+        name: String,
+        shortName: String? = nil,
+        unitID: String? = nil,
+        opeID: String? = nil,
+        profileURL: String,
+        catalogURL: String? = nil,
+        academicCalendarURL: String? = nil,
+        timeZoneID: String? = nil,
+        countryCode: String? = nil,
+        stateCode: String? = nil,
+        officialWebsiteURL: String? = nil,
+        financialAidURL: String? = nil,
+        registrarURL: String? = nil,
+        stateAidAgencyURL: String? = nil,
+        catalogFormat: String,
+        lastUpdated: Date,
+        coursesCount: Int,
+        verified: Bool,
+        transferAggregatorSupported: Bool? = nil,
+        assistInstitutionID: String? = nil,
+        tesPublicViewURL: String? = nil,
+        bannerArticulationBaseURL: String? = nil,
+        bannerGeneration: Int? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.shortName = shortName
+        self.unitID = unitID
+        self.opeID = opeID
+        self.profileURL = profileURL
+        self.catalogURL = catalogURL
+        self.academicCalendarURL = academicCalendarURL
+        self.timeZoneID = timeZoneID
+        self.countryCode = countryCode
+        self.stateCode = stateCode
+        self.officialWebsiteURL = officialWebsiteURL
+        self.financialAidURL = financialAidURL
+        self.registrarURL = registrarURL
+        self.stateAidAgencyURL = stateAidAgencyURL
+        self.catalogFormat = catalogFormat
+        self.lastUpdated = lastUpdated
+        self.coursesCount = coursesCount
+        self.verified = verified
+        self.transferAggregatorSupported = transferAggregatorSupported
+        self.assistInstitutionID = assistInstitutionID
+        self.tesPublicViewURL = tesPublicViewURL
+        self.bannerArticulationBaseURL = bannerArticulationBaseURL
+        self.bannerGeneration = bannerGeneration
     }
 }
 

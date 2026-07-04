@@ -1,0 +1,22 @@
+{
+  "personal": {
+    "firstName": "Timothy",
+    "lastName": "Leung",
+    "fullName": "Timothy Leung",
+    "email": "timothy@example.edu",
+    "phone": "5551234567",
+    "address": "New York, NY",
+    "linkedInURL": "https://linkedin.com/in/timothy",
+    "githubURL": "https://github.com/timothy"
+  },
+  "applicationProfile": {
+    "workAuthorization": {
+      "usCitizen": false,
+      "usAuthorized": true,
+      "requiresSponsorshipNow": false,
+      "requiresSponsorshipFuture": true
+    },
+    "allowEEOAutofill": false
+  },
+  "skills": ["Swift"]
+}

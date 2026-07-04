@@ -30,6 +30,18 @@ enum OnboardingPreferenceBridge {
         "Upcoming Assignments",
         "Next Class",
         "GPA Snapshot",
+        "Deadlines",
+        "Career Pipeline",
+        "Career Follow-ups",
+        "Recent Documents",
+        "Academic Calendar",
+        "Quick Actions"
+    ]
+
+    private static let legacyDashboardWidgets: Set<String> = [
+        "Upcoming Assignments",
+        "Next Class",
+        "GPA Snapshot",
         "Deadlines"
     ]
 
@@ -37,7 +49,11 @@ enum OnboardingPreferenceBridge {
         guard let stored, !stored.isEmpty else {
             return defaultDashboardWidgets
         }
-        return Set(stored)
+        let selected = Set(stored)
+        guard selected.isSubset(of: legacyDashboardWidgets) else {
+            return selected
+        }
+        return selected.union(defaultDashboardWidgets.subtracting(legacyDashboardWidgets))
     }
 
     static func shouldOpenBrightspace(from selectedProviders: [String]) -> Bool {
@@ -49,7 +65,7 @@ enum OnboardingPreferenceBridge {
 
     static func preferredConnectDestination(from selectedProviders: [String]) -> AppPage {
         if shouldOpenBrightspace(from: selectedProviders) {
-            return .brightspace
+            return .lms
         }
         return .profile
     }
@@ -70,5 +86,7 @@ enum OnboardingPreferenceBridge {
         for key in keys {
             UserDefaults.standard.removeObject(forKey: key)
         }
+        UserDefaults.standard.removeObject(forKey: LMSPortalConfiguration.activeProviderKey)
+        UserDefaults.standard.set(false, forKey: LMSStorageKeys.pendingLoadPortalOnNextAppear)
     }
 }

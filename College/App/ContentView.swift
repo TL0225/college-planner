@@ -19,8 +19,8 @@ import AppKit
 
 struct ContentView: View {
     @Environment(AppContainer.self) private var appContainer
-    private var brightspaceCoordinator: BrightspaceWebCoordinator { appContainer.brightspaceCoordinator }
-    private var coordinator: BrightspaceWebCoordinator { appContainer.brightspaceCoordinator }
+    private var lmsCoordinator: LMSWebCoordinator { appContainer.lmsCoordinator }
+    private var coordinator: LMSWebCoordinator { appContainer.lmsCoordinator }
     private var persistence: CollegePersistence { appContainer.persistence }
     private var collegePersistence: CollegePersistence { appContainer.persistence }
     private var appNotifications: AppNotificationCenter { appContainer.appNotifications }
@@ -28,17 +28,21 @@ struct ContentView: View {
     private var calendarManager: CalendarIntegrationManager { appContainer.calendarManager }
     private var locationPermissionService: LocationPermissionService { appContainer.locationPermissionService }
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.undoManager) private var environmentUndoManager
     @AppStorage("ui.reduceMotion") private var appReduceMotion: Bool = false
-    @AppStorage("ui.enableBackgroundExtensionEffect") private var enableBackgroundExtensionEffect: Bool = true
-    @AppStorage("onboarding.catalogSyncInFlight.v1") private var onboardingCatalogSyncInFlight = false
-    private var menuBarCatalogStatus = CollegeMenuBarStatusModel.shared
 
     @AppStorage("appAppearance") private var appAppearanceRaw: String = AppAppearance.system.rawValue
 
+    @SceneStorage("app.activePage") private var sceneActivePageRaw = AppPage.degree.rawValue
     @State private var activePage: AppPage = .degree
     @State private var previousActivePage: AppPage = .degree
     @State private var pendingLMSConnectProviders: [String] = []
+    @State private var pendingTermDatesImport = false
+    @State private var isImportingTermDates = false
+    @State private var termDatesImportStatus: AcademicCalendarImportStatus?
+    @State private var termDatesImportDegraded = false
 
     /// Prevents heavy view construction on the *first* render after unlock.
     /// This avoids the common "post-auth white window" stall when views do expensive work during init/body.
@@ -51,17 +55,21 @@ struct ContentView: View {
 
     @State private var mainContentDidLayout: Bool = false
     @State private var mainContentDidReportReady: Bool = false
-    @State private var navigationSplitViewVisibility: NavigationSplitViewVisibility = .all
     @State private var bridgeDismissTask: Task<Void, Never>? = nil
     @State private var isAskCollegePresented = false
     @State private var askCollegeSessionID = UUID()
     @State private var catalogImportCoordinator = CatalogImportCoordinator()
     @State private var askCollegeRestorePage: AppPage?
     @State private var isCommandPalettePresented = false
+    @State private var didSeedCrossLaunchPage = false
+    @FocusState private var isShellSearchFocused: Bool
+    @State private var isPrivacyOverviewPresented = false
+    @State private var isDiagnosticsPresented = false
     @State private var addSemesterPlan: PlannerPlan?
     @State private var toastHost = AppToastHost.shared
 
     @State private var hostWindow: NSWindow? = nil
+    @State private var mainSidebarColumnWidth: CGFloat = SidebarColumnLayout.fixedWidth
     @State private var lastWindowRefreshAt: Date = .distantPast
     @State private var hasPrimedInitialWindowLayout: Bool = false
     @Namespace private var calendarEditorZoom
@@ -78,7 +86,124 @@ struct ContentView: View {
     }
 
     private var motionReduced: Bool {
-        reduceMotion || appReduceMotion
+        CollegeReduceMotionGate.isReduced(accessibilityReduceMotion: reduceMotion, appReduceMotion: appReduceMotion)
+    }
+
+    private var calendarTaskSheetPresented: Binding<Bool> {
+        Binding(
+            get: {
+                guard let modal = appContainer.modalCoordinator.activeModal else { return false }
+                switch modal {
+                case .addTask, .editTask:
+                    return true
+                default:
+                    return false
+                }
+            },
+            set: { isPresented in
+                guard !isPresented else { return }
+                switch appContainer.modalCoordinator.activeModal {
+                case .addTask, .editTask:
+                    appContainer.modalCoordinator.activeModal = nil
+                default:
+                    break
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var calendarTaskSheetContent: some View {
+        switch appContainer.modalCoordinator.activeModal {
+        case .addTask(let semesterID, let prefillCourseID):
+            let repo = appContainer.persistence.profileRepository
+            let prefillCourse = prefillCourseID.flatMap { try? repo.fetchCourse(id: $0) }
+            let semesterFromID = semesterID.flatMap { appContainer.persistence.semester(with: $0) }
+            let effectiveSemester = semesterFromID ?? prefillCourse?.semester
+            AddTaskOverlay(
+                isPresented: calendarTaskSheetPresented,
+                semester: effectiveSemester,
+                taskToEdit: nil,
+                prefillCourseID: prefillCourseID,
+                presentationStyle: .anchoredPanel
+            )
+        case .editTask(let taskID):
+            let task = try? appContainer.persistence.calendarRepository.fetchPlannerTask(id: taskID)
+            AddTaskOverlay(
+                isPresented: calendarTaskSheetPresented,
+                semester: task?.semester,
+                taskToEdit: task,
+                presentationStyle: .anchoredPanel
+            )
+        default:
+            EmptyView()
+        }
+    }
+
+    private var editCourseSheetPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .editCourse = appContainer.modalCoordinator.activeModal { return true }
+                return false
+            },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if case .editCourse = appContainer.modalCoordinator.activeModal {
+                    appContainer.modalCoordinator.activeModal = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var editCourseSheetContent: some View {
+        if case .editCourse(let selection) = appContainer.modalCoordinator.activeModal {
+            EditCourseDetailsView(
+                courseCode: selection.courseCode,
+                defaultCourseName: selection.defaultCourseName,
+                defaultCreditsText: selection.defaultCreditsText,
+                onClose: { appContainer.modalCoordinator.activeModal = nil }
+            )
+        }
+    }
+
+    private var courseDashboardTaskSheetPresented: Binding<Bool> {
+        Binding(
+            get: { appContainer.modalCoordinator.courseDashboardTaskOverlay != nil },
+            set: { isPresented in
+                if !isPresented {
+                    appContainer.modalCoordinator.courseDashboardTaskOverlay = nil
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var courseDashboardTaskSheetContent: some View {
+        if let overlayKind = appContainer.modalCoordinator.courseDashboardTaskOverlay {
+            switch overlayKind {
+            case .add(let semesterID, let prefillCourseID):
+                let repo = appContainer.persistence.profileRepository
+                let prefillCourse = prefillCourseID.flatMap { try? repo.fetchCourse(id: $0) }
+                let semesterFromID = semesterID.flatMap { appContainer.persistence.semester(with: $0) }
+                let effectiveSemester = semesterFromID ?? prefillCourse?.semester
+                AddTaskOverlay(
+                    isPresented: courseDashboardTaskSheetPresented,
+                    semester: effectiveSemester,
+                    taskToEdit: nil,
+                    prefillCourseID: prefillCourseID,
+                    presentationStyle: .anchoredPanel
+                )
+            case .edit(let taskID):
+                let task = try? appContainer.persistence.calendarRepository.fetchPlannerTask(id: taskID)
+                AddTaskOverlay(
+                    isPresented: courseDashboardTaskSheetPresented,
+                    semester: task?.semester,
+                    taskToEdit: task,
+                    presentationStyle: .anchoredPanel
+                )
+            }
+        }
     }
 
     private var addSemesterSheetPresented: Binding<Bool> {
@@ -123,17 +248,16 @@ struct ContentView: View {
 
     @ViewBuilder
     private var modalOverlays: some View {
-        ModalOverlayRouter(coordinator: appContainer.modalCoordinator, activePage: $activePage)
-        CalendarModalHost()
+        ModalOverlayRouter(coordinator: appContainer.modalCoordinator)
     }
 
-    /// Heavy tabs mounted on first visit (avoids startup crash / stall from Settings + Assistant init).
-    private static let lazyPreservedShellPages: [AppPage] = [.assistant, .settings]
+    /// Heavy tabs mounted on first visit (avoids startup crash / stall from Assistant init).
+    private static let lazyPreservedShellPages: [AppPage] = [.assistant]
 
     /// Primary sidebar destinations (only the active page is mounted at a time).
     private static let eagerPreservedShellPages: [AppPage] = {
         var pages: [AppPage] = [
-            .degree, .academics, .calendar, .career, .brightspace, .documents, .profile
+            .degree, .academics, .transferDatabase, .calendar, .career, .lms, .documents, .profile
         ]
         #if DEBUG
         pages.append(.debug)
@@ -149,6 +273,9 @@ struct ContentView: View {
                 activePage: $activePage,
                 isInspectorPresented: $isAcademicsInspectorPresented
             )
+
+        case .transferDatabase:
+            TransferDatabaseView(activePage: $activePage)
 
         case .calendar:
             CalendarView(
@@ -169,14 +296,11 @@ struct ContentView: View {
         case .career:
             CareerWorkspaceView()
 
-        case .brightspace:
-            BrightspaceView(activePage: $activePage, isTabVisible: isTabVisible)
+        case .lms:
+            LMSView(activePage: $activePage, isTabVisible: isTabVisible)
 
         case .degree:
-            OverviewView(
-                activePage: $activePage,
-                searchText: toolbarSearchText
-            )
+            OverviewView(activePage: $activePage)
 
         case .profile:
             ProfileView(activePage: $activePage)
@@ -191,7 +315,7 @@ struct ContentView: View {
             EmptyView()
 
         case .settings:
-            SettingsView(activePage: $activePage)
+            EmptyView()
 
         #if DEBUG
         case .debug:
@@ -206,6 +330,10 @@ struct ContentView: View {
     private var preservedMainPagesLayer: some View {
         ZStack(alignment: .topLeading) {
             activeShellPageContent
+                // Distinct identity per page forces the NavigationSplitView detail
+                // subtree to rebuild on navigation. Without it, the detail silently
+                // fails to update on some selection changes (FB/known SwiftUI bug),
+                // which left Overview and Documents stuck on the prior page.
                 .id(activePage)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -269,27 +397,52 @@ struct ContentView: View {
 
     @ViewBuilder
     private var mainNavigationSplitView: some View {
-        NavigationSplitView(columnVisibility: $navigationSplitViewVisibility) {
-            SidebarView(activePage: $activePage)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 300)
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            SidebarView(activePage: $activePage, columnWidth: mainSidebarColumnWidth)
+                .navigationSplitViewColumnWidth(
+                    min: mainSidebarColumnWidth,
+                    ideal: mainSidebarColumnWidth,
+                    max: mainSidebarColumnWidth
+                )
                 .background(.clear)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Sidebar navigation")
         } detail: {
             mainNavigationSplitDetail
                 .navigationTitle(mainNavigationSplitTitle)
+                .navigationSubtitle(mainNavigationSplitSubtitle)
                 .toolbarTitleDisplayMode(.inline)
-                .navigationBarBackButtonHidden(true)
                 .toolbar {
                     MainWindowToolbar(
                         activePage: activePage,
-                        academicsInspectorPresented: $isAcademicsInspectorPresented
+                        academicsInspectorPresented: $isAcademicsInspectorPresented,
+                        documentsSearchText: $toolbarSearchText
                     )
                 }
-                .toolbarBackground(.hidden, for: .windowToolbar)
+                .modifier(
+                    ShellToolbarSearchModifier(
+                        activePage: activePage,
+                        searchText: $toolbarSearchText,
+                        isSearchFocused: $isShellSearchFocused,
+                        calendarScene: appContainer.calendarScene
+                    )
+                )
                 .focusedSceneValue(\.activePage, activePage)
-                .modifier(PortalWindowSearchModifier(activePage: activePage, searchText: $toolbarSearchText))
         }
         .navigationSplitViewStyle(.prominentDetail)
-        .background(SplitViewAutosaveNameBridge(autosaveName: AutosaveNames.mainSidebarSplit))
+        .background(
+            SplitViewAutosaveNameBridge(
+                autosaveName: AutosaveNames.mainSidebarSplit,
+                resolvedColumnWidth: $mainSidebarColumnWidth
+            )
+        )
+        .onReceive(
+            NotificationCenter.default.publisher(for: MainSidebarSplitAutosave.columnWidthDidResolveNotification)
+        ) { notification in
+            guard let width = notification.userInfo?["width"] as? CGFloat else { return }
+            guard abs(mainSidebarColumnWidth - width) > 0.5 else { return }
+            mainSidebarColumnWidth = width
+        }
     }
 
     private var mainNavigationShellPlaceholder: some View {
@@ -305,8 +458,6 @@ struct ContentView: View {
     /// macOS window toolbar title (single source — no duplicate in-content page headers).
     private var mainNavigationSplitTitle: String {
         switch activePage {
-        case .settings:
-            return ""
         case .webShortcut:
             let title = appContainer.webPortalScene.title.trimmingCharacters(in: .whitespacesAndNewlines)
             return title.isEmpty ? activePage.windowChromeTitle : title
@@ -314,6 +465,18 @@ struct ContentView: View {
             return activePage.windowChromeTitle
         }
     }
+
+    /// Native window subtitle. While a course page is open on Academics, the open course
+    /// code is shown as the system subtitle (e.g. title "Academics", subtitle "INFA 754")
+    /// instead of a custom toolbar breadcrumb.
+    private var mainNavigationSplitSubtitle: String {
+        guard activePage == .academics,
+              case let .courseDashboard(courseCode, _, _, _) = appContainer.modalCoordinator.activeModal
+        else { return "" }
+        return courseCode.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private let bannerStackTopPadding: CGFloat = 10
 
     @ViewBuilder
     private var mainNavigationSplitDetail: some View {
@@ -330,18 +493,31 @@ struct ContentView: View {
                         dismissPendingLMSConnectPrompt()
                     }
                 )
-                .padding(.top, onboardingCatalogSyncInFlight ? 62 : 10)
+                .padding(.top, bannerStackTopPadding)
                 .padding(.horizontal, 14)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .zIndex(6)
             }
 
-            if onboardingCatalogSyncInFlight || menuBarCatalogStatus.isCatalogImporting {
-                BackgroundCatalogSyncBanner(reduceMotion: motionReduced)
-                    .padding(.top, 10)
-                    .padding(.horizontal, 14)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(5)
+            if pendingTermDatesImport {
+                PendingTermDatesImportBanner(
+                    isImporting: isImportingTermDates,
+                    importStatus: termDatesImportStatus,
+                    isDegradedProfile: termDatesImportDegraded,
+                    onImportNow: {
+                        Task { await importPendingTermDates() }
+                    },
+                    onOpenSettings: {
+                        openTermDatesSettings()
+                    },
+                    onDismiss: {
+                        dismissPendingTermDatesImportPrompt()
+                    }
+                )
+                .padding(.top, bannerStackTopPadding + (pendingLMSConnectProviders.isEmpty ? 0 : 54))
+                .padding(.horizontal, 14)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(6)
             }
 
             if case let .courseDashboard(courseCode, defaultCourseName, defaultCreditsText, courseID) = appContainer.modalCoordinator.activeModal {
@@ -361,14 +537,17 @@ struct ContentView: View {
                 .zIndex(20)
             }
         }
-        .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: onboardingCatalogSyncInFlight)
-        .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: menuBarCatalogStatus.isCatalogImporting)
         .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: pendingLMSConnectProviders)
+        .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: pendingTermDatesImport)
         .animation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced), value: appContainer.modalCoordinator.activeModal)
         .background(MainContentRenderSignal())
         // Force a full rebuild of the main content on each unlock.
         .id(unlockTransitionToken)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Main content")
+        .accessibilityIdentifier("shell.mainContent")
+        .shellDynamicTypeReadable()
         .onAppear {
             logger.info("Showing main content (activePage=\(String(describing: activePage)))")
             #if DEBUG
@@ -388,7 +567,93 @@ struct ContentView: View {
         .opacity(1)
         .allowsHitTesting(true)
         .onChange(of: activePage) { oldPage, newPage in
+            sceneActivePageRaw = newPage.rawValue
             handleActivePageChanged(from: oldPage, to: newPage)
+            ProductAnalytics.track(.pageVisited, properties: ["page": newPage.rawValue])
+        }
+        .onAppear {
+            seedActivePageFromPersistenceIfNeeded()
+        }
+    }
+
+    private func seedActivePageFromPersistenceIfNeeded() {
+        guard !didSeedCrossLaunchPage else { return }
+        didSeedCrossLaunchPage = true
+        if let persisted = LaunchShellPagePersistence.restoredPage() {
+            setActivePage(persisted, animated: false)
+            sceneActivePageRaw = persisted.rawValue
+        } else if let restored = AppPage(rawValue: sceneActivePageRaw) {
+            activePage = restored
+        }
+    }
+
+    private func toggleInspectorForActivePage() {
+        ShellPerformanceTiming.begin(.inspectorToggle)
+        switch activePage {
+        case .documents:
+            isDocumentsInspectorPresented.toggle()
+        case .academics:
+            appContainer.toolbarDispatcher.dispatch(.academics(.statsSidebarToggle))
+        case .calendar:
+            appContainer.toolbarDispatcher.dispatch(.calendar(.sidebarToggle))
+        case .career:
+            NotificationCenter.default.post(name: .collegeCareerToggleInspector, object: nil)
+        default:
+            break
+        }
+        DispatchQueue.main.async {
+            _ = ShellPerformanceTiming.end(.inspectorToggle, detail: activePage.rawValue)
+        }
+    }
+
+    private func focusShellSearchField() {
+        ShellPerformanceTiming.begin(.searchFocus)
+        switch activePage {
+        case .documents, .calendar, .academics, .career, .transferDatabase:
+            isShellSearchFocused = true
+            DispatchQueue.main.async {
+                _ = ShellPerformanceTiming.end(.searchFocus, detail: activePage.rawValue)
+            }
+        default:
+            isCommandPalettePresented = true
+        }
+    }
+
+    private func handleIncomingFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
+            return false
+        }
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            let url: URL?
+            if let droppedURL = item as? URL {
+                url = droppedURL
+            } else if let data = item as? Data {
+                url = URL(dataRepresentation: data, relativeTo: nil)
+            } else if let string = item as? String {
+                url = URL(fileURLWithPath: string)
+            } else {
+                url = nil
+            }
+            guard let url else { return }
+            Task { @MainActor in
+                routeDroppedFileURL(url)
+            }
+        }
+        return true
+    }
+
+    @MainActor
+    private func routeDroppedFileURL(_ url: URL) {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "portal", "collegebackup":
+            AppFileMenuActions.importBackup(from: url)
+        case CatalogBundle.fileExtension:
+            AppTypedNavigationRouter.importCatalogBundle(at: url)
+        default:
+            if ext == "sqlite", url.lastPathComponent.lowercased().hasSuffix(".collegecatalog.sqlite") {
+                AppTypedNavigationRouter.importCatalogBundle(at: url)
+            }
         }
     }
 
@@ -399,8 +664,10 @@ struct ContentView: View {
         UnlockDebugLog.log("ContentView.task: isUnlocked -> \(securityManager.isUnlocked)")
         #endif
         guard securityManager.encryptionEnabled else {
+            securityManager.ensureBackupKeyIfNeeded()
             allowMainContent = true
             waitingForFirstMainContentAppear = false
+            showMainNavigationShell = true
             return
         }
 
@@ -457,26 +724,41 @@ struct ContentView: View {
         if newPhase == .background {
             LaunchShellPagePersistence.record(activePage)
             LLMMemoryLifecycle.shared.releaseNow()
+            // Unload shortcut web pages (including the active one) while the app is hidden.
+            WebShortcutCoordinatorPool.deactivate()
         }
         guard newPhase == .active else { return }
+        // Re-wake the on-screen shortcut page when the app returns to the foreground.
+        if case .webShortcut(let id) = activePage {
+            WebShortcutCoordinatorPool.activate(id)
+        }
         syncWindowTitleToActivePage()
-        CareerSceneMaintenanceCoordinator.shared.schedule(bootstrapWorkdayBoard: false)
+    }
+
+    private func activateBackgroundServicesForPageIfNeeded(_ page: AppPage) {
+        switch page {
+        case .career, .calendar, .assistant, .transferDatabase:
+            Task { await BackgroundServiceRegistry.shared.sceneActivated(page) }
+        default:
+            break
+        }
     }
 
     @ViewBuilder
     private var contentRootZStack: some View {
-        ZStack {
-            Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        StoreOpenErrorGate(store: appContainer.appDataStore) {
+            ZStack {
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            contentMainLayer
-            contentInactiveDimLayer
-            contentNotificationLayer
-            contentUnlockBridgeLayer
-            contentLockLayer
-            modalOverlays
-            contentToastLayer
-            contentCommandPaletteLayer
+                contentMainLayer
+                contentInactiveDimLayer
+                contentNotificationLayer
+                contentUnlockBridgeLayer
+                contentLockLayer
+                modalOverlays
+                contentToastLayer
+            }
         }
     }
 
@@ -538,20 +820,13 @@ struct ContentView: View {
             .zIndex(600)
     }
 
-    @ViewBuilder
-    private var contentCommandPaletteLayer: some View {
-        if isCommandPalettePresented {
-            ZStack {
-                Color.black.opacity(0.25)
-                    .ignoresSafeArea()
-                AppCommandPalette(isPresented: $isCommandPalettePresented)
-            }
-            .zIndex(700)
-        }
-    }
-
     private func handleActivePageChanged(from oldPage: AppPage, to newPage: AppPage) {
+        if newPage == .lms, !LMSPortalConfiguration.isLMSTabEnabled() {
+            activePage = .degree
+            return
+        }
         previousActivePage = oldPage
+        ShellPerformanceTiming.begin(.pageSwitch)
         let signpostID = OSSignpostID(log: Self.performanceLog)
         os_signpost(
             .begin,
@@ -570,24 +845,30 @@ struct ContentView: View {
                 "to %{public}s",
                 newPage.rawValue
             )
+            _ = ShellPerformanceTiming.end(.pageSwitch, detail: "\(oldPage.rawValue)→\(newPage.rawValue)")
         }
         DebugLogger.shared.nav("Navigate: activePage -> \(newPage.rawValue)")
         WebShortcutCoordinatorPool.pruneToRegisteredShortcuts()
-        if newPage != .degree && newPage != .documents {
+        // Leaving shortcuts for a non-web page: sleep all shortcut pages so none stay
+        // resident off screen. Shortcut→shortcut wake/sleep is handled by the host view.
+        if case .webShortcut = newPage {} else {
+            WebShortcutCoordinatorPool.deactivate()
+        }
+        if newPage != .documents {
             toolbarSearchText = ""
         }
         syncWindowTitleToActivePage()
+        activateBackgroundServicesForPageIfNeeded(newPage)
     }
 
     var body: some View {
-        contentRootWithPresentation
+        TranslationHost {
+            contentRootWithPresentation
+        }
     }
 
     private var contentRootWithWindowChrome: some View {
-        contentRootZStack
-            .onReceive(NotificationCenter.default.publisher(for: .collegeShowCommandPalette)) { _ in
-                isCommandPalettePresented = true
-            }
+        contentRootWithShellMenuHandlers
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear)
             .animation(DesignSystem.Motion.quickOrNone(reduceMotion: motionReduced), value: appContainer.appActivity.shouldApplyInactiveDim)
@@ -602,10 +883,7 @@ struct ContentView: View {
                 guard window != nil, !hasPrimedInitialWindowLayout else { return }
                 hasPrimedInitialWindowLayout = true
                 DispatchQueue.main.async {
-                    refreshHostingWindowIfPossible()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                        refreshHostingWindowIfPossible()
-                    }
+                    NavigationSplitChromeCoordinator.scheduleReapply(to: hostWindow)
                 }
             })
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { notification in
@@ -633,36 +911,84 @@ struct ContentView: View {
             }
     }
 
+    private var contentRootWithShellMenuHandlers: some View {
+        contentRootZStack
+            .onReceive(NotificationCenter.default.publisher(for: .collegeShowCommandPalette)) { _ in
+                isCommandPalettePresented = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .collegeToggleInspector)) { _ in
+                toggleInspectorForActivePage()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .collegeFocusSearch)) { _ in
+                focusShellSearchField()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .collegeShowPrivacyOverview)) { _ in
+                isPrivacyOverviewPresented = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .collegeShowDiagnostics)) { _ in
+                isDiagnosticsPresented = true
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .plannerImportPortalBackupFileURL)) { notification in
+                guard let url = notification.userInfo?["url"] as? URL else { return }
+                AppFileMenuActions.importBackup(from: url)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .collegeOpenDocumentsWindow)) { _ in
+                openWindow(id: "documents-window")
+            }
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                handleIncomingFileDrop(providers)
+            }
+    }
+
     private var contentRootWithPresentation: some View {
+        contentRootWithShellSheets
+    }
+
+    private var contentRootWithLifecycle: some View {
         contentRootWithWindowChrome
             .animation(DesignSystem.Motion.standardOrNone(reduceMotion: motionReduced), value: appContainer.modalCoordinator.activeModal)
-        .task {
-            await revealMainNavigationShellIfNeeded()
-        }
-        .onAppear {
-            if !securityManager.encryptionEnabled {
-                allowMainContent = true
+            .task {
+                await revealMainNavigationShellIfNeeded()
             }
-            DebugLogger.shared.nav("Root ContentView appeared; initial page=\(activePage.rawValue)")
-            hydratePendingLMSConnectPromptIfNeeded()
-            CareerSceneMaintenanceCoordinator.shared.schedule(bootstrapWorkdayBoard: true)
+            .onAppear {
+                seedActivePageFromPersistenceIfNeeded()
+                if !securityManager.encryptionEnabled {
+                    securityManager.ensureBackupKeyIfNeeded()
+                    allowMainContent = true
+                    showMainNavigationShell = true
+                }
+                DebugLogger.shared.nav("Root ContentView appeared; initial page=\(activePage.rawValue)")
+                hydratePendingLMSConnectPromptIfNeeded()
+                hydratePendingTermDatesImportPromptIfNeeded()
+                activateBackgroundServicesForPageIfNeeded(activePage)
 
-            syncWindowTitleToActivePage()
+                syncWindowTitleToActivePage()
 
-            #if DEBUG
-            UnlockDebugLog.log("ContentView: onAppear")
-            #endif
-        }
-        .onDisappear {
-            bridgeDismissTask?.cancel()
-            bridgeDismissTask = nil
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            handleScenePhaseChanged(newPhase)
-        }
+                #if DEBUG
+                UnlockDebugLog.log("ContentView: onAppear")
+                #endif
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .academicCalendarConfigsDidChange)) { _ in
+                AcademicCalendarIntegration.syncAllRegistrations(calendarManager: calendarManager)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .academicCalendarImportPromptScheduled)) { _ in
+                hydratePendingTermDatesImportPromptIfNeeded()
+            }
+            .onDisappear {
+                bridgeDismissTask?.cancel()
+                bridgeDismissTask = nil
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                handleScenePhaseChanged(newPhase)
+            }
+    }
+
+    private var contentRootWithShellSheets: some View {
+        contentRootWithLifecycle
         .sheet(isPresented: $isAskCollegePresented) {
             AIAssistantView(activePage: $activePage)
-            .frame(minWidth: 520, minHeight: 640)
+                .appContainerEnvironment(appContainer)
+            .frame(minWidth: 520, idealWidth: 640, minHeight: 540, idealHeight: 640)
             .onDisappear {
                 if let restore = askCollegeRestorePage {
                     setActivePage(restore, animated: false)
@@ -670,12 +996,40 @@ struct ContentView: View {
                 askCollegeRestorePage = nil
             }
         }
-        .sheet(isPresented: calendarEventSheetPresented) {
-            CalendarEventEditorSheet(zoomNamespace: calendarEditorZoom)
+        .sheet(isPresented: $isCommandPalettePresented) {
+            AppCommandPalette(isPresented: $isCommandPalettePresented)
+                .dismissOnOutsideClickForSheet()
         }
         .sheet(isPresented: addSemesterSheetPresented) {
             addSemesterSheetContent
         }
+        .sheet(isPresented: calendarEventSheetPresented) {
+            CalendarEventEditorSheet(zoomNamespace: calendarEditorZoom)
+                .appContainerEnvironment(appContainer)
+        }
+        .sheet(isPresented: calendarTaskSheetPresented) {
+            calendarTaskSheetContent
+                .frame(minWidth: 520, idealWidth: 640, minHeight: 480, idealHeight: 560)
+        }
+        .sheet(isPresented: editCourseSheetPresented) {
+            editCourseSheetContent
+                .frame(minWidth: 520, idealWidth: 640, minHeight: 480, idealHeight: 640)
+        }
+        .sheet(isPresented: courseDashboardTaskSheetPresented) {
+            courseDashboardTaskSheetContent
+                .frame(minWidth: 520, idealWidth: 640, minHeight: 480, idealHeight: 560)
+        }
+        .sheet(isPresented: $isPrivacyOverviewPresented) {
+            PrivacyOverviewView()
+                .frame(minWidth: 520, minHeight: 420)
+        }
+        #if DEBUG
+        .sheet(isPresented: $isDiagnosticsPresented) {
+            DiagnosticsCenterView()
+                .appContainerEnvironment(appContainer)
+                .frame(minWidth: 720, minHeight: 520)
+        }
+        #endif
         .onReceive(NotificationCenter.default.publisher(for: .askCollegePresent)) { notification in
             askCollegeRestorePage = activePage
             if let raw = notification.userInfo?["restorePageRaw"] as? String,
@@ -684,13 +1038,6 @@ struct ContentView: View {
             }
             askCollegeSessionID = UUID()
             isAskCollegePresented = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .plannerOpenSettingsSection)) { notification in
-            guard let raw = notification.userInfo?["sectionRaw"] as? String,
-                  let section = SettingsNavSection.resolved(fromRaw: raw) else { return }
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            activePage = .settings
-            _ = section
         }
         .onChange(of: appContainer.appActivity.isAppActive) { _, isActive in
             guard isActive else { return }
@@ -706,25 +1053,17 @@ struct ContentView: View {
                 resolveAddSemesterPlanIfNeeded()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .plannerOpenDocumentsForCourse)) { notification in
-            let rawCode = (notification.userInfo?["courseCode"] as? String) ?? ""
-            let normalized = rawCode
-                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
-            guard !normalized.isEmpty else { return }
-            toolbarSearchText = normalized
-            setActivePage(.documents, animated: false)
+        .onReceive(AppTypedNavigationRouter.publisher) { notification in
+            guard let action = AppTypedNavigationRouter.action(from: notification) else { return }
+            ContentViewShellCoordinator.applyNavigation(
+                action: action,
+                setToolbarSearchText: { toolbarSearchText = $0 },
+                openPage: { setActivePage($0, animated: false) },
+                catalogImportCoordinator: catalogImportCoordinator
+            )
         }
-        .onReceive(NotificationCenter.default.publisher(for: .plannerOpenPage)) { notification in
-            guard let raw = notification.userInfo?["pageRaw"] as? String,
-                  let page = AppPage(rawValue: raw)
-            else { return }
-            setActivePage(page, animated: false)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .plannerImportCatalogBundleFileURL)) { notification in
-            guard let url = notification.userInfo?["url"] as? URL else { return }
-            catalogImportCoordinator.handleIncomingFile(url: url)
+        .onAppear {
+            AppUndoCoordinator.shared.connect(environmentUndoManager)
         }
         .catalogBundleImportSheets(coordinator: catalogImportCoordinator)
     }
@@ -761,8 +1100,8 @@ struct ContentView: View {
     @MainActor
     private func configureWindowForFullSizeContent(_ window: NSWindow?) {
         guard let window else { return }
-
         CollegeAppDelegate.applyWindowChrome(to: window)
+        MainWindowFramePolicy.adoptMainShellPlacementIfNeeded(window)
     }
 
     /// Keeps `NSWindow.title` in sync for menu/window proxies; title bar visibility is hidden so this
@@ -774,6 +1113,9 @@ struct ContentView: View {
             ? activePage.windowChromeTitle
             : mainNavigationSplitTitle
         if #available(macOS 26.0, *) {
+            if target?.titleVisibility != .visible {
+                target?.titleVisibility = .visible
+            }
             return
         }
         if target?.titleVisibility != .hidden {
@@ -852,6 +1194,84 @@ struct ContentView: View {
         }
     }
 
+    private func hydratePendingTermDatesImportPromptIfNeeded() {
+        pendingTermDatesImport = AcademicCalendarImportPromptBridge.isPending
+        if let profile = AcademicCalendarProgramProfile.resolve(persistence: collegePersistence) {
+            termDatesImportDegraded = profile.isDegraded
+        }
+        if let schoolID = collegePersistence.getActiveUniversityName().flatMap({ name in
+            SchoolManifestCatalog.bundled().first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame })?.id
+        }) {
+            termDatesImportStatus = AcademicCalendarStore.primaryConfig(for: schoolID)?.importStatus
+        }
+    }
+
+    private func dismissPendingTermDatesImportPrompt() {
+        pendingTermDatesImport = false
+        AcademicCalendarImportPromptBridge.clearPending()
+    }
+
+    private func openTermDatesSettings() {
+        _ = AskCollegeCoordinator.openSettingsSection(.calendar)
+        dismissPendingTermDatesImportPrompt()
+    }
+
+    @MainActor
+    private func importPendingTermDates() async {
+        guard !isImportingTermDates else { return }
+        isImportingTermDates = true
+        defer { isImportingTermDates = false }
+
+        if let output = await AcademicCalendarImportCoordinator.importTermDates(
+            persistence: collegePersistence,
+            calendarManager: calendarManager,
+            writeChanges: true
+        ) {
+            if output.needsHubPicker {
+                _ = AskCollegeCoordinator.openSettingsSection(.calendar)
+                appNotifications.post(
+                    kind: .info,
+                    title: String(localized: "calendar.term_dates.hub_title", defaultValue: "Choose Term Calendar"),
+                    message: String(
+                        localized: "calendar.term_dates.hub_body",
+                        defaultValue: "Your school lists multiple calendars. Pick the one that matches your program in Settings → Calendar."
+                    ),
+                    isDismissible: true,
+                    autoDismissAfter: 10
+                )
+            } else if let error = output.result.error ?? output.config.lastError, !error.isEmpty {
+                appNotifications.post(kind: .error, title: "Term Dates Import Failed", message: error, isDismissible: true)
+            } else if !output.result.parsedEvents.isEmpty {
+                appNotifications.post(
+                    kind: .success,
+                    title: String(localized: "calendar.term_dates.import_success_title", defaultValue: "Term Dates Imported"),
+                    message: String(
+                        format: String(
+                            localized: "calendar.term_dates.import_success_body_fmt",
+                            defaultValue: "Added %d academic calendar events for your active term."
+                        ),
+                        output.result.parsedEvents.count
+                    ),
+                    isDismissible: true,
+                    autoDismissAfter: 8
+                )
+                dismissPendingTermDatesImportPrompt()
+            }
+        } else {
+            _ = AskCollegeCoordinator.openSettingsSection(.calendar)
+            appNotifications.post(
+                kind: .info,
+                title: String(localized: "calendar.term_dates.setup_title", defaultValue: "Set Up Term Dates"),
+                message: String(
+                    localized: "calendar.term_dates.setup_body",
+                    defaultValue: "Add your school calendar page URL in Settings → Calendar to import registration deadlines and breaks."
+                ),
+                isDismissible: true,
+                autoDismissAfter: 10
+            )
+        }
+    }
+
     private func hydratePendingLMSConnectPromptIfNeeded() {
         guard pendingLMSConnectProviders.isEmpty else { return }
         let providers = UserDefaults.standard.stringArray(forKey: OnboardingPreferenceBridge.pendingLMSConnectKey) ?? []
@@ -868,8 +1288,8 @@ struct ContentView: View {
         let destination = OnboardingPreferenceBridge.preferredConnectDestination(from: pendingLMSConnectProviders)
         activePage = destination
 
-        if destination == .brightspace {
-            UserDefaults.standard.set(true, forKey: BrightspaceWebCoordinator.pendingLoadPortalKey)
+        if destination == .lms {
+            UserDefaults.standard.set(true, forKey: LMSWebCoordinator.pendingLoadPortalKey)
         } else {
             let providerList = pendingLMSConnectProviders.joined(separator: ", ")
             let message = providerList.isEmpty
@@ -906,45 +1326,54 @@ private struct ShortcutMissingPlaceholderView: View {
     }
 }
 
-private struct BackgroundCatalogSyncBanner: View {
-    let reduceMotion: Bool
-    private var catalogStatus: CollegeMenuBarStatusModel { CollegeMenuBarStatusModel.shared }
-
-    private var progressSubtitle: String {
-        switch catalogStatus.catalog {
-        case .inProgress(let title, _, _):
-            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty
-                ? String(localized: "catalog.banner.importing", defaultValue: "Your catalog is still importing in the background.")
-                : trimmed
-        case .failed(let message):
-            return message
-        case .succeeded(let summary):
-            return summary
-        case .idle:
-            return String(localized: "catalog.banner.importing", defaultValue: "Your catalog is still importing in the background.")
-        }
-    }
+private struct PendingTermDatesImportBanner: View {
+    let isImporting: Bool
+    let importStatus: AcademicCalendarImportStatus?
+    let isDegradedProfile: Bool
+    let onImportNow: () -> Void
+    let onOpenSettings: () -> Void
+    let onDismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
-            if reduceMotion {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-            } else {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
-                    .symbolEffect(.rotate, options: .repeating, value: catalogStatus.isCatalogImporting ? 1 : 0)
-            }
+            Image(systemName: isImporting ? "hourglass" : "calendar.badge.plus")
+                .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+
             VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "catalog.banner.title", defaultValue: "Catalog Sync In Progress"))
+                Text(AcademicCalendarStatusCopy.bannerTitle(for: importStatus))
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                Text(progressSubtitle)
-                    .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                Text(AcademicCalendarStatusCopy.bannerSubtitle(
+                    status: importStatus,
+                    departmentName: nil,
+                    isDegraded: isDegradedProfile
+                ))
+                .font(DesignSystem.Fonts.main(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                Text(AcademicCalendarStatusCopy.honestyFooter())
+                    .font(DesignSystem.Fonts.main(size: 10, weight: .regular))
+                    .foregroundStyle(.tertiary)
             }
+
             Spacer(minLength: 0)
+
+            Button(String(localized: "calendar.term_dates.prompt_not_now", defaultValue: "Not now")) {
+                onDismiss()
+            }
+            .buttonStyle(.plain)
+
+            Button(String(localized: "calendar.term_dates.prompt_settings", defaultValue: "Settings")) {
+                onOpenSettings()
+            }
+            .buttonStyle(.bordered)
+
+            Button(isImporting
+                ? String(localized: "calendar.term_dates.prompt_importing", defaultValue: "Importing…")
+                : String(localized: "calendar.term_dates.prompt_import", defaultValue: "Import")) {
+                onImportNow()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isImporting)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -953,7 +1382,7 @@ private struct BackgroundCatalogSyncBanner: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.accentColor.opacity(0.28), lineWidth: 1)
         )
-        .help("Catalog data is still being imported from onboarding")
+        .help("Import term dates matched to your program catalog")
     }
 }
 
@@ -1009,38 +1438,39 @@ private struct PendingLMSConnectBanner: View {
 private struct WindowRefreshView: NSViewRepresentable {
     let onResolveWindow: (NSWindow?) -> Void
 
-    final class Coordinator {
-        var lastWindowNumber: Int? = nil
-        var pendingResolvedWindow: NSWindow?
-        var isResolveQueued = false
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    private func resolveWindowIfNeeded(_ window: NSWindow?, coordinator: Coordinator) {
-        let windowNumber = window?.windowNumber
-        guard windowNumber != coordinator.lastWindowNumber else { return }
-        coordinator.lastWindowNumber = windowNumber
-        coordinator.pendingResolvedWindow = window
-        guard !coordinator.isResolveQueued else { return }
-        coordinator.isResolveQueued = true
-        DispatchQueue.main.async {
-            coordinator.isResolveQueued = false
-            let resolvedWindow = coordinator.pendingResolvedWindow
-            onResolveWindow(resolvedWindow)
-        }
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: .zero)
-        resolveWindowIfNeeded(view.window, coordinator: context.coordinator)
+    func makeNSView(context: Context) -> WindowResolveHostView {
+        let view = WindowResolveHostView()
+        view.onResolve = onResolveWindow
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        resolveWindowIfNeeded(nsView.window, coordinator: context.coordinator)
+    func updateNSView(_ nsView: WindowResolveHostView, context: Context) {
+        nsView.onResolve = onResolveWindow
+    }
+}
+
+final class WindowResolveHostView: NSView {
+    var onResolve: ((NSWindow?) -> Void)?
+    private var lastWindowNumber: Int?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        let callback = onResolve
+        DispatchQueue.main.async {
+            callback?(self.window)
+        }
+    }
+
+    func resolveNow() {
+        let resolved = window
+        let number = resolved?.windowNumber
+        guard number != lastWindowNumber else { return }
+        lastWindowNumber = number
+        let callback = onResolve
+        DispatchQueue.main.async {
+            callback?(resolved)
+        }
     }
 }
 
@@ -1055,11 +1485,9 @@ private struct MainContentRenderedPreferenceKey: PreferenceKey {
 
 private struct MainContentRenderSignal: View {
     var body: some View {
-        GeometryReader { _ in
-            Color.clear
-                .preference(key: MainContentRenderedPreferenceKey.self, value: true)
-        }
-        .allowsHitTesting(false)
+        Color.clear
+            .preference(key: MainContentRenderedPreferenceKey.self, value: true)
+            .allowsHitTesting(false)
     }
 }
 
@@ -1070,217 +1498,122 @@ private struct PostUnlockBridgeView: View {
                 .progressViewStyle(CircularProgressViewStyle())
             Text("Unlocking…")
                 .font(DesignSystem.Fonts.main(size: 13, weight: .medium))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(DesignSystem.Colors.bgMain)
     }
 }
 
-private struct ModalOverlayRouter: View {
-    @Environment(AppContainer.self) private var appContainer
-    private var persistence: CollegePersistence { appContainer.persistence }
-    var coordinator: ModalCoordinator
-    @Binding var activePage: AppPage
-    private var collegePersistence: CollegePersistence { appContainer.persistence }
-    private var appNotifications: AppNotificationCenter { appContainer.appNotifications }
-    private var securityManager: SecurityManager { appContainer.securityManager }
-    private var calendarManager: CalendarIntegrationManager { appContainer.calendarManager }
-
-    @ViewBuilder
-    private var courseDashboardTaskLayer: some View {
-        if case .courseDashboard = coordinator.activeModal,
-           let overlayKind = coordinator.courseDashboardTaskOverlay {
-            switch overlayKind {
-            case .add(let semesterID, let prefillCourseID):
-                let repo = collegePersistence.profileRepository
-                let prefillCourse = prefillCourseID.flatMap { try? repo.fetchCourse(id: $0) }
-                let semesterFromID = semesterID.flatMap { collegePersistence.semester(with: $0) }
-                let effectiveSemester = semesterFromID ?? prefillCourse?.semester
-                AddTaskOverlay(
-                    isPresented: Binding(
-                        get: { coordinator.courseDashboardTaskOverlay != nil },
-                        set: { presented in
-                            if !presented { coordinator.courseDashboardTaskOverlay = nil }
-                        }
-                    ),
-                    semester: effectiveSemester,
-                    taskToEdit: nil,
-                    prefillCourseID: prefillCourseID,
-                    presentationStyle: .fullScreenOverlay
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(220)
-            case .edit(let taskID):
-                let task = try? collegePersistence.calendarRepository.fetchPlannerTask(id: taskID)
-                AddTaskOverlay(
-                    isPresented: Binding(
-                        get: { coordinator.courseDashboardTaskOverlay != nil },
-                        set: { presented in
-                            if !presented { coordinator.courseDashboardTaskOverlay = nil }
-                        }
-                    ),
-                    semester: task?.semester,
-                    taskToEdit: task,
-                    presentationStyle: .fullScreenOverlay
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(220)
-            }
-        }
-    }
+private struct StoreOpenErrorGate<Content: View>: View {
+    @ObservedObject var store: AppDataStore
+    @ViewBuilder var content: () -> Content
 
     var body: some View {
         ZStack {
-            Color.clear.allowsHitTesting(false)
-            ZStack {
-            switch coordinator.activeModal {
-            case .addExperience:
-                AddExperienceView(
-                    isPresented: Binding(
-                        get: {
-                            if case .addExperience = coordinator.activeModal { return true }
-                            return false
-                        },
-                        set: { isPresented in if !isPresented { coordinator.activeModal = nil } }
-                    ),
-                    experience: nil
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(100)
-
-            case .editExperience(let experience):
-                AddExperienceView(
-                    isPresented: Binding(
-                        get: {
-                            if case .editExperience = coordinator.activeModal { return true }
-                            return false
-                        },
-                        set: { isPresented in if !isPresented { coordinator.activeModal = nil } }
-                    ),
-                    experience: experience
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(100)
-
-            case .addAchievement:
-                AddAchievementOverlay(
-                    isPresented: Binding(
-                        get: {
-                            if case .addAchievement = coordinator.activeModal { return true }
-                            return false
-                        },
-                        set: { isPresented in if !isPresented { coordinator.activeModal = nil } }
-                    ),
-                    achievement: nil
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(100)
-
-            case .editAchievement(let achievement):
-                AddAchievementOverlay(
-                    isPresented: Binding(
-                        get: {
-                            if case .editAchievement = coordinator.activeModal { return true }
-                            return false
-                        },
-                        set: { isPresented in if !isPresented { coordinator.activeModal = nil } }
-                    ),
-                    achievement: achievement
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                .zIndex(100)
-
-            case .editCourse(let selection):
-                ZStack {
-                    Rectangle()
-                        .fill(Color.black.opacity(0.22))
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            coordinator.activeModal = nil
-                        }
-
-                    EditCourseDetailsView(
-                        courseCode: selection.courseCode,
-                        defaultCourseName: selection.defaultCourseName,
-                        defaultCreditsText: selection.defaultCreditsText,
-                        onClose: { coordinator.activeModal = nil }
-                    )
-                    .transition(.opacity.combined(with: .scale(scale: 0.985)))
-                }
-                .zIndex(200)
-
-            case .addGenEdCourse, .addCatalogCourseGlobal, .addCatalogCourse, .assignRequirementCourse:
-                EmptyView()
-
-            case .addCalendarItem, .editCalendarItem, .addTask, .editTask:
-                EmptyView()
-
-            case .courseDashboard:
-                EmptyView()
-
-            case .addSemester:
-                EmptyView()
-
-            case .none:
-                EmptyView()
-            }
-            courseDashboardTaskLayer
+            content()
+            if let message = store.storeOpenError {
+                StoreOpenErrorView(message: message)
+                    .zIndex(1000)
             }
         }
-        .sheet(isPresented: Binding(
+    }
+}
+
+private struct StoreOpenErrorView: View {
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "externaldrive.badge.exclamationmark")
+                .font(DesignSystem.Fonts.main(size: 40))
+                .foregroundStyle(.secondary)
+            Text("Could Not Open Data Store")
+                .font(.headline)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            Text("Quit and relaunch the app. If the problem persists, restore from a backup or contact support.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .padding(DesignSystem.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(DesignSystem.Colors.bgMain)
+    }
+}
+
+private struct ModalOverlayRouter: View {
+    var coordinator: ModalCoordinator
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .sheet(isPresented: catalogCourseSheetPresented) {
+                catalogCourseSheetContent
+            }
+    }
+
+    private var catalogCourseSheetPresented: Binding<Bool> {
+        Binding(
             get: {
-                if let modal = coordinator.activeModal {
-                    if case .addGenEdCourse = modal { return true }
-                    if case .addCatalogCourseGlobal = modal { return true }
-                    if case .addCatalogCourse = modal { return true }
-                    if case .assignRequirementCourse = modal { return true }
+                guard let modal = coordinator.activeModal else { return false }
+                switch modal {
+                case .addGenEdCourse, .addCatalogCourseGlobal, .addCatalogCourse, .assignRequirementCourse:
+                    return true
+                default:
+                    return false
                 }
-                return false
             },
             set: { isPresented in
-                if !isPresented {
-                    if let modal = coordinator.activeModal {
-                        switch modal {
-                        case .addGenEdCourse, .addCatalogCourseGlobal, .addCatalogCourse, .assignRequirementCourse:
-                            coordinator.activeModal = nil
-                        default: break
-                        }
-                    }
+                guard !isPresented else { return }
+                guard let modal = coordinator.activeModal else { return }
+                switch modal {
+                case .addGenEdCourse, .addCatalogCourseGlobal, .addCatalogCourse, .assignRequirementCourse:
+                    coordinator.activeModal = nil
+                default:
+                    break
                 }
             }
-        )) {
-            if let modal = coordinator.activeModal {
-                switch modal {
-                case .addGenEdCourse:
-                    GenEdAddCourseModal(
-                        targetSemesterID: nil,
-                        tagAsGenEd: true
-                    )
+        )
+    }
+
+    @ViewBuilder
+    private var catalogCourseSheetContent: some View {
+        if let modal = coordinator.activeModal {
+            switch modal {
+            case .addGenEdCourse:
+                GenEdAddCourseModal(
+                    targetSemesterID: nil,
+                    tagAsGenEd: true
+                )
+                .dismissOnOutsideClickForSheet()
+            case .addCatalogCourseGlobal(let tagAsGenEd):
+                GenEdAddCourseModal(
+                    targetSemesterID: nil,
+                    tagAsGenEd: tagAsGenEd
+                )
+                .dismissOnOutsideClickForSheet()
+            case .addCatalogCourse(let semesterID):
+                GenEdAddCourseModal(
+                    targetSemesterID: semesterID,
+                    tagAsGenEd: false
+                )
+                .dismissOnOutsideClickForSheet()
+            case .assignRequirementCourse(let assignment):
+                GenEdAddCourseModal(
+                    targetSemesterID: nil,
+                    tagAsGenEd: false,
+                    fulfillmentAssignment: assignment
+                )
+                .dismissOnOutsideClickForSheet()
+            default:
+                EmptyView()
                     .dismissOnOutsideClickForSheet()
-                case .addCatalogCourseGlobal(let tagAsGenEd):
-                    GenEdAddCourseModal(
-                        targetSemesterID: nil,
-                        tagAsGenEd: tagAsGenEd
-                    )
-                    .dismissOnOutsideClickForSheet()
-                case .addCatalogCourse(let semesterID):
-                    GenEdAddCourseModal(
-                        targetSemesterID: semesterID,
-                        tagAsGenEd: false
-                    )
-                    .dismissOnOutsideClickForSheet()
-                case .assignRequirementCourse(let assignment):
-                    GenEdAddCourseModal(
-                        targetSemesterID: nil,
-                        tagAsGenEd: false,
-                        fulfillmentAssignment: assignment
-                    )
-                    .dismissOnOutsideClickForSheet()
-                default:
-                    EmptyView()
-                        .dismissOnOutsideClickForSheet()
-                }
             }
         }
     }
@@ -1296,29 +1629,7 @@ private struct DeferredShellTabMount<Content: View>: View {
     }
 }
 
-/// Window-toolbar search: system `.searchable` placement on macOS (Liquid Glass).
-private struct PortalWindowSearchModifier: ViewModifier {
-    let activePage: AppPage
-    @Binding var searchText: String
-
-    func body(content: Content) -> some View {
-        switch activePage {
-        case .degree:
-            content.searchable(text: $searchText, placement: .toolbar, prompt: "Search courses")
-        case .documents:
-            content.searchable(
-                text: $searchText,
-                placement: .toolbar,
-                prompt: String(localized: "documents.search.placeholder", defaultValue: "Search local vault")
-            )
-        default:
-            content
-        }
-    }
-}
-
 #Preview {
-    let appContainer = AppContainer.makeMainWindow()
     ContentView()
-        .appContainerEnvironment(appContainer)
+        .appContainerEnvironment(AppContainer.makeMainWindow())
 }

@@ -29,26 +29,33 @@ private struct DismissOnOutsideClickSheetModifier: ViewModifier {
     @Environment(\.dismiss) private var dismiss
 
     @State private var sheetWindow: NSWindow?
-    @State private var localMonitor: Any?
+    @State private var mouseMonitor: Any?
+    @State private var keyMonitor: Any?
 
     func body(content: Content) -> some View {
         content
+            .shellDynamicTypeReadable()
             .background(
                 SheetWindowReader(window: $sheetWindow)
                     .frame(width: 0, height: 0)
             )
             .onAppear {
-                installLocalMonitorIfNeeded()
+                installLocalMonitorsIfNeeded()
             }
             .onDisappear {
                 removeMonitors()
             }
     }
 
-    private func installLocalMonitorIfNeeded() {
-        guard localMonitor == nil else { return }
+    private func installLocalMonitorsIfNeeded() {
+        installMouseMonitorIfNeeded()
+        installEscapeMonitorIfNeeded()
+    }
 
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
+    private func installMouseMonitorIfNeeded() {
+        guard mouseMonitor == nil else { return }
+
+        mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { event in
             guard let sheetWindow else { return event }
 
             // Dismiss only when the click lands outside the visible sheet frame.
@@ -56,6 +63,16 @@ private struct DismissOnOutsideClickSheetModifier: ViewModifier {
                 dismiss()
             }
             return event
+        }
+    }
+
+    private func installEscapeMonitorIfNeeded() {
+        guard keyMonitor == nil else { return }
+
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53 else { return event } // Escape
+            dismiss()
+            return nil
         }
     }
 
@@ -117,9 +134,13 @@ private struct DismissOnOutsideClickSheetModifier: ViewModifier {
     }
 
     private func removeMonitors() {
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
+        if let mouseMonitor {
+            NSEvent.removeMonitor(mouseMonitor)
+            self.mouseMonitor = nil
+        }
+        if let keyMonitor {
+            NSEvent.removeMonitor(keyMonitor)
+            self.keyMonitor = nil
         }
     }
 }

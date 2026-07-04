@@ -429,6 +429,7 @@ enum ScraperError: LocalizedError {
     case scriptExecutionFailed(String)
     case invalidResponse
     case parsingFailed
+    case ingestRejected(String)
     case timeout
     
     var errorDescription: String? {
@@ -445,6 +446,9 @@ enum ScraperError: LocalizedError {
             return "Received invalid response from catalog"
         case .parsingFailed:
             return "Failed to parse course data"
+        case .ingestRejected(let message):
+            let detail = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            return detail.isEmpty ? "Failed to parse course data" : detail
         case .timeout:
             return "Scraping timed out after 30 seconds"
         }

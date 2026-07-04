@@ -41,7 +41,7 @@ struct CalendarEventEditorPopover: View {
                     initialStartDateTime: start,
                     initialEndDateTime: end,
                     eventToEdit: nil,
-                    presentationStyle: .floatingCards,
+                    presentationStyle: .anchoredPanel,
                     onLiveUpdate: liveUpdateHandler
                 )
             case .edit(let eventID):
@@ -53,7 +53,7 @@ struct CalendarEventEditorPopover: View {
                     initialStartDateTime: event?.startDate,
                     initialEndDateTime: event?.endDate,
                     eventToEdit: event,
-                    presentationStyle: .floatingCards,
+                    presentationStyle: .anchoredPanel,
                     onLiveUpdate: liveUpdateHandler
                 )
             case .monthAllDayChoice(let date):
@@ -138,6 +138,6 @@ private struct MonthAllDayChoicePopover: View {
                 Button("Cancel", role: .cancel, action: onCancel)
             }
         }
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
     }
 }

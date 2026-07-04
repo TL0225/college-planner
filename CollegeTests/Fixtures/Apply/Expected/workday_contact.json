@@ -1,0 +1,11 @@
+{
+  "fixture": "workday_contact",
+  "attemptedPayloadKeys": [
+    "personal.firstName",
+    "personal.lastName",
+    "personal.email",
+    "personal.phone",
+    "applicationProfile.workAuthorization.requiresSponsorshipNow"
+  ],
+  "minWriteAttemptCount": 5
+}

@@ -14,6 +14,12 @@ public struct CalendarPlannerTaskSummary: Identifiable, Equatable, Sendable {
         title = task.title
         dueDate = task.dueDate
     }
+
+    public init(id: UUID, title: String, dueDate: Date?) {
+        self.id = id
+        self.title = title
+        self.dueDate = dueDate
+    }
 }
 
 @MainActor

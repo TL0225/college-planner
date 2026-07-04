@@ -18,6 +18,10 @@ extension CatalogRepository {
         let catalogStableID: UUID?
         let provenanceJSON: String?
         let prerequisiteRulesJSON: String?
+        let extractionConfidence: Double?
+        let signalSource: String?
+        let parserVersion: String?
+        let departmentLinkConfidence: Double?
     }
 
     struct DegreeRequirementImportInput: Sendable {
@@ -41,6 +45,12 @@ extension CatalogRepository {
         let requirementsHash: String?
         let catalogStableID: UUID?
         let provenanceJSON: String?
+        let extractionConfidence: Double?
+        let signalSource: String?
+        let parserVersion: String?
+        let programAttachmentConfidence: Double?
+        let requirementPredicateJSON: String?
+        let catalogEditionID: String?
     }
 
     @discardableResult
@@ -128,6 +138,18 @@ extension CatalogRepository {
             if let prerequisiteRulesJSON = input.prerequisiteRulesJSON {
                 course.prerequisiteRulesJSON = prerequisiteRulesJSON
             }
+            if let extractionConfidence = input.extractionConfidence {
+                course.extractionConfidence = extractionConfidence
+            }
+            if let signalSource = input.signalSource {
+                course.signalSource = signalSource
+            }
+            if let parserVersion = input.parserVersion {
+                course.parserVersion = parserVersion
+            }
+            if let departmentLinkConfidence = input.departmentLinkConfidence {
+                course.departmentLinkConfidence = departmentLinkConfidence
+            }
             if let departmentID = input.departmentID,
                let department = try? fetchDepartment(id: departmentID) {
                 course.departmentEntity = department
@@ -203,6 +225,24 @@ extension CatalogRepository {
             }
             if let provenanceJSON = input.provenanceJSON {
                 entity.provenanceJSON = provenanceJSON
+            }
+            if let extractionConfidence = input.extractionConfidence {
+                entity.extractionConfidence = extractionConfidence
+            }
+            if let signalSource = input.signalSource {
+                entity.signalSource = signalSource
+            }
+            if let parserVersion = input.parserVersion {
+                entity.parserVersion = parserVersion
+            }
+            if let programAttachmentConfidence = input.programAttachmentConfidence {
+                entity.programAttachmentConfidence = programAttachmentConfidence
+            }
+            if let requirementPredicateJSON = input.requirementPredicateJSON {
+                entity.requirementPredicateJSON = requirementPredicateJSON
+            }
+            if let catalogEditionID = input.catalogEditionID {
+                entity.catalogEditionID = catalogEditionID
             }
         }
 

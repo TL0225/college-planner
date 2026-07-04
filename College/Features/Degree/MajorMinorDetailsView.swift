@@ -122,7 +122,7 @@ struct MajorMinorDetailsView: View {
                 VStack(spacing: 0) {
                     header
                     contentStack
-                        .padding(24)
+                        .padding(DesignSystem.Spacing.xl)
                 }
                 .background(DesignSystem.Colors.bgMain)
             } else {
@@ -130,7 +130,7 @@ struct MajorMinorDetailsView: View {
                     header
                     ScrollView {
                         contentStack
-                            .padding(24)
+                            .padding(DesignSystem.Spacing.xl)
                     }
                     .background(DesignSystem.Colors.bgMain)
                 }
@@ -472,10 +472,10 @@ struct MajorMinorDetailsView: View {
                 Button(action: onBack) {
                     Image(systemName: "chevron.left")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .frame(width: 36, height: 36)
                         .background(DesignSystem.Colors.surface)
-                        .cornerRadius(12)
+                        .clipShape(.rect(cornerRadius: 12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12)
                                 .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -491,28 +491,28 @@ struct MajorMinorDetailsView: View {
                         .frame(width: 56, height: 56)
                     Image(systemName: "building.2")
                         .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
-                        .foregroundColor(accentColor)
+                        .foregroundStyle(accentColor)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 10) {
                         Text(majorTitle)
                             .font(DesignSystem.Fonts.main(size: 22, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
 
                         Text(badgeText)
                             .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                            .foregroundColor(accentColor)
+                            .foregroundStyle(accentColor)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(accentColor.opacity(0.15))
-                            .cornerRadius(10)
+                            .clipShape(.rect(cornerRadius: 10))
                     }
 
                     if !majorSubtitle.isEmpty {
                         Text(majorSubtitle)
                             .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                     }
                 }
             }
@@ -525,9 +525,9 @@ struct MajorMinorDetailsView: View {
                         .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .background(DesignSystem.Colors.surface)
-                        .cornerRadius(14)
+                        .clipShape(.rect(cornerRadius: 14))
                         .overlay(
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(DesignSystem.Colors.textLight.opacity(0.15), lineWidth: 1)
@@ -540,19 +540,19 @@ struct MajorMinorDetailsView: View {
                         .font(DesignSystem.Fonts.main(size: 13, weight: .bold))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .background(DesignSystem.Colors.info)
-                        .cornerRadius(14)
+                        .clipShape(.rect(cornerRadius: 14))
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding(20)
+        .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.surface)
         .overlay(
             Rectangle()
                 .frame(height: 1)
-                .foregroundColor(DesignSystem.Colors.textLight.opacity(0.12)),
+                .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.12)),
             alignment: .bottom
         )
     }
@@ -859,7 +859,7 @@ struct MajorMinorDetailsView: View {
                     .frame(width: 6, height: 28)
                 Text("Capstone Project")
                     .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
             }
 
             VStack(alignment: .leading, spacing: 14) {
@@ -870,41 +870,41 @@ struct MajorMinorDetailsView: View {
                         .overlay(
                             Image(systemName: "graduationcap")
                                 .font(DesignSystem.Fonts.main(size: 20, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.accent)
+                                .foregroundStyle(DesignSystem.Colors.accent)
                         )
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Senior Capstone Experience")
                             .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
 
                         HStack(spacing: 8) {
                             Text("Not Started")
                                 .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(DesignSystem.Colors.textLight.opacity(0.12))
-                                .cornerRadius(8)
+                                .clipShape(.rect(cornerRadius: 8))
 
                             Text("• 3 Credits Required")
                                 .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                                .foregroundColor(DesignSystem.Colors.textLight)
+                                .foregroundStyle(DesignSystem.Colors.textLight)
                         }
 
                         Text("All students must complete a capstone project that integrates knowledge from their core and elective courses. This can be fulfilled through an approved capstone course or an independent study.")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .medium))
-                            .foregroundColor(DesignSystem.Colors.textLight)
+                            .foregroundStyle(DesignSystem.Colors.textLight)
                             .fixedSize(horizontal: false, vertical: true)
 
                         Button(action: {}) {
                             Label("View Approved Capstone Options", systemImage: "magnifyingglass")
                                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                .foregroundColor(DesignSystem.Colors.accent)
+                                .foregroundStyle(DesignSystem.Colors.accent)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
                                 .background(DesignSystem.Colors.surface)
-                                .cornerRadius(14)
+                                .clipShape(.rect(cornerRadius: 14))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 14)
                                         .stroke(DesignSystem.Colors.accent.opacity(0.25), lineWidth: 1)
@@ -916,9 +916,9 @@ struct MajorMinorDetailsView: View {
                     Spacer()
                 }
             }
-            .padding(18)
+            .padding(DesignSystem.Spacing.lg)
             .background(DesignSystem.Colors.surface)
-            .cornerRadius(20)
+            .clipShape(.rect(cornerRadius: 20))
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
                     .stroke(DesignSystem.Colors.accent.opacity(0.22), lineWidth: 1)
@@ -1136,6 +1136,9 @@ struct MajorMinorDetailsView: View {
         }
 
         var rows: [CourseRequirementRow] = []
+        let sectionTitle = groupSectionTitle(for: requirements)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var lastNestedHeading: String?
 
         func makeSubheaderRow(_ title: String) -> CourseRequirementRow {
             .init(code: "", title: title, credits: "", grade: "", semester: "", status: .planned)
@@ -1168,11 +1171,21 @@ struct MajorMinorDetailsView: View {
             let kind = College.RequirementKind(rawValue: req.requirementKind ?? "")
                 ?? RequirementProgressEngine.inferredKind(from: req)
             let categoryKey = req.requirementCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayTitle = (req.displayTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if kind == .courseList,
+               !displayTitle.isEmpty,
+               displayTitle.caseInsensitiveCompare(sectionTitle) != .orderedSame,
+               displayTitle.caseInsensitiveCompare(lastNestedHeading ?? "") != .orderedSame {
+                rows.append(makeSubheaderRow(displayTitle))
+                lastNestedHeading = displayTitle
+            }
 
             if kind == .distributionBucket || kind == .ruleBucket || kind == .chooseOne {
-                let bucketTitle = (req.displayTitle ?? categoryKey).trimmingCharacters(in: .whitespacesAndNewlines)
+                let bucketTitle = (displayTitle.isEmpty ? categoryKey : displayTitle).trimmingCharacters(in: .whitespacesAndNewlines)
                 if !bucketTitle.isEmpty {
                     rows.append(makeSubheaderRow(bucketTitle))
+                    lastNestedHeading = bucketTitle
                 }
                 let university = (profile?.collegeName ?? collegePersistence.getActiveUniversity()?.name ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1565,11 +1578,11 @@ private struct StatCard: View {
             HStack {
                 Text(title)
                     .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Spacer()
                 Text(valueText)
                     .font(DesignSystem.Fonts.main(size: 16, weight: .bold))
-                    .foregroundColor(valueColor)
+                    .foregroundStyle(valueColor)
             }
 
             GeometryReader { geo in
@@ -1588,25 +1601,25 @@ private struct StatCard: View {
             HStack {
                 Text(subtitleLeft)
                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 Spacer()
 
                 if let subtitleRight {
                     Text(subtitleRight)
                         .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 }
             }
 
             if let pillText, let pillColor {
                 Text(pillText)
                     .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                    .foregroundColor(pillColor)
+                    .foregroundStyle(pillColor)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(pillColor.opacity(0.12))
-                    .cornerRadius(8)
+                    .clipShape(.rect(cornerRadius: 8))
             }
 
             Group {
@@ -1618,11 +1631,11 @@ private struct StatCard: View {
                     }) {
                         Label(buttonTitle, systemImage: buttonIcon)
                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                            .foregroundColor(buttonColor)
+                            .foregroundStyle(buttonColor)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(buttonColor.opacity(0.12))
-                            .cornerRadius(12)
+                            .clipShape(.rect(cornerRadius: 12))
                     }
                     .buttonStyle(PlainButtonStyle())
                     .popover(isPresented: popoverIsPresented, arrowEdge: .leading) {
@@ -1634,20 +1647,20 @@ private struct StatCard: View {
                     }) {
                         Label(buttonTitle, systemImage: buttonIcon)
                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                            .foregroundColor(buttonColor)
+                            .foregroundStyle(buttonColor)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
                             .background(buttonColor.opacity(0.12))
-                            .cornerRadius(12)
+                            .clipShape(.rect(cornerRadius: 12))
                     }
                     .buttonStyle(PlainButtonStyle())
                     }
                 }
             }
         }
-        .padding(16)
+        .padding(DesignSystem.Spacing.lg)
         .background(DesignSystem.Colors.surface)
-        .cornerRadius(20)
+        .clipShape(.rect(cornerRadius: 20))
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .stroke(DesignSystem.Colors.textLight.opacity(0.10), lineWidth: 1)
@@ -1684,18 +1697,18 @@ private struct RequirementsSection: View {
                         .frame(width: 6, height: 28)
                     Text(title)
                         .font(DesignSystem.Fonts.main(size: 18, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                 }
 
                 Spacer()
 
                 Text(completedText)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(DesignSystem.Colors.surface)
-                    .cornerRadius(999)
+                    .clipShape(.capsule)
                     .overlay(
                         RoundedRectangle(cornerRadius: 999)
                             .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
@@ -1705,11 +1718,11 @@ private struct RequirementsSection: View {
                     Button(action: onTapAddCourse) {
                         Label("Add Course", systemImage: "plus")
                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                            .foregroundColor(DesignSystem.Colors.textMain)
+                            .foregroundStyle(DesignSystem.Colors.textMain)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
                             .background(DesignSystem.Colors.surface)
-                            .cornerRadius(999)
+                            .clipShape(.capsule)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 999)
                                     .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
@@ -1729,11 +1742,11 @@ private struct RequirementsSection: View {
                 } label: {
                     Label("Filter by Status", systemImage: "line.3.horizontal.decrease.circle")
                         .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textMain)
+                        .foregroundStyle(DesignSystem.Colors.textMain)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(DesignSystem.Colors.surface)
-                        .cornerRadius(999)
+                        .clipShape(.capsule)
                         .overlay(
                             RoundedRectangle(cornerRadius: 999)
                                 .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
@@ -1777,7 +1790,7 @@ private struct RequirementsSection: View {
                 }
             }
             .background(DesignSystem.Colors.surface)
-            .cornerRadius(20)
+            .clipShape(.rect(cornerRadius: 20))
             .overlay(
                 RoundedRectangle(cornerRadius: 20)
                     .stroke(DesignSystem.Colors.textLight.opacity(0.10), lineWidth: 1)
@@ -1792,15 +1805,15 @@ private struct RequirementsSection: View {
                                     Spacer()
                                     HStack(spacing: 8) {
                                         Image(systemName: "arrow.down.circle.fill")
-                                            .foregroundColor(accent)
+                                            .foregroundStyle(accent)
                                         Text(dropHintText)
                                             .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                                            .foregroundColor(DesignSystem.Colors.textMain)
+                                            .foregroundStyle(DesignSystem.Colors.textMain)
                                     }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
                                     .background(DesignSystem.Colors.surface)
-                                    .cornerRadius(14)
+                                    .clipShape(.rect(cornerRadius: 14))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 14)
                                             .stroke(DesignSystem.Colors.textLight.opacity(0.12), lineWidth: 1)
@@ -1846,7 +1859,7 @@ private struct RequirementsHeaderRow: View {
             Text("").frame(width: 56, alignment: .trailing)
         }
         .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-        .foregroundColor(DesignSystem.Colors.textLight)
+        .foregroundStyle(DesignSystem.Colors.textLight)
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(DesignSystem.Colors.textLight.opacity(0.05))
@@ -1868,27 +1881,27 @@ private struct RequirementsDataRow: View {
                 if isCMinusOrBelow(row.grade) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.warning)
+                        .foregroundStyle(DesignSystem.Colors.warning)
                 }
                 Text(row.code)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
             }
             .frame(width: 110, alignment: .leading)
 
             Text(row.title)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text(row.credits)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                .foregroundColor(DesignSystem.Colors.textLight)
+                .foregroundStyle(DesignSystem.Colors.textLight)
                 .frame(width: 70, alignment: .center)
 
             Text(row.grade)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(row.status == .completed ? DesignSystem.Colors.success : DesignSystem.Colors.textLight)
+                .foregroundStyle(row.status == .completed ? DesignSystem.Colors.success : DesignSystem.Colors.textLight)
                 .frame(width: 60, alignment: .center)
 
             // SEMESTER — interactive menu
@@ -1896,7 +1909,7 @@ private struct RequirementsDataRow: View {
                 if availableSemesters.isEmpty {
                     Text("No semesters in your plan")
                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 } else {
                     ForEach(availableSemesters, id: \.id) { sem in
                         let label = semesterLabel(sem)
@@ -1917,11 +1930,11 @@ private struct RequirementsDataRow: View {
                 HStack(spacing: 4) {
                     Text(row.semester)
                         .font(DesignSystem.Fonts.main(size: 12, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
                         .font(DesignSystem.Fonts.main(size: 9, weight: .semibold))
-                        .foregroundColor(DesignSystem.Colors.textLight.opacity(0.5))
+                        .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.5))
                 }
                 .frame(width: 110, alignment: .center)
             }
@@ -1948,7 +1961,7 @@ private struct RequirementsDataRow: View {
                 Button(action: onOpenDashboard) {
                     Image(systemName: "arrow.up.right.square")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textLight.opacity(0.7))
+                        .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.7))
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -1958,7 +1971,7 @@ private struct RequirementsDataRow: View {
                 Button(action: onDelete) {
                     Image(systemName: "xmark.circle.fill")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.error)
+                        .foregroundStyle(DesignSystem.Colors.error)
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
@@ -2002,7 +2015,7 @@ private struct RequirementsSubheaderRow: View {
         HStack(spacing: 10) {
             Text(title)
                 .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                .foregroundColor(DesignSystem.Colors.textMain)
+                .foregroundStyle(DesignSystem.Colors.textMain)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 14)
@@ -2097,11 +2110,11 @@ private struct StatusPill: View {
             Text(style.text)
                 .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
         }
-        .foregroundColor(style.color)
+        .foregroundStyle(style.color)
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(style.color.opacity(0.12))
-        .cornerRadius(999)
+        .clipShape(.capsule)
         .overlay(
             RoundedRectangle(cornerRadius: 999)
                 .stroke(style.color.opacity(0.20), lineWidth: 1)
@@ -2122,31 +2135,31 @@ private struct ElectiveCardDone: View {
                 .overlay(
                     Image(systemName: "checkmark")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.secondary)
+                        .foregroundStyle(DesignSystem.Colors.secondary)
                 )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(code)
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textMain)
+                    .foregroundStyle(DesignSystem.Colors.textMain)
                 Text(title)
                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 Text("Done (\(grade))")
                     .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.success)
+                    .foregroundStyle(DesignSystem.Colors.success)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(DesignSystem.Colors.success.opacity(0.12))
-                    .cornerRadius(999)
+                    .clipShape(.capsule)
             }
 
             Spacer()
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface)
-        .cornerRadius(16)
+        .clipShape(.rect(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(DesignSystem.Colors.textLight.opacity(0.10), lineWidth: 1)
@@ -2163,35 +2176,35 @@ private struct ElectiveCardNeeded: View {
                 .overlay(
                     Image(systemName: "plus")
                         .font(DesignSystem.Fonts.main(size: 14, weight: .bold))
-                        .foregroundColor(DesignSystem.Colors.textLight)
+                        .foregroundStyle(DesignSystem.Colors.textLight)
                 )
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Select Elective")
                     .font(DesignSystem.Fonts.main(size: 12, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                 Text("3–4 Credits Required")
                     .font(DesignSystem.Fonts.main(size: 11, weight: .semibold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
 
                 Text("Needed")
                     .font(DesignSystem.Fonts.main(size: 10, weight: .bold))
-                    .foregroundColor(DesignSystem.Colors.textLight)
+                    .foregroundStyle(DesignSystem.Colors.textLight)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(DesignSystem.Colors.textLight.opacity(0.10))
-                    .cornerRadius(999)
+                    .clipShape(.capsule)
             }
 
             Spacer()
         }
-        .padding(14)
+        .padding(DesignSystem.Spacing.md)
         .background(DesignSystem.Colors.surface)
-        .cornerRadius(16)
+        .clipShape(.rect(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .stroke(style: StrokeStyle(lineWidth: 1, dash: [5]))
-                .foregroundColor(DesignSystem.Colors.textLight.opacity(0.18))
+                .foregroundStyle(DesignSystem.Colors.textLight.opacity(0.18))
         )
     }
 }

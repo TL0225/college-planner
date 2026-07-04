@@ -11,24 +11,42 @@ struct SettingsCareerPanel: View {
     @AppStorage("career.board.quickAddEnabled") private var quickAddEnabled = true
     @AppStorage(CareerBoardLayout.storageKey) private var boardLayoutRaw: String = CareerBoardLayout.kanban.rawValue
 
-    private var boardLayout: CareerBoardLayout {
-        CareerBoardLayout(rawValue: boardLayoutRaw) ?? .kanban
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Form {
-                Section(String(localized: "settings.career.board", defaultValue: "Board")) {
-                    Picker(String(localized: "settings.career.default_layout", defaultValue: "Default board layout"), selection: $boardLayoutRaw) {
-                        ForEach(CareerBoardLayout.allCases) { layout in
-                            Text(layout.displayName).tag(layout.rawValue)
-                        }
-                    }
-                    Toggle(String(localized: "settings.career.keyboard_nav", defaultValue: "Enable keyboard navigation"), isOn: $keyboardNavigation)
-                    Toggle(String(localized: "settings.career.quick_add", defaultValue: "Enable quick add in Interested lane"), isOn: $quickAddEnabled)
-                }
+            SettingsCard(
+                title: String(localized: "settings.career.board", defaultValue: "Board"),
+                icon: "rectangle.split.3x1",
+                iconColor: DesignSystem.Colors.primary
+            ) {
+                SPickerRow(
+                    label: String(localized: "settings.career.default_layout", defaultValue: "Default board layout"),
+                    selection: $boardLayoutRaw,
+                    options: CareerBoardLayout.allCases.map(\.rawValue),
+                    optionLabel: { CareerBoardLayout(rawValue: $0)?.displayName ?? $0 }
+                )
+
+                Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+
+                SToggleRow(
+                    label: String(localized: "settings.career.keyboard_nav", defaultValue: "Keyboard navigation"),
+                    subtitle: String(
+                        localized: "settings.career.keyboard_nav.help",
+                        defaultValue: "Move between lanes and cards with the arrow keys."
+                    ),
+                    isOn: $keyboardNavigation
+                )
+
+                Divider().overlay(Color(nsColor: .separatorColor).opacity(0.5))
+
+                SToggleRow(
+                    label: String(localized: "settings.career.quick_add", defaultValue: "Quick add"),
+                    subtitle: String(
+                        localized: "settings.career.quick_add.help",
+                        defaultValue: "Add roles directly in the Interested lane."
+                    ),
+                    isOn: $quickAddEnabled
+                )
             }
-            .formStyle(.grouped)
 
             SettingsJobBoardsPanel()
         }

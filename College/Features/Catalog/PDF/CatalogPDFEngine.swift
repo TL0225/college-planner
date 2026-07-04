@@ -12,8 +12,12 @@ actor CatalogPDFEngine {
         guard let doc = PDFDocument(url: pdfURL) else {
             throw CatalogPDFError.failedToOpenPDF
         }
-        let pageCount = doc.pageCount
-        let sections = CatalogPDFSectionClassifier.classify(input: .init(document: doc))
+        return buildFoundation(from: doc)
+    }
+
+    func buildFoundation(from document: PDFDocument) -> CatalogPDFFoundationResult {
+        let pageCount = document.pageCount
+        let sections = CatalogPDFSectionClassifier.classify(input: .init(document: document))
         return CatalogPDFFoundationResult(pageCount: pageCount, sections: sections)
     }
 
@@ -21,11 +25,16 @@ actor CatalogPDFEngine {
         guard let doc = PDFDocument(url: pdfURL) else {
             throw CatalogPDFError.failedToOpenPDF
         }
-        let pageCount = doc.pageCount
-        let outlineEntryCount = Self.countOutlineEntries(root: doc.outlineRoot)
+        return buildHealthReport(from: doc)
+    }
+
+    func buildHealthReport(from document: PDFDocument) -> CatalogPDFHealthReport {
+        let pageCount = document.pageCount
+        let outlineEntryCount = Self.countOutlineEntries(root: document.outlineRoot)
         var lowTextDensityPages = 0
         for idx in 0..<pageCount {
-            guard let page = doc.page(at: idx) else { continue }
+            if Task.isCancelled { break }
+            guard let page = document.page(at: idx) else { continue }
             let text = (page.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let density = text.filter { !$0.isWhitespace && !$0.isNewline }.count
             if density < 40 {

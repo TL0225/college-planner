@@ -4,6 +4,7 @@
 // Data: CollegePersistence / repositories when applicable.
 
 import CollegeCalendar
+import CollegeCareer
 import Foundation
 import SwiftData
 
@@ -40,6 +41,27 @@ struct OverviewCareerFollowUpSummary: Identifiable, Equatable, Sendable {
     let id: UUID
     let company: String
     let roleTitle: String
+}
+
+/// A single cross-domain "what matters right now" item used by the Overview's
+/// top-priority strip. Items are surfaced from existing read bridges (calendar
+/// events, task deadlines, career interviews) and ranked by time.
+struct OverviewAttentionItem: Identifiable, Equatable, Sendable {
+    enum Kind: String, Sendable {
+        case event
+        case deadline
+        case interview
+    }
+
+    let id: String
+    let kind: Kind
+    let title: String
+    let subtitle: String?
+    /// The concrete date this item refers to (nil when the item is undated, e.g. a
+    /// "you have N interviews to prep" rollup). Used for relative-time display.
+    let date: Date?
+    /// Ordering key. Undated items sort after dated ones.
+    let sortDate: Date
 }
 
 /// local store-only overview reads (Phase 7f).
@@ -104,6 +126,95 @@ enum OverviewReadBridge {
         _ = collegePersistence
         if let swift = localStoreCareerFollowUps(limit: limit) { return swift }
         return []
+    }
+
+    /// Time-ranked, cross-domain "needs attention" list driving the Overview's
+    /// priority strip. Deterministic (no scoring heuristics): today's remaining
+    /// events + deadlines due within `deadlineWindowDays` + a single interview
+    /// rollup, sorted by time and capped to `limit`.
+    static func needsAttentionItems(
+        limit: Int = 4,
+        deadlineWindowDays: Int = 3,
+        calendarManager: CalendarIntegrationManager,
+        collegePersistence: CollegePersistence = .shared
+    ) -> [OverviewAttentionItem] {
+        let now = Date()
+        var items: [OverviewAttentionItem] = []
+
+        // Today's events that haven't ended yet.
+        let events = todayEventSummaries(
+            calendarManager: calendarManager,
+            collegePersistence: collegePersistence
+        )
+        .filter { $0.endDate >= now }
+        for event in events {
+            items.append(
+                OverviewAttentionItem(
+                    id: "event-\(event.id.uuidString)",
+                    kind: .event,
+                    title: event.title,
+                    subtitle: event.location,
+                    date: event.startDate,
+                    sortDate: event.startDate
+                )
+            )
+        }
+
+        // Deadlines due within the window.
+        let windowEnd = Calendar.current.date(byAdding: .day, value: deadlineWindowDays, to: now)
+            ?? now.addingTimeInterval(Double(deadlineWindowDays) * 86_400)
+        let deadlines = pendingTasks(limit: 20, collegePersistence: collegePersistence)
+            .filter { $0.dueDate <= windowEnd }
+        for task in deadlines {
+            let course = [task.courseCode, task.courseName]
+                .compactMap { value -> String? in
+                    guard let value, !value.isEmpty else { return nil }
+                    return value
+                }
+                .joined(separator: " · ")
+            items.append(
+                OverviewAttentionItem(
+                    id: "deadline-\(task.id.uuidString)",
+                    kind: .deadline,
+                    title: task.title,
+                    subtitle: course.isEmpty ? nil : course,
+                    date: task.dueDate,
+                    sortDate: task.dueDate
+                )
+            )
+        }
+
+        // Career: a single rollup row when interviews are pending.
+        let interviewCount = CareerReadBridge.statusCounts()?[.interviewing] ?? 0
+        if interviewCount > 0 {
+            items.append(
+                OverviewAttentionItem(
+                    id: "interview-rollup",
+                    kind: .interview,
+                    title: interviewCount == 1
+                        ? "1 interview in progress"
+                        : "\(interviewCount) interviews in progress",
+                    subtitle: "Prep and follow up",
+                    date: nil,
+                    sortDate: .distantFuture
+                )
+            )
+        }
+
+        return items
+            .sorted { $0.sortDate < $1.sortDate }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    static func hasPendingTasks(collegePersistence: CollegePersistence = .shared) -> Bool {
+        !pendingTasks(limit: 1, collegePersistence: collegePersistence).isEmpty
+    }
+
+    static func hasCareerActivity(collegePersistence: CollegePersistence = .shared) -> Bool {
+        let total = CareerReadBridge.statusCounts()?.values.reduce(0, +) ?? 0
+        if total > 0 { return true }
+        return !careerFollowUps(limit: 1, collegePersistence: collegePersistence).isEmpty
     }
 
     static func academicProfiles(collegePersistence: CollegePersistence = .shared) -> [AcademicProfile] {

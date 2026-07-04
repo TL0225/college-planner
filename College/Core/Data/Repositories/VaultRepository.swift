@@ -54,6 +54,20 @@ struct VaultRepository {
         return try context.fetch(descriptor).first
     }
 
+    func fetchDocuments(linkedCalendarEventID: UUID, limit: Int = 50) throws -> [VaultDocument] {
+        var descriptor = FetchDescriptor<VaultDocument>(
+            predicate: #Predicate { doc in
+                doc.linkedCalendarEventID == linkedCalendarEventID
+            },
+            sortBy: [
+                SortDescriptor(\.sortOrder, order: .forward),
+                SortDescriptor(\.addedAt, order: .reverse),
+            ]
+        )
+        descriptor.fetchLimit = max(1, min(limit, 500))
+        return try context.fetch(descriptor)
+    }
+
     func fetchWatchedFolders(limit: Int = 40) throws -> [WatchedFolder] {
         var descriptor = FetchDescriptor<WatchedFolder>(
             sortBy: [SortDescriptor(\.addedAt, order: .forward)]
@@ -78,14 +92,14 @@ struct VaultRepository {
     }
 
     /// Files and folders for vault browser UI (Phase 7c).
-    func fetchAllVaultItems(limit: Int = 5000) throws -> [VaultDocument] {
+    func fetchAllVaultItems(limit: Int = 500) throws -> [VaultDocument] {
         var descriptor = FetchDescriptor<VaultDocument>(
             sortBy: [
                 SortDescriptor(\.sortOrder, order: .forward),
                 SortDescriptor(\.addedAt, order: .reverse),
             ]
         )
-        descriptor.fetchLimit = max(1, min(limit, 5000))
+        descriptor.fetchLimit = max(1, min(limit, 500))
         return try context.fetch(descriptor)
     }
 }

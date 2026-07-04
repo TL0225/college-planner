@@ -13,20 +13,20 @@ struct DashboardEmptyHint: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 24, weight: .medium))
+                .font(DesignSystem.Fonts.main(size: 24, weight: .medium))
                 .foregroundStyle(.tertiary)
 
             Text(title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
 
             Text(message)
-                .font(.system(size: 13))
+                .font(DesignSystem.Fonts.main(size: 13))
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(24)
+        .padding(DesignSystem.Spacing.xl)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -44,15 +44,15 @@ struct DashboardErrorHint: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-                .font(.system(size: 14, weight: .semibold))
+                .font(DesignSystem.Fonts.main(size: 14, weight: .semibold))
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DesignSystem.Fonts.main(size: 13, weight: .semibold))
                     .foregroundStyle(.primary)
                 Text(message)
-                    .font(.system(size: 12))
+                    .font(DesignSystem.Fonts.main(size: 12))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -64,13 +64,13 @@ struct DashboardErrorHint: View {
                     onDismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(DesignSystem.Fonts.main(size: 11, weight: .bold))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(10)
+        .padding(DesignSystem.Spacing.md)
         .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
