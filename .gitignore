@@ -85,6 +85,8 @@ Secrets.xcconfig
 !docs/skipped-tests-registry.txt
 *.csv
 *.tsv
+!docs/perf-optimization-manifest.tsv
+!docs/perf-baselines.tsv
 !College/Features/Assistant/Resources/IntentTrainingData.csv
 
 # Scrape / catalog export dumps (local only)

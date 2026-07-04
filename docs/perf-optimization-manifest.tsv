@@ -1,0 +1,34 @@
+path	workstream	baseline_scenario	perf_status	before_ms	after_ms	profiler_note
+College/Core/Data/Storage/JobBoardListImportWriter.swift	phase5-tier1	2	done			persistOffMain + batch prefetch; debounced career revision
+College/Features/Career/Job Board/JobBoardSyncCoordinator.swift	phase5-tier1	2	done			removed MainActor.run per page; finalize-only path
+College/Features/Career/Job Board/Views/JobBoardCompanyJobsView.swift	phase5-tier1	3	done			suppress reload during scrape
+College/Features/Career/Job Board/Views/JobBoardUnifiedJobsView.swift	phase5-tier1	3	done			suppress reload during scrape
+College/Features/Career/Job Board Scrapers/Workday/WorkdayScraper.swift	phase5-tier1	2	done			maxAccumulatedJobs aligned to 500 cap
+College/Core/Data/Storage/AppDataStore.swift	phase5-tier2	1	done			deferred catalog migration off launch critical path
+College/App/CollegeAppDelegate.swift	phase5-tier2	1	done			removed DispatchGroup.wait on terminate
+Packages/CollegeCalendar/.../CalendarIntegrationManager.swift	phase5-tier2	1	done			deferred Apple sync during launch preload
+College/Core/Platform/Services/BackgroundServiceOnDemand.swift	phase5-tier2	1	done			added runOffMain for heavy work
+College/Features/Academics/AuditSnapshotStore+LoadAudit.swift	phase5-tier2	4	done			yield between major/minor builds
+College/Features/Assistant/AIAssistantView.swift	phase5-tier3	6	done			cancel generation on disappear
+College/Features/Career/Job Board/JobBoardSmartFilterEngine.swift	phase5-tier3	3	done			capped concurrent embeddings at 4
+College/Features/Assistant/AssistantWebPageCache.swift	phase5-tier3	6	done			memory pressure eviction hook
+College/Core/MemoryPressureHandler.swift	phase5-tier3	6	done			assistant web cache eviction on pressure
+College/Features/Career/Job Board Scrapers/JobBoardScraper.swift	phase6-alloc	2	done			cached htmlToPlain NSRegularExpression patterns
+College/Features/Career/Job Board Scrapers/Workday/WorkdayScraper.swift	phase6-alloc	2	done			reused JSONDecoder in list response decoder
+College/Features/Career/Job Board Scrapers/Oracle/OracleHCMScraper.swift	phase6-alloc	2	done			maxListingsPerSync cap + cached siteNumber regexes
+College/Features/Academics/AuditSnapshotStore+LoadAudit.swift	phase6-alloc	4	done			shared JSONDecoder for requirement JSON rows
+College/Features/Career/Job Board/JobBoardModels.swift	phase6-swiftdata	3	done			JobBoardPostingListDTO list projection
+College/Core/Data/Repositories/CareerRepository+JobBoardPostings.swift	phase6-swiftdata	3	done			fetchCompanyPostingListDTOs
+College/Features/Career/Job Board/JobBoardReadBridge.swift	phase6-swiftdata	3	done			DTO map on read context; postingsOffMain
+College/Features/Career/Job Board/Views/JobBoardCompanyJobsView.swift	phase6-swiftui	3	done			off-main refresh + Equatable list rows
+College/Features/Career/Job Board/Views/JobBoardUnifiedJobsView.swift	phase6-swiftui	3	done			postingsOffMain + Equatable rows + embed debounce
+College/Features/Overview/OverviewView.swift	phase6-swiftui	1	done			debounced standing cache rebuild
+Packages/CollegeCalendar/Sources/CollegeCalendar/UI/CalendarView.swift	phase6-swiftui	5	done			batch calendarEventEntities prewarm
+College/Features/Career/Services/CareerResumeIngestService.swift	phase6-actor	2	done			fewer MainActor.run progress hops
+College/Features/Career/Services/CareerATSService.swift	phase6-actor	2	done			single MainActor snapshot for scoring prep
+College/Core/Data/Repositories/CalendarRepository+Writes.swift	phase6-swiftdata	5	done			batch fetchCalendarEvents(ids:)
+College/Core/Data/Storage/CatalogSchoolImportWriter.swift	phase5-tier2	7	done			persistOffMain catalog import writes
+College/Features/Catalog/Ingest/CatalogSchoolImportService.swift	phase5-tier2	7	done			off-main full import + streaming chunk upsert
+College/Core/Services/CatalogBackgroundSyncRunner.swift	phase5-tier2	7	done			streaming upsertCourseChunk; throttled progress hops
+College/Features/Catalog/CatalogBundleSecurity.swift	phase6-alloc	7	done			verifyFileOffMain for large bundle decode
+College/Features/Academics/AuditSnapshotStore+LoadAudit.swift	phase5-tier2	4	done			yield every 8 requirement rows during audit build
