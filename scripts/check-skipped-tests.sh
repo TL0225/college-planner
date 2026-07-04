@@ -17,7 +17,16 @@ if [[ -z "$baseline" ]] || ! [[ "$baseline" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-current="$(rg -n 'XCTSkip|XCTSkipUnless' "$TESTS" --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')"
+# Prefer ripgrep when present; fall back to grep for runners without rg (exit 127).
+count_skips() {
+  if command -v rg >/dev/null 2>&1; then
+    rg -n 'XCTSkip|XCTSkipUnless' "$TESTS" --glob '*.swift' 2>/dev/null || true
+  else
+    grep -RInE 'XCTSkip|XCTSkipUnless' "$TESTS" --include='*.swift' 2>/dev/null || true
+  fi
+}
+
+current="$(count_skips | wc -l | tr -d ' ')"
 
 echo "skipped-test gate:"
 echo "  baseline (registry): $baseline"
@@ -26,7 +35,7 @@ echo "  current (CollegeTests): $current"
 if [[ "$current" -gt "$baseline" ]]; then
   echo "error: XCTSkip count grew without updating docs/skipped-tests-registry.txt"
   echo "hint: document the waiver, then bump baseline_count"
-  rg -n 'XCTSkip|XCTSkipUnless' "$TESTS" --glob '*.swift' 2>/dev/null || true
+  count_skips || true
   exit 1
 fi
 

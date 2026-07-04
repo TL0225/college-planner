@@ -1,20 +1,21 @@
 # CollegeTests skipped-test baseline (XCTSkip / XCTSkipUnless)
-# Last updated: 2026-06-09
+# Last updated: 2026-07-03
 #
 # Refresh current count:
 #   rg -n 'XCTSkip|XCTSkipUnless' CollegeTests --glob '*.swift' | wc -l
 #
 # Bump baseline_count only when adding a documented waiver entry below.
-baseline_count=16
+baseline_count=21
 
 # Waivers (file:line — reason)
 # CollegeTests/Support/CollegeTests+LiveNetwork.swift:14 — live network opt-in
-# CollegeTests/Features/Catalog/DSUProgramRequirementsParserTests.swift:80 — missing HTML fixture
-# CollegeTests/Features/Career/CareerResumeTextExtractorTests.swift:12 — local resume fixture
-# CollegeTests/Core/VaultSourceFileMaterializerTests.swift:12,23 — local resume fixture
-# CollegeTests/Features/Catalog/CourseLeafCatalogCatoidMatchingTests.swift:49,54 — Phase 7f rewrite pending
-# CollegeTests/Features/Assistant/QwenJsonWorkerGoldenTests.swift:25 — Qwen worker not installed in CI
+# CollegeTests/Features/Catalog/DSUProgramRequirementsParserTests.swift:80,102 — missing HTML fixture
+# CollegeTests/Features/Catalog/CatalogPDFCorpusFixtureTests.swift:108,138 — local corpus PDFs
 # CollegeTests/Features/Catalog/CatalogIngestFreshnessTests.swift:19 — fixture setup pending
-# CollegeTests/Features/Assistant/AssistantInferenceAvailabilityTests.swift:32 — Qwen worker not installed
-# CollegeTests/Features/Catalog/CourseLeafProgramCoverageTests.swift:54 — live bulletin check
+# CollegeTests/Features/Catalog/CatalogPDFCourseDescriptionParserTests.swift:355 — optional PDF fixture
+# CollegeTests/Features/Catalog/CatalogVerificationLiveSuiteTests.swift:152 — live network
+# CollegeTests/Features/Catalog/CatalogURLDiscoveryLiveTests.swift:130,158 — live network
+# CollegeTests/Features/Catalog/CourseLeafCatalogCatoidMatchingTests.swift:49,54 — Phase 7f rewrite pending
 # CollegeTests/Features/Catalog/PDFCatalogIngestFixtureTests.swift — integration/fixture guards
+# CollegeTests/Features/Catalog/CatalogPDFSampleHarnessTests.swift — local sample/corpus harness
+# CollegeTests/Features/Catalog/CourseLeafProgramCoverageTests.swift:54 — live bulletin check

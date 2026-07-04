@@ -19,7 +19,7 @@ on:
 jobs:
   openings-pr-smoke:
     if: github.event_name == 'pull_request'
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Run Openings Swift Testing smoke
@@ -53,7 +53,7 @@ jobs:
 
   openings-nightly-full:
     if: github.event_name == 'schedule'
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: Full Openings Swift Testing suite
