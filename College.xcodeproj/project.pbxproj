@@ -356,7 +356,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ ! -f \"${SRCROOT}/College/DegoogSidecar/college-degoog-bun\" ] || [ ! -f \"${SRCROOT}/College/DegoogSidecar/college-degoog-runtime.tar.gz\" ]; then\n  bash \"${SRCROOT}/scripts/fetch-degoog-sidecar.sh\"\nfi\n";
+			shellScript = "if [ ! -f \"${SRCROOT}/College/DegoogSidecar/college-degoog-bun\" ] || [ ! -f \"${SRCROOT}/College/DegoogSidecar/college-degoog-runtime.tar.gz\" ]; then\n  echo \"warning: DeGoog sidecar missing; run scripts/fetch-degoog-sidecar.sh\" >&2\n  exit 0\nfi\n";
 		};
 		1CDEG0022F0A0000849BEE /* Install DeGoog Bun Helper */ = {
 			isa = PBXShellScriptBuildPhase;

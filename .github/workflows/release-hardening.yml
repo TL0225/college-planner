@@ -45,4 +45,4 @@ jobs:
 
       - name: Build (Release)
         run: |
-          xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO

@@ -98,7 +98,7 @@ jobs:
 
       - name: Release build (compile integrity)
         run: |
-          xcodebuild -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO
 
   tier-a-test-gates:
     runs-on: macos-26

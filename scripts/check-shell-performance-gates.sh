@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 required=(
   College/Core/PerformanceDiagnostics.swift
-  College/App/ShellPerformanceTiming.swift
+  College/Debug/Diagnostics/ShellPerformanceTiming.swift
 )
 
 for path in "${required[@]}"; do
