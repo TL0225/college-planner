@@ -29,7 +29,7 @@ Reviewer: Agent (automated gates) / human (manual gates)
 | S4 | ResumePipelineInvariantTests | Pass | Includes cancel-mid-compile, draft restore, library link, canonical JSON credential scan |
 | S5 | ResumeBuilderE2ETests + JobBoardApplyResumeE2ETests | Pass (logic) / Partial (UI) | `ResumeBuilderFlowTests` + invariants + apply session/E2E smoke `TEST SUCCEEDED`. UITests still need automation mode in Xcode/CI |
 | S6 | career-jobboard-tests + career-apply-tests + college-tests-sharded CI | Pass (local smoke) | Job board + career apply smoke suites `TEST SUCCEEDED` (2026-07-03) |
-| S7 | release-hardening.yml + app-ship-gates.yml | Pending | Requires push / GitHub Actions |
+| S7 | release-hardening.yml + app-ship-gates.yml | Pending | PR open: https://github.com/TL0225/college-planner/pull/2 — confirm Actions green |
 | S8 | scripts/check-feature-imports.sh fail | Pass | `check-feature-imports: no flagged cross-feature imports` |
 
 ---
