@@ -5,8 +5,20 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/xcodebuild-test-parallel-flags.sh
 source "$SCRIPT_DIR/xcodebuild-test-parallel-flags.sh"
 
+DERIVED="${DERIVED:-/tmp/CollegeUnitTestsDD}"
+DEST="${DEST:-platform=macOS}"
+
 echo "=== Packages/CollegeCalendar (CalendarCacheEngineTests) ==="
 (cd Packages/CollegeCalendar && swift test --filter CalendarCacheEngineTests)
+
+# Fresh CI runners have no prior build products; compile once, then shard with
+# test-without-building against the same DerivedData.
+echo "=== build-for-testing (College) ==="
+bash "$SCRIPT_DIR/college-xcodebuild-test.sh" \
+  -scheme College \
+  -destination "$DEST" \
+  -derivedDataPath "$DERIVED" \
+  build-for-testing
 
 CLASSES=(
   DegreeTypeInferenceTests CatalogWAFDetectionTests ProgramCatalogParserTests
@@ -35,13 +47,15 @@ PASSED=0
 
 for c in "${CLASSES[@]}"; do
   echo "=== $c ==="
-  OUT=$(xcodebuild -scheme College -destination 'platform=macOS' \
-    "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" \
+  OUT=$(bash "$SCRIPT_DIR/college-xcodebuild-test.sh" \
+    -scheme College \
+    -destination "$DEST" \
+    -derivedDataPath "$DERIVED" \
     test-without-building -only-testing:"CollegeTests/$c" 2>&1) || true
   if ! echo "$OUT" | grep -qE "TEST (SUCCEEDED|EXECUTE SUCCEEDED)"; then
     echo "FAIL $c (xcodebuild)"
     FAILED+=("$c")
-    echo "$OUT" | grep -E "error:|TEST FAILED" | head -5
+    echo "$OUT" | grep -E "error:|TEST FAILED|Could not launch" | head -5
     continue
   fi
   if echo "$OUT" | grep -q "failed on"; then
