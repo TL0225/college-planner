@@ -11,8 +11,9 @@ fi
 mkdir -p build
 COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 
-VIEW_PERSIST=$(bash scripts/check-no-view-persistence.sh 2>/dev/null | rg -o 'count [0-9]+' | awk '{print $2}' || echo "0")
-FEATURE_PERSIST=$(rg -l 'collegePersistence|CollegePersistence\.shared' College/Features --glob '*.swift' 2>/dev/null | wc -l | tr -d ' ')
+# macOS CI runners may not ship ripgrep; grep is always available.
+VIEW_PERSIST=$(bash scripts/check-no-view-persistence.sh 2>/dev/null | grep -oE 'count [0-9]+' | awk '{print $2}' || echo "0")
+FEATURE_PERSIST=$(grep -RlE 'collegePersistence|CollegePersistence\.shared' College/Features --include='*.swift' 2>/dev/null | wc -l | tr -d ' ')
 VERIFICATION_TESTS=$(find CollegeTests/Verification CollegeTests/Integration -name '*Tests.swift' 2>/dev/null | wc -l | tr -d ' ')
 
 score_from_threshold() {
