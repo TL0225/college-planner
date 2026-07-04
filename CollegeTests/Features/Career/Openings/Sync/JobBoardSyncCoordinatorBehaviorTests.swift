@@ -5,7 +5,8 @@ import Foundation
 import Testing
 @testable import College
 
-@Suite("JobBoardSyncCoordinatorBehaviorTests")
+// Shared UserDefaults + JobBoardCompaniesStore must not interleave with sibling suites.
+@Suite("JobBoardSyncCoordinatorBehaviorTests", .serialized)
 @MainActor
 struct JobBoardSyncCoordinatorBehaviorTests {
     private let companiesKey = "workday.companies.v1"
