@@ -16,7 +16,9 @@ final class AccessibilityDepthTests: XCTestCase {
             ("College/Features/Academics/AcademicsView.swift", ["academics.root", "shellDynamicTypeReadable"]),
             ("College/Features/Documents/DocumentsView.swift", ["documents.root", "shellDynamicTypeReadable"]),
             ("College/Features/Profile/ProfileView.swift", ["shellDynamicTypeReadable"]),
-            ("College/Features/Assistant/AIAssistantView.swift", ["assistant.root", "assistant.sessionBadge"]),
+            ("College/Features/Assistant/AIAssistantView.swift", ["assistant.root"]),
+            // Session badge lives on the shell toolbar provider (ADR 001), not the feature root.
+            ("College/App/Toolbar/AssistantToolbarContent.swift", ["assistant.sessionBadge"]),
             ("College/Features/Career/Workspace/CareerWorkspaceView.swift", ["career.workspace.root"]),
             ("College/Features/SyllabusAI/SyllabusReviewView.swift", ["syllabus.review.root"]),
             ("College/Features/Overview/WidgetKit/OverviewCard.swift", ["overviewWidgetSurface"]),

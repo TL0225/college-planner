@@ -180,6 +180,8 @@ final class ToolbarArchitectureTests: XCTestCase {
         let allowedToolbarFiles: Set<String> = [
             "CareerApplicationFormSheet.swift",
             "CareerApplicationProfileView.swift",
+            // Sheet-only Done toolbar on parse-review NavigationStack, not main-window chrome.
+            "ResumeProfileView.swift",
             "SettingsView.swift",
         ]
         let subpaths = try FileManager.default.subpathsOfDirectory(atPath: featuresDir.path)
