@@ -150,7 +150,12 @@ while IFS= read -r file; do
   fi
 done < "$TMP"
 
-manifest_count="$(rg 'BackgroundServiceDescriptor\(' "$ROOT/College/Core/Platform/Services/BackgroundServiceManifest.swift" > "$TMP" 2>/dev/null || true; wc -l < "$TMP" | tr -d ' ')"
+MANIFEST="$ROOT/College/Core/Platform/Services/BackgroundServiceManifest.swift"
+if command -v rg >/dev/null 2>&1; then
+  manifest_count="$(rg -c 'BackgroundServiceDescriptor\(' "$MANIFEST" 2>/dev/null || echo 0)"
+else
+  manifest_count="$(grep -c 'BackgroundServiceDescriptor(' "$MANIFEST" 2>/dev/null || echo 0)"
+fi
 if [[ "$manifest_count" -lt 25 ]]; then
   fail "manifest descriptor count unexpectedly low ($manifest_count)"
 fi

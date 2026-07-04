@@ -14,6 +14,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ripgrep
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            brew install ripgrep
+          fi
+
       - name: Career target membership (flat vs subfolder)
         run: bash scripts/check-target-membership.sh
 
