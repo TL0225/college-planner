@@ -17,13 +17,14 @@ done
 PLUGIN_ARGS=(-skipPackagePluginValidation -skipMacroValidation)
 
 # Hosted CI has no Mac Development certs / provisioning profiles.
-CI_SIGN_ARGS=()
+# Bash 3.2 + set -u treats empty "${arr[@]}" as unbound; always pass a real argv slot.
+EXTRA_ARGS=()
 if [[ "${CI:-}" == "true" ]]; then
-  CI_SIGN_ARGS+=(CODE_SIGNING_ALLOWED=NO)
+  EXTRA_ARGS+=(CODE_SIGNING_ALLOWED=NO)
 fi
 
 if [[ "$is_test_invocation" -eq 1 ]]; then
-  exec xcodebuild "${PLUGIN_ARGS[@]}" "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" "$@" "${CI_SIGN_ARGS[@]}"
+  exec xcodebuild "${PLUGIN_ARGS[@]}" "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" "$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 fi
 
-exec xcodebuild "${PLUGIN_ARGS[@]}" "$@" "${CI_SIGN_ARGS[@]}"
+exec xcodebuild "${PLUGIN_ARGS[@]}" "$@" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
