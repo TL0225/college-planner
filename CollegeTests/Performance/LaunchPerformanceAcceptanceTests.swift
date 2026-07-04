@@ -23,9 +23,9 @@ final class LaunchPerformanceAcceptanceTests: XCTestCase {
 
     func testPipelineThreshold_matchesDebugOrReleaseExpectation() {
         #if DEBUG
-        XCTAssertEqual(LaunchPerformanceAcceptance.pipelineWallClockWarnThresholdMs, 120_000)
+        XCTAssertEqual(LaunchPerformanceAcceptance.pipelineWallClockWarnThresholdMs, LaunchPerformanceAcceptance.pipelineWallClockWarnMsDebug)
         #else
-        XCTAssertEqual(LaunchPerformanceAcceptance.pipelineWallClockWarnThresholdMs, 45_000)
+        XCTAssertEqual(LaunchPerformanceAcceptance.pipelineWallClockWarnThresholdMs, LaunchPerformanceAcceptance.pipelineWallClockWarnMsRelease)
         #endif
     }
 

@@ -25,9 +25,9 @@ final class PerformanceBaselineAcceptanceTests: XCTestCase {
 
     func testAcademicsAuditThreshold_matchesDebugOrReleaseExpectation() {
         #if DEBUG
-        XCTAssertEqual(LaunchPerformanceAcceptance.academicsAuditWarnThresholdMs, 10_000)
+        XCTAssertEqual(LaunchPerformanceAcceptance.academicsAuditWarnThresholdMs, LaunchPerformanceAcceptance.academicsAuditWarnMsDebug)
         #else
-        XCTAssertEqual(LaunchPerformanceAcceptance.academicsAuditWarnThresholdMs, 3_000)
+        XCTAssertEqual(LaunchPerformanceAcceptance.academicsAuditWarnThresholdMs, LaunchPerformanceAcceptance.academicsAuditWarnMsRelease)
         #endif
     }
 
