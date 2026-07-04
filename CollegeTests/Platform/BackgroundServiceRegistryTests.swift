@@ -5,6 +5,7 @@ import XCTest
 import os
 @testable import College
 
+#if DEBUG
 @MainActor
 final class BackgroundServiceRegistryTests: XCTestCase {
     override func setUp() async throws {
@@ -177,3 +178,4 @@ private final class PauseResumeTestState: @unchecked Sendable {
     func markPaused() { lock.withLock { $0.paused += 1 } }
     func markResumed() { lock.withLock { $0.resumed += 1 } }
 }
+#endif

@@ -4,6 +4,7 @@
 import XCTest
 @testable import College
 
+#if DEBUG
 @MainActor
 final class AppActivityCoordinatorThrottleTests: XCTestCase {
     override func setUp() {
@@ -35,3 +36,4 @@ final class AppActivityCoordinatorThrottleTests: XCTestCase {
         XCTAssertFalse(coordinator.isResourceThrottled, "Throttle should clear within 1.2s stagger budget")
     }
 }
+#endif
