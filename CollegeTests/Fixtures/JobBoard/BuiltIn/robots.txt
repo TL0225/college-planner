@@ -1,0 +1,4 @@
+User-agent: *
+Disallow: /jobs*?search=
+Disallow: /apply/
+Disallow: /jobs/seattle

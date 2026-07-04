@@ -83,6 +83,7 @@ Secrets.xcconfig
 !docs/**/*.md
 *.txt
 !docs/skipped-tests-registry.txt
+!CollegeTests/Fixtures/JobBoard/**/*.txt
 *.csv
 *.tsv
 !docs/perf-optimization-manifest.tsv

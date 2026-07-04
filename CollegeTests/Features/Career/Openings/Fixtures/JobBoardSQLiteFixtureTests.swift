@@ -119,10 +119,11 @@ struct JobBoardSQLiteFixtureTests {
         match.recommendedForPosting = true
         match.overallScore = row.cachedMatchScore ?? 0
         match.descriptionHashAtScore = row.cachedMatchHash
+        match.resumeHashAtScore = "resume-hash"
         let score = JobBoardMatchEligibility.recommendedOverallScoreIfValid(
             match: match,
             postingDescriptionHash: row.descriptionHash,
-            resumeParsedTextHash: nil
+            resumeParsedTextHash: "resume-hash"
         )
         #expect(score == row.cachedMatchScore)
     }
