@@ -117,18 +117,23 @@ jobs:
 
       - name: College unit test shard (Snow Leopard PR gate)
         run: bash scripts/run-college-unit-tests.sh
+        env:
+          DERIVED: /tmp/CollegeUnitTestsDD
 
       - name: Schema migration verification
+        # Reuse unit-shard build products; a second full `test` rebuild has hung on CI runners.
         run: |
           bash scripts/college-xcodebuild-test.sh -project "College.xcodeproj" -scheme "College" -destination 'platform=macOS' \
-            -only-testing:CollegeTests/SchemaMigrationPlanTests test
+            -derivedDataPath /tmp/CollegeUnitTestsDD \
+            -only-testing:CollegeTests/SchemaMigrationPlanTests test-without-building
 
       - name: Snow Leopard verification shard
         run: |
           set -euo pipefail
           for suite in VaultHierarchyIntegrityTests DataWipeCompletenessTests CollegePersistenceSavePathTests MenuBarStatusPayloadTests CollegeSchemaLegacyStoreRepairTests ScoreboardGeneratorTests JobBoardRelationshipIntegrityTests; do
             bash scripts/college-xcodebuild-test.sh -project "College.xcodeproj" -scheme "College" -destination 'platform=macOS' \
-              -only-testing:"CollegeTests/$suite" test
+              -derivedDataPath /tmp/CollegeUnitTestsDD \
+              -only-testing:"CollegeTests/$suite" test-without-building
           done
 
       - name: Snow Leopard scoreboard
