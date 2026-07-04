@@ -1,6 +1,6 @@
 // CalendarFetchQuery.swift
 // Feature: Calendar
-// Purpose: SwiftData fetch helpers for cache rebuild (Layer 2 bridge; stays in app target).
+// Purpose: local-store fetch helpers for cache rebuild (Layer 2 bridge; stays in app target).
 
 import Foundation
 import SwiftData

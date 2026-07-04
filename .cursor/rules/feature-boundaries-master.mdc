@@ -34,7 +34,7 @@ Open or @-mention the feature folder so the matching `feature-*.mdc` rule applie
 | Degree | `College/Features/Degree/` | — | ✓ | `features/feature-degree.mdc` |
 | Documents | `College/Features/Documents/` | — | ✓ | `features/feature-documents.mdc` |
 | LMS | `College/Features/LMS/` | — | — | `features/feature-lms.mdc` |
-| Overview | `College/Features/Overview/` | — | ✓ | `features/feature-overview.mdc` |
+| Overview | `College/Features/Overview/` | — | — | `features/feature-overview.mdc` |
 | Profile | `College/Features/Profile/` | — | ✓ | `features/feature-profile.mdc` |
 | Resume | `College/Features/Resume/` | — | ✓ | `features/feature-resume.mdc` |
 | Settings | `College/Features/Settings/` | — | ✓ | `features/feature-settings.mdc` |

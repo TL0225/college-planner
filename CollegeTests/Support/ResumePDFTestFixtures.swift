@@ -12,7 +12,7 @@ enum ResumePDFTestFixtures {
         repeating: """
         Timothy Leung — Software Engineer
         Experience: Built APIs with Swift, Workday integrations, vault document pipelines, and ATS scoring.
-        Skills: Swift, SwiftUI, SwiftData, PDFKit, XCTest, CI release gates, UAT oversight, catalog ingest.
+        Skills: Swift, SwiftUI, local persistence, PDFKit, XCTest, CI release gates, UAT oversight, catalog ingest.
         Education: Computer Science — distributed systems, performance profiling, Instruments baselines.
 
         """,

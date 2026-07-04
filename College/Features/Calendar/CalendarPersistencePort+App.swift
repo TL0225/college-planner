@@ -1,6 +1,6 @@
 // CalendarPersistencePort+App.swift
 // Feature: Calendar
-// Purpose: Wire SwiftData persistence into CollegeCalendar package ports (ADR 004).
+// Purpose: Wire local persistence into CollegeCalendar package ports (ADR 004).
 
 import CollegeCalendar
 import Foundation

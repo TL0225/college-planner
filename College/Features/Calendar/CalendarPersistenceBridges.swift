@@ -1,6 +1,6 @@
 // CalendarPersistenceBridges.swift
 // Feature: Calendar
-// Purpose: App-target adapters between SwiftData models and CollegeCalendar package types.
+// Purpose: App-target adapters between local models and CollegeCalendar package types.
 
 import CollegeCalendar
 import Foundation

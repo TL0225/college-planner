@@ -1,6 +1,6 @@
 ---
 description: "Overview feature — edit scope and boundaries"
-globs: College/Features/Overview/**,CollegeTests/Features/Overview/**
+globs: College/Features/Overview/**
 alwaysApply: false
 ---
 
@@ -12,9 +12,6 @@ Dashboard widgets and overview read models.
 
 ## Primary touch zones (edit freely)
 - `College/Features/Overview/**`
-
-## Tests
-- `CollegeTests/Features/Overview/**`
 
 ## Allowed shared touch
 ### Bridges (cross-feature seams — change only when integration contract changes)

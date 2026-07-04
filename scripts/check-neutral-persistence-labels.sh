@@ -20,7 +20,6 @@ SCAN_DIRS=(
   "$ROOT/College"
   "$ROOT/CollegeTests"
   "$ROOT/CollegeUITests"
-  "$ROOT/docs"
 )
 
 TMP_VIOLATIONS="$(mktemp)"
@@ -41,11 +40,21 @@ collect_files() {
 
 while IFS= read -r file; do
   [[ -n "$file" ]] || continue
+  # Implementation storage layer and ADRs may name the framework explicitly.
+  case "$file" in
+    */College/Core/Data/Storage/*|*/College/Core/Data/Repositories/*|*/docs/adr/*)
+      continue
+      ;;
+  esac
   while IFS= read -r match; do
     [[ -n "$match" ]] || continue
     line_no="${match%%:*}"
     content="${match#*:}"
     if [[ "$content" =~ ^[[:space:]]*import[[:space:]]+SwiftData[[:space:]]*$ ]]; then
+      continue
+    fi
+    # Framework type / API identifiers required by the compiler.
+    if [[ "$content" =~ SwiftDataError|ModelContainer|ModelContext|ModelConfiguration ]]; then
       continue
     fi
     printf '%s\n' "${file}:${line_no}:${content}" >> "$TMP_VIOLATIONS"

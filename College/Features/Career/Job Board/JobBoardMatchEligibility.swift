@@ -220,7 +220,7 @@ enum JobBoardMatchEligibility {
         return fallbackDocumentID
     }
 
-    /// Fast path for job-detail navigation — one SwiftData fetch, no ATS re-score.
+    /// Fast path for job-detail navigation — one local-store fetch, no ATS re-score.
     @MainActor
     static func cachedMatchRows(
         for posting: JobBoardPosting,

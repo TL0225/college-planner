@@ -34,7 +34,7 @@ final class CatalogStoreCoordinator {
         CollegeModelContainerFactory.catalogStoreDirectory(for: schoolID)
     }
 
-    /// Active SwiftData catalog store for a school.
+    /// Active local catalog store for a school.
     func storeURL(for schoolID: String) -> URL {
         CollegeModelContainerFactory.catalogStoreURL(for: schoolID)
     }

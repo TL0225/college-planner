@@ -2,7 +2,7 @@
 // Feature: Catalog
 // Purpose: Regression coverage for ModernCampus skeleton persistence — degreeType
 //          inference for IR-extracted programs and tolerant degree-level matching.
-// Data: Pure value-level helpers (no SwiftData store required).
+// Data: Pure value-level helpers (no local model store required).
 
 import XCTest
 @testable import College

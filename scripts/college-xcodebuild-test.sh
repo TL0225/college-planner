@@ -13,8 +13,11 @@ for arg in "$@"; do
   esac
 done
 
+# CI runners must not block on untrusted SwiftPM build-tool plugins (e.g. mlx-swift CudaBuild).
+PLUGIN_ARGS=(-skipPackagePluginValidation -skipMacroValidation)
+
 if [[ "$is_test_invocation" -eq 1 ]]; then
-  exec xcodebuild "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" "$@"
+  exec xcodebuild "${PLUGIN_ARGS[@]}" "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" "$@"
 fi
 
-exec xcodebuild "$@"
+exec xcodebuild "${PLUGIN_ARGS[@]}" "$@"

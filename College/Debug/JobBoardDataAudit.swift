@@ -1,6 +1,6 @@
 // JobBoardDataAudit.swift
 // Feature: Debug
-// Purpose: Read-only audit of Openings pipeline data in SwiftData + UserDefaults.
+// Purpose: Read-only audit of Openings pipeline data in local store + UserDefaults.
 
 #if DEBUG
 import Foundation

@@ -10,7 +10,7 @@ import Darwin.Mach
 enum PerformanceDiagnostics {
     /// Resident set size (RSS). NOTE: this *overcounts* the app's real memory because it
     /// includes clean/shared pages — framework code from the dyld shared cache, WebKit,
-    /// Metal, and memory-mapped files (SwiftData stores, embedding model weights). For a
+    /// Metal, and memory-mapped files (local model stores, embedding model weights). For a
     /// SwiftUI + MLX + WebKit app this is routinely 700 MB–1.5 GB even when idle, which is
     /// why the in-app gauge can read ~900 MB. Prefer ``footprintMemoryMB()`` for the number
     /// that reflects memory actually charged to this process.
@@ -58,7 +58,7 @@ enum PerformanceDiagnostics {
         if FileManager.default.fileExists(atPath: storePath) {
             return storePath
         }
-        return "School \(id) (SwiftData store not on disk)"
+        return "School \(id) (local model store not on disk)"
     }
 
     @MainActor
