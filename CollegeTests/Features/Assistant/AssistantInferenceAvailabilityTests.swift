@@ -3,7 +3,8 @@ import Foundation
 import Testing
 @testable import College
 
-@Suite("Assistant Inference Availability")
+// Shared UserDefaults + static test overrides must not run in parallel.
+@Suite("Assistant Inference Availability", .serialized)
 struct AssistantInferenceAvailabilityTests {
 
     private func resetAvailabilityDefaults() {

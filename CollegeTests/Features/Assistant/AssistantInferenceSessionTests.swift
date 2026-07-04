@@ -5,7 +5,8 @@ import Foundation
 import Testing
 @testable import College
 
-@Suite("Assistant Inference Session")
+// Mutates process environment and static inference overrides.
+@Suite("Assistant Inference Session", .serialized)
 struct AssistantInferenceSessionTests {
 
     @Test("Stub session returns tool call")

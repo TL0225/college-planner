@@ -56,7 +56,7 @@ for c in "${CLASSES[@]}"; do
     echo "FAIL $c (xcodebuild)"
     FAILED+=("$c")
     # pipefail: grep exit 1 when no matches must not abort the shard loop
-    echo "$OUT" | grep -E "error:|TEST FAILED|Could not launch|failed on|Failing tests" | head -5 || true
+    echo "$OUT" | grep -E "error:|TEST (EXECUTE )?FAILED|Could not launch|failed on|Failing tests|Issue recorded|✘" | head -20 || true
     echo "$OUT" | tail -20
     continue
   fi
