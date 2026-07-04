@@ -5,8 +5,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/xcodebuild-test-parallel-flags.sh
 source "$SCRIPT_DIR/xcodebuild-test-parallel-flags.sh"
-# shellcheck source=scripts/xcodebuild-typst-flags.sh
-source "$SCRIPT_DIR/xcodebuild-typst-flags.sh" "$@"
 
 is_test_invocation=0
 for arg in "$@"; do
@@ -25,7 +23,7 @@ if [[ "${CI:-}" == "true" ]]; then
 fi
 
 if [[ "$is_test_invocation" -eq 1 ]]; then
-  exec xcodebuild "${PLUGIN_ARGS[@]}" "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" "$@" "${CI_SIGN_ARGS[@]}" "${XCODEBUILD_TYPST_ARGS[@]}"
+  exec xcodebuild "${PLUGIN_ARGS[@]}" "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" "$@" "${CI_SIGN_ARGS[@]}"
 fi
 
-exec xcodebuild "${PLUGIN_ARGS[@]}" "$@" "${CI_SIGN_ARGS[@]}" "${XCODEBUILD_TYPST_ARGS[@]}"
+exec xcodebuild "${PLUGIN_ARGS[@]}" "$@" "${CI_SIGN_ARGS[@]}"

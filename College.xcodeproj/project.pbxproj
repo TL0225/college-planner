@@ -583,17 +583,9 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/rust-typst",
-				);
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
 				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-lcollege_typst",
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.College;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -601,7 +593,7 @@
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TYPST_LINKED $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = Nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -659,17 +651,9 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(PROJECT_DIR)/rust-typst",
-				);
 				MACOSX_DEPLOYMENT_TARGET = 26.4;
 				MARKETING_VERSION = 1.0;
 				MICROSOFT_CLIENT_ID = YOUR_AZURE_CLIENT_ID_HERE;
-				OTHER_LDFLAGS = (
-					"$(inherited)",
-					"-lcollege_typst",
-				);
 				PRODUCT_BUNDLE_IDENTIFIER = Timothy.College;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -677,7 +661,7 @@
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS COLLEGE_TYPST_LINKED $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "COLLEGE_TEST_HOOKS $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = Nonisolated;
 				SWIFT_EMIT_LOC_STRINGS = YES;

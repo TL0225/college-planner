@@ -37,3 +37,7 @@ echo "  3. Set OTHER_LDFLAGS = -lcollege_typst"
 echo "  4. Add bridging header import or module map: $MODULE_MAP"
 echo "  5. Add OTHER_SWIFT_FLAGS = -D COLLEGE_TYPST_LINKED (required for Release/production)."
 echo ""
+
+echo "Note: the Xcode project defaults to the Swift fallback renderer (CI-safe)."
+echo "For production Typst PDFs, add the flags above to the College target, or set them"
+echo "only in a local xcconfig that is not committed."

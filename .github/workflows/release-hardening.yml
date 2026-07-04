@@ -45,5 +45,4 @@ jobs:
 
       - name: Build (Release)
         run: |
-          source scripts/xcodebuild-typst-flags.sh -configuration Release
-          xcodebuild -skipPackagePluginValidation -skipMacroValidation -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO "${XCODEBUILD_TYPST_ARGS[@]}"
+          xcodebuild -skipPackagePluginValidation -skipMacroValidation -project "College.xcodeproj" -scheme "College" -configuration Release build CODE_SIGNING_ALLOWED=NO

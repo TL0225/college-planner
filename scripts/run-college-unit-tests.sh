@@ -4,8 +4,6 @@ cd "$(dirname "$0")/.."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/xcodebuild-test-parallel-flags.sh
 source "$SCRIPT_DIR/xcodebuild-test-parallel-flags.sh"
-# shellcheck source=scripts/xcodebuild-typst-flags.sh
-source "$SCRIPT_DIR/xcodebuild-typst-flags.sh" -configuration Debug
 
 echo "=== Packages/CollegeCalendar (CalendarCacheEngineTests) ==="
 (cd Packages/CollegeCalendar && swift test --filter CalendarCacheEngineTests)
@@ -39,7 +37,6 @@ for c in "${CLASSES[@]}"; do
   echo "=== $c ==="
   OUT=$(xcodebuild -scheme College -destination 'platform=macOS' \
     "${XCODEBUILD_TEST_PARALLEL_ARGS[@]}" \
-    "${XCODEBUILD_TYPST_ARGS[@]}" \
     test-without-building -only-testing:"CollegeTests/$c" 2>&1) || true
   if ! echo "$OUT" | grep -qE "TEST (SUCCEEDED|EXECUTE SUCCEEDED)"; then
     echo "FAIL $c (xcodebuild)"
