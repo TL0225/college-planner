@@ -42,8 +42,8 @@ enum TransferFixtureFactory {
     static func assistAgreementListJSON() -> Data {
         """
         [
-          {"key":"fixture-agreement-1","name":"Math","type":"Department"},
-          {"key":"fixture-agreement-2","name":"English","type":"Department"}
+          {"id":"fixture-agreement-1","name":"Math","type":"Department"},
+          {"id":"fixture-agreement-2","name":"English","type":"Department"}
         ]
         """.data(using: .utf8)!
     }

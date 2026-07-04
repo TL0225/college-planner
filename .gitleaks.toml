@@ -7,6 +7,9 @@ description = "Allow known non-secret identifiers"
 paths = [
   # Google OAuth client IDs / redirect URIs are public identifiers (not secrets).
   '''College/Info.plist''',
+  # Captured HTML/JSON fixtures may contain third-party public app keys.
+  '''CollegeTests/Fixtures/''',
+  '''College/Features/.*/Fixtures/''',
 ]
 
 regexes = [
