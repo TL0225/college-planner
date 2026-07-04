@@ -5,7 +5,7 @@ import Foundation
 import Testing
 @testable import College
 
-@Suite("Assistant Intent NL Model Routing")
+@Suite("Assistant Intent NL Model Routing", .serialized)
 struct AssistantIntentNLModelRoutingTests {
 
     @Test("Semantics uses NL model when embedding disabled")
