@@ -26,11 +26,11 @@ PLUGIN_ARGS=(-skipPackagePluginValidation -skipMacroValidation)
 # Bash 3.2 + set -u treats empty "${arr[@]}" as unbound; always pass a real argv slot.
 EXTRA_ARGS=()
 if [[ "${CI:-}" == "true" ]]; then
-  if [[ "$is_test_invocation" -eq 0 ]]; then
-    EXTRA_ARGS+=(CODE_SIGNING_ALLOWED=NO)
-  elif [[ "$configuration" == "Release" ]]; then
-    # Release XCTest hosts hang when unsigned on hosted macOS; ad-hoc sign without dev certs.
+  if [[ "$configuration" == "Release" ]]; then
+    # Release test hosts need ad-hoc signing on hosted macOS; apply to build-for-testing too.
     EXTRA_ARGS+=(CODE_SIGN_IDENTITY=-)
+  elif [[ "$is_test_invocation" -eq 0 ]]; then
+    EXTRA_ARGS+=(CODE_SIGNING_ALLOWED=NO)
   else
     EXTRA_ARGS+=(CODE_SIGNING_ALLOWED=NO)
   fi
