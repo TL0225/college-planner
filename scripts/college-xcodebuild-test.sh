@@ -19,7 +19,8 @@ PLUGIN_ARGS=(-skipPackagePluginValidation -skipMacroValidation)
 # Hosted CI has no Mac Development certs / provisioning profiles.
 # Bash 3.2 + set -u treats empty "${arr[@]}" as unbound; always pass a real argv slot.
 EXTRA_ARGS=()
-if [[ "${CI:-}" == "true" ]]; then
+if [[ "${CI:-}" == "true" && "$is_test_invocation" -eq 0 ]]; then
+  # Unsigned test hosts fail to attach XCTest runners on hosted macOS (Release perf gates).
   EXTRA_ARGS+=(CODE_SIGNING_ALLOWED=NO)
 fi
 
