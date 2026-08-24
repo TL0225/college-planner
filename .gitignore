@@ -1,117 +1,38 @@
-# macOS
+# College (Tauri desktop)
 .DS_Store
 .AppleDouble
 .LSOverride
 
-# Local perf harness output (see assistant perf plan)
-.benchmark_transcript.txt
-.assistant_ui_analysis_last_run.json
-.college_ui_test_long_waits
-
-# Repo-local Xcode derived data (do not commit)
-.xcode_derived*/
-.xcode_derived*
-
-# Xcode / Swift
-# College.xcodeproj is tracked for CI and fresh clones; per-user Xcode state is not.
-DerivedData/
-build/
-*.o
-*.a
-*.dSYM/
-*.ipa
-*.app/
-*.xcuserstate
-*.xccheckout
-*.xcscmblueprint
-
-# Xcode project user data
-*.xcuserdata/
-*.xcuserdatad/
-
-# Swift Package Manager
-.build/
-Package.resolved
-# ADR 004 feature package scaffolds (sources only — never .build/)
-!Packages/
-!Packages/**/Package.swift
-!Packages/**/Sources/**
-!Packages/**/Tests/**
-Packages/**/.build/
-
-# Rust
+# Tauri / Node / Rust (CollegeDesktop/)
+CollegeDesktop/node_modules/
+CollegeDesktop/dist/
+CollegeDesktop/.vite/
+CollegeDesktop/*.local
+CollegeDesktop/src-tauri/target/
+CollegeDesktop/src-tauri/gen/
 target/
-rust-typst/target/
-src-tauri/target/
-
-# Tauri / Node (cross-platform desktop)
-node_modules/
-dist/
-.vite/
 *.local
-src-tauri/gen/
 
-# CocoaPods / Carthage (uncomment if used)
-# Pods/
-# Carthage/Build/
-
-# Fastlane (uncomment if used)
-# fastlane/report.xml
-# fastlane/Preview.html
-# fastlane/screenshots
-# fastlane/test_output
-
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-
-# Profiling / coverage artifacts
-*.profraw
-
-# Local editor/workspace folders
+# Editor / local
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
 .vscode/
-.xcodebuildmcp/
 .artifacts/
 Secrets.xcconfig
 
-# Sparkle / release signing secrets (never commit private keys)
+# Secrets (never commit private keys)
 secrets/**
 !secrets/README.md
 
-# ML / large model artifacts
-*.safetensors
-*.safetensors.*
-
-# Documentation / generated tabular artifacts
+# Local dumps
+exports/
 *.md
 !README.md
 !docs/
 !docs/**/
 !docs/**/*.md
 *.txt
-!docs/skipped-tests-registry.txt
-!CollegeTests/Fixtures/JobBoard/**/*.txt
+!docs/**/*.txt
 *.csv
 *.tsv
-!docs/perf-optimization-manifest.tsv
-!docs/perf-baselines.tsv
-!College/Features/Assistant/Resources/IntentTrainingData.csv
-
-# Scrape / catalog export dumps (local only)
-exports/
-
-# DeGoog sidecar runtime (fetch via scripts/fetch-degoog-sidecar.sh)
-College/DegoogSidecar/college-degoog-bun
-College/DegoogSidecar/college-degoog-runtime.tar.gz
-College/DegoogSidecar/runtime/
-College/DegoogSidecar/bun
-College/DegoogSidecar/degoog-runtime.tar.gz
-test_sidebar*.swift
-
-# MSAL binary (fetch via scripts/fetch-msal-binary.sh)
-Packages/MSALBinary/MSAL.xcframework/

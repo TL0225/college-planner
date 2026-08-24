@@ -66,7 +66,7 @@ The Swift app remains supported. Tauri uses a **separate data root** and one-way
 | Calendar native | OAuth + ICS; not EventKit two-way |
 | Local AI | Ollama / OpenAI-compat; optional ONNX in `models/` |
 | Updates | Tauri updater (Settings → Check for updates) |
-| Windows | Same codebase; run `bun run tauri:build` on Windows or CI tag `desktop-v*` |
+| Windows | Same codebase; run `cd CollegeDesktop && bun run tauri:build` on Windows or CI tag `desktop-v*` |
 
 ---
 
@@ -86,7 +86,7 @@ The Swift app remains supported. Tauri uses a **separate data root** and one-way
 ## Rollback
 
 - Keep Swift app installed; data is not deleted by Tauri import  
-- Tauri data lives only under `CollegeDesktop/`  
+- Tauri **app data** lives only under `~/Library/Application Support/CollegeDesktop/` (not the repo’s `CollegeDesktop/` source folder)  
 - To reset Tauri: quit app, remove `~/Library/Application Support/CollegeDesktop/`, re-import  
 
 ---
@@ -95,13 +95,13 @@ The Swift app remains supported. Tauri uses a **separate data root** and one-way
 
 - Tag `desktop-v0.1.0` (or similar) triggers `.github/workflows/cross-platform-release.yml`
 - Set signing secrets for notarized macOS + signed Windows (optional; unsigned draft artifacts when unset)
-- macOS local release: `bun run tauri:build` (requires `default-run = "college"` in `src-tauri/Cargo.toml`)
+- macOS local release: `cd CollegeDesktop && bun run tauri:build` (requires `default-run = "college"` in `CollegeDesktop/src-tauri/Cargo.toml`)
 - **Pre-release gate:** `bash scripts/check-tauri-parity.sh`
 
 ## Verification checklist (agent / CI)
 
 - [ ] `bash scripts/check-tauri-parity.sh` exits 0
-- [ ] `bun run tauri:dev` — Settings → Documents watchdog **Active**
+- [ ] `cd CollegeDesktop && bun run tauri:dev` — Settings → Documents watchdog **Active**
 - [ ] Career → Pathing → Expectations / Related / Resume tabs persist after restart
 - [ ] Settings → Catalog → Reindex → Catalog semantic search works
 - [ ] `bash scripts/import-swift-workspace.sh --force` — finance rows > 0 if Swift Finance DB exists

@@ -1,8 +1,0 @@
-scenario_id	scenario_name	before_ms	after_ms	main_thread_block_ms	alloc_peak_mb	fps_scroll	profiler_note	status
-1	cold_launch_main_window	TBD	TBD	TBD	372	TBD	Release RSS peak @10s (2026-06-04); Phase 5 deferred catalog migration	recorded
-2	workday_sync_500_jobs	TBD	TBD	TBD	TBD	TBD	Phase 5/6 off-main import + regex cache; Instruments wall time pending	pending
-3	career_openings_scroll_filter	TBD	TBD	TBD	TBD	TBD	Off-main refresh + Equatable rows + 120ms embed debounce; Instruments pending	partial
-4	academics_audit_panel_open	TBD	3000	TBD	TBD	TBD	XCTest release budget 3000ms; shared JSONDecoder; Instruments pending	partial
-5	calendar_month_scroll	TBD	TBD	TBD	TBD	TBD	Batch event prewarm; detached cache build; Instruments pending	partial
-6	assistant_turn_tools_rag	TBD	TBD	TBD	TBD	TBD	Phase 5 cancel-on-disappear; Instruments pending	pending
-7	catalog_background_sync_chunk	TBD	TBD	TBD	TBD	TBD	Off-main persist + streaming chunk upsert; Instruments pending	partial

@@ -2,11 +2,13 @@
 
 Single-codebase cross-platform desktop app for **macOS** and **Windows**.
 
-- **UI:** React 19 + TypeScript + Tailwind CSS + Framer Motion (`src/`)
-- **Core:** Rust + Tauri v2 + SQLite (`src-tauri/`)
+- **UI:** React 19 + TypeScript + Tailwind CSS + Framer Motion (`CollegeDesktop/src/`)
+- **Core:** Rust + Tauri v2 + SQLite (`CollegeDesktop/src-tauri/`)
 - **Platform adapters:** Keychain/Touch ID (macOS) · DPAPI/Windows Hello (Windows) · MLX vs DirectML
 
-The native Swift/Xcode macOS app remains in `College/` as a coexisting Apple Silicon build — not a migration target.
+## Path C — literal screen copy
+
+Screen-by-screen visual fidelity tracker: [PATH_C_VISUAL_FIDELITY.md](PATH_C_VISUAL_FIDELITY.md). Layouts live under `CollegeDesktop/src/`.
 
 ## Prerequisites
 
@@ -17,27 +19,37 @@ The native Swift/Xcode macOS app remains in `College/` as a coexisting Apple Sil
 
 ## Develop
 
+From the repo root (delegates to `CollegeDesktop/`):
+
 ```bash
-bun install
+cd CollegeDesktop && bun install
+bun run tauri:dev
+```
+
+Or from repo root after `cd CollegeDesktop && bun install` once:
+
+```bash
 bun run tauri:dev
 ```
 
 ## Build
 
 ```bash
-bun run tauri:build
+cd CollegeDesktop && bun run tauri:build
 ```
 
 Artifacts:
 
-- macOS: `.dmg` / `.app` under `src-tauri/target/release/bundle/`
-- Windows: `.msi` / NSIS `.exe` under `src-tauri/target/release/bundle/`
+- macOS: `.dmg` / `.app` under `CollegeDesktop/src-tauri/target/release/bundle/`
+- Windows: `.msi` / NSIS `.exe` under `CollegeDesktop/src-tauri/target/release/bundle/`
 
 ## Layout
 
 ```
-src/                 Shared React UI (design system + modules)
-src-tauri/           Unified Rust core (db, security, ai, scrapers, IPC)
+CollegeDesktop/
+  src/               Shared React UI (design system + modules)
+  src-tauri/         Unified Rust core (db, security, ai, scrapers, IPC)
+workers/             Optional helpers (e.g. finance-link-proxy)
 .github/workflows/cross-platform-release.yml
 ```
 
@@ -267,7 +279,7 @@ Tokens and chrome primitives mirror `Packages/CollegeDesignSystem/` (spacing, ra
 
 ### Phase 34 surfaces (1:1 program — Sprint 7)
 
-- **Assistant tool loop** — `assistant_turn` / `assistant_cancel_turn` IPC (`src-tauri/src/commands/assistant.rs`): keyword planner runs 1–2 read-only tools (audit summary, GPA, tasks, events, career pipeline, finance dashboard, vault semantic search), synthesizes via `ai_chat_completion`; emits `assistant:tool` + simulated `assistant:chunk` events
+- **Assistant tool loop** — `assistant_turn` / `assistant_cancel_turn` IPC (`CollegeDesktop/src-tauri/src/commands/assistant.rs`): keyword planner runs 1–2 read-only tools (audit summary, GPA, tasks, events, career pipeline, finance dashboard, vault semantic search), synthesizes via `ai_chat_completion`; emits `assistant:tool` + simulated `assistant:chunk` events
 - **AssistantModule turn UX** — non-local sends use `ipc.assistantTurn`; tool-trace StatusChips during turn; attachments + web memory wired into payload; **Stop** cancels in-flight turn
 - **Write tool (confirm)** — `createTask` detected from prompts like “add task …” / “remind me to …”; confirmation card → `calendarUpsertTask` on confirm
 

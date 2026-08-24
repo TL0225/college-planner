@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# End-to-end parity gate for the Tauri desktop app (Phases 53–56+).
+# End-to-end gate for the Tauri desktop app.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+DESKTOP="$ROOT/CollegeDesktop"
+cd "$DESKTOP"
 
 echo "==> TypeScript"
 bun run typecheck
@@ -25,8 +26,8 @@ else
   echo "    skip: rustup target add x86_64-pc-windows-msvc"
 fi
 
-echo "==> Swift workspace import"
-bash scripts/import-swift-workspace.sh --force | tail -20
+echo "==> Optional legacy Swift DB import (if present on disk)"
+bash "$ROOT/scripts/import-swift-workspace.sh" --force 2>/dev/null | tail -20 || echo "    skip: no Swift DB or import unavailable"
 
 DB="${HOME}/Library/Application Support/CollegeDesktop/College.sqlite"
 if [[ -f "$DB" ]]; then

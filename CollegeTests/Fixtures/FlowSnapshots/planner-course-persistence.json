@@ -1,5 +1,0 @@
-{
-  "flow": "planner_course_persistence",
-  "version": 1,
-  "expectedFields": ["code", "name", "credits"]
-}

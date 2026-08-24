@@ -1,0 +1,7 @@
+COINBASE_CLIENT_ID=your_coinbase_client_id
+COINBASE_CLIENT_SECRET=your_coinbase_client_secret
+# 32-byte key, base64-encoded (generate: openssl rand -base64 32)
+WRAP_KEY=REPLACE_WITH_BASE64_32_BYTE_KEY
+# Optional app attestation header value
+# APP_ATTEST_HEADER=your-shared-secret
+# COINBASE_REDIRECT_URI=http://localhost:8787/coinbase/callback

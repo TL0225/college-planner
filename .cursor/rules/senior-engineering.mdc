@@ -19,7 +19,7 @@ alwaysApply: true
 ## Verify and communicate
 - Run a relevant build or test after non-trivial changes; fix compile errors before finishing.
 - Prefer behavior-focused tests over snapshot/trivial assertions.
-- Summarize what changed and why in plain language; cite code with `startLine:endLine:path` when pointing at the repo.
+- Summarize what changed and why in plain language.
 - Do not commit, push, or open PRs unless explicitly asked.
 
 ## When stuck

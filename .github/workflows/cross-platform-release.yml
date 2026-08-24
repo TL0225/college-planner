@@ -41,13 +41,14 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: CollegeDesktop/src-tauri -> target
 
       - name: Install Linux deps (noop on mac/win)
         if: false
         run: echo skip
 
       - name: Install frontend dependencies
+        working-directory: CollegeDesktop
         run: bun install --frozen-lockfile
 
       - name: Build Tauri app
@@ -66,7 +67,7 @@ jobs:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         with:
-          projectPath: .
+          projectPath: CollegeDesktop
           tagName: ${{ github.ref_name }}
           releaseName: College ${{ github.ref_name }}
           releaseBody: |
@@ -83,4 +84,6 @@ jobs:
         with:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
+        working-directory: CollegeDesktop
       - run: bun run typecheck
+        working-directory: CollegeDesktop

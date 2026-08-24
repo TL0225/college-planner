@@ -1,0 +1,27 @@
+# Cursor rules — College Desktop (Tauri)
+
+## Scope
+
+This repository is the **Tauri** desktop app under `CollegeDesktop/`. Do not reintroduce a Swift/Xcode tree.
+
+## UI
+
+- Primitives and tokens: `CollegeDesktop/src/design-system/`
+- Screens: `CollegeDesktop/src/modules/`
+- Tracker: `docs/PATH_C_VISUAL_FIDELITY.md`, catalog: `docs/UI_CATALOG.md`
+
+## Backend
+
+- Rust IPC/commands: `CollegeDesktop/src-tauri/src/commands/`
+- DB schema/migrations: `CollegeDesktop/src-tauri/src/db/`
+
+## Verify
+
+```bash
+cd CollegeDesktop && bun run typecheck
+bash scripts/check-tauri-parity.sh
+```
+
+## Commits
+
+Smallest correct diff. Do not commit unless asked.
