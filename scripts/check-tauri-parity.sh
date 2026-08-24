@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 echo "==> TypeScript"
-npx tsc --noEmit
+bun run typecheck
 
 echo "==> Rust check"
 (cd src-tauri && cargo check)
@@ -41,7 +41,7 @@ if [[ -f "$DB" ]]; then
 fi
 
 echo "==> Frontend production build"
-npm run build
+bun run build
 
 echo ""
 echo "OK — Tauri parity gate passed."

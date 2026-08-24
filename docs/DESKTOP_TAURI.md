@@ -10,7 +10,7 @@ The native Swift/Xcode macOS app remains in `College/` as a coexisting Apple Sil
 
 ## Prerequisites
 
-- Node.js 22+
+- Bun 1.4+
 - Rust stable (`rustup`)
 - macOS: Xcode CLT
 - Windows: WebView2 runtime (bundled bootstrapper in installer)
@@ -18,14 +18,14 @@ The native Swift/Xcode macOS app remains in `College/` as a coexisting Apple Sil
 ## Develop
 
 ```bash
-npm install
-npm run tauri:dev
+bun install
+bun run tauri:dev
 ```
 
 ## Build
 
 ```bash
-npm run tauri:build
+bun run tauri:build
 ```
 
 Artifacts:

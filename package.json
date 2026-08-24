@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "bun@1.4.0",
   "description": "College — single-codebase cross-platform desktop app (Tauri v2 + React)",
   "scripts": {
     "dev": "vite",
