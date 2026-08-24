@@ -32,14 +32,18 @@ Semester planner, degree audit, GPA/credit views, graduation timeline.
 ### Toolbar (only when the task changes toolbar actions)
 - `College/App/Toolbar/AcademicsToolbarContent.swift`
 ### Bridges (cross-feature seams — change only when integration contract changes)
+- `College/Features/Academics/AcademicsComputationBridge.swift`
+- `College/Features/Academics/AcademicsFeaturePreloadBridge.swift`
 - `College/Features/Academics/AcademicsPlannerCreditsBridge.swift`
 - `College/Features/Academics/AcademicsPlannerReadBridge.swift`
+- `College/Features/Academics/AcademicsProgramCreditStripBridge.swift`
+- `College/Features/Academics/AcademicsRequirementKindBridge.swift`
 - `College/Features/Academics/AuditCatalogLookupBridge.swift`
 - `College/Features/Academics/GraduationTimelinePolicyBridge.swift`
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

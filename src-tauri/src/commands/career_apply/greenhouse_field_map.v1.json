@@ -1,0 +1,11 @@
+{
+  "version": "greenhouse-map@1.0.0",
+  "step": "contact",
+  "fields": [
+    { "payloadKey": "personal.firstName", "label": "First Name" },
+    { "payloadKey": "personal.lastName", "label": "Last Name" },
+    { "payloadKey": "personal.email", "label": "Email" },
+    { "payloadKey": "personal.phone", "label": "Phone" },
+    { "payloadKey": "personal.linkedInURL", "label": "LinkedIn" }
+  ]
+}

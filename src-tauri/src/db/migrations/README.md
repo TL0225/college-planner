@@ -1,0 +1,2 @@
+-- Reserved for external SQL migration files if preferred over embedded Rust.
+-- Primary migrations live in src-tauri/src/db/schema.rs for single-codebase packaging.

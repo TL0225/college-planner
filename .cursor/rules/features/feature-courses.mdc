@@ -1,6 +1,6 @@
 ---
 description: "Courses feature — edit scope and boundaries"
-globs: College/Features/Courses/**,CollegeTests/Features/Courses/**
+globs: College/Features/Courses/**,CollegeTests/Features/Courses/**,Packages/CollegeWorkspace/**
 alwaysApply: false
 ---
 
@@ -13,6 +13,9 @@ Course detail sheets and catalog-linked course dashboard.
 ## Primary touch zones (edit freely)
 - `College/Features/Courses/**`
 
+## Extracted package
+- `Packages/CollegeWorkspace/**`
+
 ## Tests
 - `CollegeTests/Features/Courses/**`
 
@@ -21,11 +24,13 @@ Course detail sheets and catalog-linked course dashboard.
 - `College/Core/Data/Repositories/CatalogRepository+CourseLookup.swift`
 - `College/Core/Data/Repositories/CatalogRepository+Reads.swift`
 ### Bridges (cross-feature seams — change only when integration contract changes)
-- `College/Features/Courses/CourseDashboardReadBridge.swift`
+- `College/Features/Courses/WorkspaceCoursesAuxiliaryBridge.swift`
+- `College/Features/Courses/WorkspaceCoursesEditorBridge.swift`
+- `College/Features/Courses/WorkspaceCoursesReadBridge.swift`
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

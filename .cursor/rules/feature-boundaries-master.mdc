@@ -29,22 +29,24 @@ Open or @-mention the feature folder so the matching `feature-*.mdc` rule applie
 | Assistant | `College/Features/Assistant/` | — | ✓ | `features/feature-assistant.mdc` |
 | Calendar | `College/Features/Calendar/` | Packages/CollegeCalendar | ✓ | `features/feature-calendar.mdc` |
 | Career | `College/Features/Career/` | Packages/CollegeCareer | ✓ | `features/feature-career.mdc` |
-| Catalog | `College/Features/Catalog/` | — | ✓ | `features/feature-catalog.mdc` |
-| Courses | `College/Features/Courses/` | — | ✓ | `features/feature-courses.mdc` |
-| Degree | `College/Features/Degree/` | — | ✓ | `features/feature-degree.mdc` |
-| Documents | `College/Features/Documents/` | — | ✓ | `features/feature-documents.mdc` |
-| LMS | `College/Features/LMS/` | — | — | `features/feature-lms.mdc` |
+| Catalog | `College/Features/Catalog/` | Packages/CollegeCatalogCore | ✓ | `features/feature-catalog.mdc` |
+| Courses | `College/Features/Courses/` | Packages/CollegeWorkspace | ✓ | `features/feature-courses.mdc` |
+| Degree | `College/Features/Degree/` | Packages/CollegeWorkspace | ✓ | `features/feature-degree.mdc` |
+| Discovery | `College/Features/Discovery/` | Packages/CollegeDiscovery | ✓ | `features/feature-discovery.mdc` |
+| Documents | `College/Features/Documents/` | Packages/CollegeDocuments | ✓ | `features/feature-documents.mdc` |
+| LMS | `College/Features/LMS/` | Packages/CollegeLMS | — | `features/feature-lms.mdc` |
 | Overview | `College/Features/Overview/` | — | — | `features/feature-overview.mdc` |
 | Profile | `College/Features/Profile/` | — | ✓ | `features/feature-profile.mdc` |
 | Resume | `College/Features/Resume/` | — | ✓ | `features/feature-resume.mdc` |
 | Settings | `College/Features/Settings/` | — | ✓ | `features/feature-settings.mdc` |
-| SyllabusAI | `College/Features/SyllabusAI/` | — | — | `features/feature-syllabusai.mdc` |
-| Transfer | `College/Features/Transfer/` | — | ✓ | `features/feature-transfer.mdc` |
+| SyllabusAI | `College/Features/SyllabusAI/` | Packages/CollegeSyllabusAI | — | `features/feature-syllabusai.mdc` |
+| Transfer | `College/Features/Transfer/` | Packages/CollegeTransfer | ✓ | `features/feature-transfer.mdc` |
 
 ## Shell files — do not edit unless explicitly requested
 
 - `College/App/ContentView.swift`
-- `College/App/SidebarView.swift`
+- `College/App/Shell/CollegeModuleSidebar.swift`
+- `College/App/Shell/SuperAppShellLayout.swift`
 - `College/App/CollegeApp.swift`
 - `College/App/AppContainer.swift`
 

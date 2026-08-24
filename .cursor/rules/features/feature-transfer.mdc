@@ -1,6 +1,6 @@
 ---
 description: "Transfer feature — edit scope and boundaries"
-globs: College/Features/Transfer/**,CollegeTests/Features/Transfer/**
+globs: College/Features/Transfer/**,CollegeTests/Features/Transfer/**,Packages/CollegeTransfer/**
 alwaysApply: false
 ---
 
@@ -12,6 +12,9 @@ Transfer credit database, official refresh, academics impact.
 
 ## Primary touch zones (edit freely)
 - `College/Features/Transfer/**`
+
+## Extracted package
+- `Packages/CollegeTransfer/**`
 
 ## Tests
 - `CollegeTests/Features/Transfer/**`
@@ -27,7 +30,7 @@ Transfer credit database, official refresh, academics impact.
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

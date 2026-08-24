@@ -1,6 +1,6 @@
 ---
 description: "Catalog feature — edit scope and boundaries"
-globs: College/Features/Catalog/**,CollegeTests/Features/Catalog/**
+globs: College/Features/Catalog/**,CollegeTests/Features/Catalog/**,Packages/CollegeCatalogCore/**
 alwaysApply: false
 ---
 
@@ -12,6 +12,9 @@ School catalog scrape, ingest, search, vector index.
 
 ## Primary touch zones (edit freely)
 - `College/Features/Catalog/**`
+
+## Extracted package
+- `Packages/CollegeCatalogCore/**`
 
 ## Tests
 - `CollegeTests/Features/Catalog/**`
@@ -34,7 +37,7 @@ School catalog scrape, ingest, search, vector index.
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

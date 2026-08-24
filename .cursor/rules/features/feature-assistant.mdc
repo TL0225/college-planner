@@ -17,14 +17,12 @@ On-device AI assistant, tool routing, DeGoog sidecar, conversation UI.
 - `CollegeTests/Features/Assistant/**`
 
 ## Allowed shared touch
-### Toolbar (only when the task changes toolbar actions)
-- `College/App/Toolbar/AssistantToolbarContent.swift`
 ### Bridges (cross-feature seams — change only when integration contract changes)
 - `College/Features/Assistant/AssistantContextBridge.swift`
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

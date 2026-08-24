@@ -1,6 +1,6 @@
 ---
 description: "Documents feature — edit scope and boundaries"
-globs: College/Features/Documents/**,CollegeTests/Features/Documents/**
+globs: College/Features/Documents/**,CollegeTests/Features/Documents/**,Packages/CollegeDocuments/**
 alwaysApply: false
 ---
 
@@ -13,6 +13,9 @@ Vault file browser and document metadata UI.
 ## Primary touch zones (edit freely)
 - `College/Features/Documents/**`
 
+## Extracted package
+- `Packages/CollegeDocuments/**`
+
 ## Tests
 - `CollegeTests/Features/Documents/**`
 
@@ -22,10 +25,12 @@ Vault file browser and document metadata UI.
 ### Repositories (only when the task needs data writes)
 - `College/Core/Data/Repositories/VaultRepository.swift`
 - `College/Core/Data/Repositories/VaultRepository+*.swift`
+### Bridges (cross-feature seams — change only when integration contract changes)
+- `College/Features/Documents/DocumentsReadBridge.swift`
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

@@ -1,6 +1,6 @@
 ---
 description: "Degree feature — edit scope and boundaries"
-globs: College/Features/Degree/**,CollegeTests/Features/Degree/**
+globs: College/Features/Degree/**,CollegeTests/Features/Degree/**,Packages/CollegeWorkspace/**
 alwaysApply: false
 ---
 
@@ -8,10 +8,13 @@ alwaysApply: false
 
 # Degree feature scope
 
-Degree planner UI and major/minor requirement presentation.
+Degree workspace port adapters (UI in CollegeWorkspace package).
 
 ## Primary touch zones (edit freely)
 - `College/Features/Degree/**`
+
+## Extracted package
+- `Packages/CollegeWorkspace/**`
 
 ## Tests
 - `CollegeTests/Features/Degree/**`
@@ -20,10 +23,16 @@ Degree planner UI and major/minor requirement presentation.
 ### Repositories (only when the task needs data writes)
 - `College/Core/Data/Repositories/ProfileRepository+GraduationPlan.swift`
 - `College/Core/Data/Repositories/CatalogRepository+ProgramResolution.swift`
+### Bridges (cross-feature seams — change only when integration contract changes)
+- `College/Features/Degree/WorkspaceDegreeAuxiliaryBridge.swift`
+- `College/Features/Degree/WorkspaceDegreeCatalogBridge.swift`
+- `College/Features/Degree/WorkspaceDegreeComputationBridge.swift`
+- `College/Features/Degree/WorkspaceDegreePlannerReadBridge.swift`
+- `College/Features/Degree/WorkspaceDegreeReadBridge.swift`
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

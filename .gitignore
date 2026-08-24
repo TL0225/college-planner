@@ -42,6 +42,14 @@ Packages/**/.build/
 # Rust
 target/
 rust-typst/target/
+src-tauri/target/
+
+# Tauri / Node (cross-platform desktop)
+node_modules/
+dist/
+.vite/
+*.local
+src-tauri/gen/
 
 # CocoaPods / Carthage (uncomment if used)
 # Pods/
@@ -70,6 +78,10 @@ __pycache__/
 .xcodebuildmcp/
 .artifacts/
 Secrets.xcconfig
+
+# Sparkle / release signing secrets (never commit private keys)
+secrets/**
+!secrets/README.md
 
 # ML / large model artifacts
 *.safetensors
@@ -100,3 +112,6 @@ College/DegoogSidecar/runtime/
 College/DegoogSidecar/bun
 College/DegoogSidecar/degoog-runtime.tar.gz
 test_sidebar*.swift
+
+# MSAL binary (fetch via scripts/fetch-msal-binary.sh)
+Packages/MSALBinary/MSAL.xcframework/

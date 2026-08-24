@@ -1,6 +1,6 @@
 ---
 description: "SyllabusAI feature — edit scope and boundaries"
-globs: College/Features/SyllabusAI/**
+globs: College/Features/SyllabusAI/**,Packages/CollegeSyllabusAI/**
 alwaysApply: false
 ---
 
@@ -13,13 +13,16 @@ Syllabus upload, review, and MLX-backed extraction flows.
 ## Primary touch zones (edit freely)
 - `College/Features/SyllabusAI/**`
 
+## Extracted package
+- `Packages/CollegeSyllabusAI/**`
+
 ## Allowed shared touch
 ### Bridges (cross-feature seams — change only when integration contract changes)
 - `College/Features/SyllabusAI/MLXTokenizerBridge.swift`
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs

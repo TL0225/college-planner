@@ -1,6 +1,6 @@
 ---
 description: "LMS feature — edit scope and boundaries"
-globs: College/Features/LMS/**
+globs: College/Features/LMS/**,Packages/CollegeLMS/**
 alwaysApply: false
 ---
 
@@ -13,6 +13,9 @@ LMS portal web host and Brightspace/Canvas/Moodle import.
 ## Primary touch zones (edit freely)
 - `College/Features/LMS/**`
 
+## Extracted package
+- `Packages/CollegeLMS/**`
+
 ## Allowed shared touch
 ### Toolbar (only when the task changes toolbar actions)
 - `College/App/Toolbar/WebToolbarContent.swift`
@@ -21,7 +24,7 @@ LMS portal web host and Brightspace/Canvas/Moodle import.
 
 ## Do not touch without explicit user ask
 - Other `College/Features/*` folders
-- `College/App/ContentView.swift`, `SidebarView.swift`, `AppContainer.swift` (use ports/bridges)
+- `College/App/ContentView.swift`, `College/App/AppContainer.swift` (use ports/bridges)
 - Unrelated `College/Core/Data/Persistence/` or repository files
 
 ## Cross-feature needs
