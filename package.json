@@ -1,0 +1,11 @@
+{
+  "name": "college",
+  "private": true,
+  "description": "College monorepo — Swift macOS app (College/) + Tauri desktop (CollegeDesktop/)",
+  "scripts": {
+    "tauri:dev": "cd CollegeDesktop && bun run tauri:dev",
+    "tauri:build": "cd CollegeDesktop && bun run tauri:build",
+    "typecheck": "cd CollegeDesktop && bun run typecheck",
+    "desktop:parity": "bash scripts/check-tauri-parity.sh"
+  }
+}

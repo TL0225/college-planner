@@ -1,0 +1,15 @@
+name = "finance-link-proxy"
+main = "src/index.ts"
+compatibility_date = "2025-02-04"
+
+# Secrets (never commit values — set via `wrangler secret put` or dashboard):
+#   COINBASE_CLIENT_ID, COINBASE_CLIENT_SECRET
+#   WRAP_KEY
+# Optional:
+#   APP_ATTEST_HEADER
+#   COINBASE_REDIRECT_URI (defaults to request origin + /coinbase/callback)
+
+# Production rate limiting: bind KV and swap in-memory limiter for KV counters.
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT_KV"
+# id = "<your-kv-namespace-id>"

@@ -1,0 +1,11 @@
+{
+  "version": "workday-map@1.0.0",
+  "step": "contactInformation",
+  "fields": [
+    { "payloadKey": "personal.firstName", "automationId": "legalNameSection_firstName", "label": "First Name" },
+    { "payloadKey": "personal.lastName", "automationId": "legalNameSection_lastName", "label": "Last Name" },
+    { "payloadKey": "personal.email", "label": "Email" },
+    { "payloadKey": "personal.phone", "label": "Phone" },
+    { "payloadKey": "applicationProfile.workAuthorization.requiresSponsorshipNow", "label": "sponsorship" }
+  ]
+}

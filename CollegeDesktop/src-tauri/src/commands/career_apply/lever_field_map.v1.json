@@ -1,0 +1,10 @@
+{
+  "version": "lever-map@1.0.0",
+  "step": "contact",
+  "fields": [
+    { "payloadKey": "personal.fullName", "name": "name" },
+    { "payloadKey": "personal.email", "name": "email" },
+    { "payloadKey": "personal.phone", "name": "phone" },
+    { "payloadKey": "personal.linkedInURL", "label": "LinkedIn" }
+  ]
+}

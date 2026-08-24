@@ -1,88 +1,38 @@
-# macOS
+# College (Tauri desktop)
 .DS_Store
 .AppleDouble
 .LSOverride
 
-# Local perf harness output (see assistant perf plan)
-.benchmark_transcript.txt
-.assistant_ui_analysis_last_run.json
-.college_ui_test_long_waits
+# Tauri / Node / Rust (CollegeDesktop/)
+CollegeDesktop/node_modules/
+CollegeDesktop/dist/
+CollegeDesktop/.vite/
+CollegeDesktop/*.local
+CollegeDesktop/src-tauri/target/
+CollegeDesktop/src-tauri/gen/
+target/
+*.local
 
-# Repo-local Xcode derived data (do not commit)
-.xcode_derived*/
-.xcode_derived*
-
-# Xcode / Swift
-College.xcodeproj/
-CollegePlatform/
-DerivedData/
-build/
-*.o
-*.a
-*.dSYM/
-*.ipa
-*.app/
-*.xcuserstate
-*.xccheckout
-*.xcscmblueprint
-
-# Xcode project user data
-*.xcuserdata/
-*.xcuserdatad/
-
-# Swift Package Manager
-.build/
-Package.resolved
-# ADR 004 feature package scaffolds (sources only — never .build/)
-!Packages/
-!Packages/**/Package.swift
-!Packages/**/Sources/**
-!Packages/**/Tests/**
-Packages/**/.build/
-
-# CocoaPods / Carthage (uncomment if used)
-# Pods/
-# Carthage/Build/
-
-# Fastlane (uncomment if used)
-# fastlane/report.xml
-# fastlane/Preview.html
-# fastlane/screenshots
-# fastlane/test_output
-
-# Python
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.venv/
-
-# Profiling / coverage artifacts
-*.profraw
-
-# Local editor/workspace folders
-.cursor/
+# Editor / local
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .vscode/
-.xcodebuildmcp/
 .artifacts/
 Secrets.xcconfig
 
-# ML / large model artifacts
-*.safetensors
-*.safetensors.*
+# Secrets (never commit private keys)
+secrets/**
+!secrets/README.md
 
-# Documentation / generated tabular artifacts
+# Local dumps
+exports/
 *.md
 !README.md
 !docs/
 !docs/**/
 !docs/**/*.md
 *.txt
+!docs/**/*.txt
 *.csv
 *.tsv
-!College/Features/Assistant/Resources/IntentTrainingData.csv
-
-# Scrape / catalog export dumps (local only)
-exports/
-
-# Local scratch / sidebar experiments (not in Xcode target)
-test_sidebar*.swift
