@@ -587,6 +587,21 @@ Coordinated four-workstream push closing remaining daily-driver gaps before Swif
 - **SyllabusAI PDF** — in-pane PDF tab (`syllabus_resolve_pdf_path`), Refine with AI second pass, OCR stub message for scanned PDFs
 - **Documents preview** — `documents_quick_look_preview` (encrypted COLENC1 decrypt-to-cache); nested VaultFolderTree; in-pane inspector preview
 
+### Phase 57 — Closure pass (verification + GRDB pathing)
+
+- **Migration `035_pathing_goals_scenarios`** — goals, scenarios, disclosure in GRDB (replacing settings JSON)
+- **IPC** — `career_list/upsert/delete_path_goal`, `career_get/save_path_scenario`, `career_get/save_path_disclosure`, `career_migrate_pathing_settings`
+- **Import** — finance table copy wired; vault files always attempted on import
+- **Gate script** — `bash scripts/check-tauri-parity.sh` (tsc, cargo, tests, import, DB sanity, build)
+- **Cutover doc** — [TAURI_CUTOVER.md](TAURI_CUTOVER.md)
+- **Windows** — built in CI (`.github/workflows/cross-platform-release.yml` on `desktop-v*` tags); local macOS cross-compile optional
+
+Run the parity gate before release:
+
+```bash
+bash scripts/check-tauri-parity.sh
+```
+
 ### Deferred (post-ship / infra)
 
 Optional hardening (not daily-driver blockers):

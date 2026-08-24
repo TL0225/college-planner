@@ -1,9 +1,5 @@
 import { ipc } from "@/lib/ipc";
 
-export const PATHING_GOALS_KEY = "career.pathing.goals";
-export const PATHING_SCENARIOS_KEY = "career.pathing.scenarios";
-export const PATHING_DISCLOSURE_KEY = "career.pathing.disclosure";
-
 export type PathGoalCategory = "tenure" | "benefits" | "tuition" | "custom";
 export type PathGoalCadence = "monthly" | "quarterly" | "yearly";
 
@@ -68,13 +64,16 @@ export const pathDisclosureItems: Array<{
   },
 ];
 
-function parseJson<T>(raw: string | undefined, fallback: T): T {
-  if (!raw?.trim()) return fallback;
+let pathingMigrationDone = false;
+
+async function ensurePathingMigrated(): Promise<void> {
+  if (pathingMigrationDone) return;
   try {
-    return JSON.parse(raw) as T;
+    await ipc.careerMigratePathingSettings();
   } catch {
-    return fallback;
+    // Non-fatal — empty DB or first run.
   }
+  pathingMigrationDone = true;
 }
 
 export function newPathGoalId(): string {
@@ -93,28 +92,94 @@ export function defaultDisclosureChecklist(): PathDisclosureChecklist {
 }
 
 export async function loadPathGoals(): Promise<PathGoal[]> {
-  const settings = await ipc.settingsGet();
-  return parseJson<PathGoal[]>(settings.values[PATHING_GOALS_KEY], []);
+  await ensurePathingMigrated();
+  const rows = await ipc.careerListPathGoals();
+  return rows.map((r) => ({
+    id: r.id,
+    entryId: r.entryId,
+    title: r.title,
+    category: r.category as PathGoalCategory,
+    cadence: r.cadence as PathGoalCadence,
+    targetDate: r.targetDate ?? undefined,
+    notes: r.notes || undefined,
+  }));
 }
 
 export async function savePathGoals(goals: PathGoal[]): Promise<void> {
-  await ipc.settingsSet(PATHING_GOALS_KEY, JSON.stringify(goals));
+  await ensurePathingMigrated();
+  const existing = await ipc.careerListPathGoals();
+  const keep = new Set(goals.map((g) => g.id));
+  for (const row of existing) {
+    if (!keep.has(row.id)) {
+      await ipc.careerDeletePathGoal(row.id);
+    }
+  }
+  for (const g of goals) {
+    await ipc.careerUpsertPathGoal({
+      id: g.id,
+      entryId: g.entryId,
+      title: g.title,
+      category: g.category,
+      cadence: g.cadence,
+      targetDate: g.targetDate,
+      notes: g.notes,
+    });
+  }
 }
 
 export async function loadScenarioMap(): Promise<Record<string, PathScenarioPair>> {
-  const settings = await ipc.settingsGet();
-  return parseJson<Record<string, PathScenarioPair>>(settings.values[PATHING_SCENARIOS_KEY], {});
+  await ensurePathingMigrated();
+  const entries = await ipc.careerListPathEntries();
+  const out: Record<string, PathScenarioPair> = {};
+  await Promise.all(
+    entries.map(async (e) => {
+      const row = await ipc.careerGetPathScenario(e.id);
+      if (row) {
+        out[e.id] = { current: row.current, alternate: row.alternate };
+      }
+    }),
+  );
+  return out;
 }
 
 export async function saveScenarioMap(map: Record<string, PathScenarioPair>): Promise<void> {
-  await ipc.settingsSet(PATHING_SCENARIOS_KEY, JSON.stringify(map));
+  await ensurePathingMigrated();
+  await Promise.all(
+    Object.entries(map).map(([entryId, pair]) =>
+      ipc.careerSavePathScenario({
+        entryId,
+        current: pair.current,
+        alternate: pair.alternate,
+      }),
+    ),
+  );
 }
 
 export async function loadDisclosureMap(): Promise<Record<string, PathDisclosureChecklist>> {
-  const settings = await ipc.settingsGet();
-  return parseJson<Record<string, PathDisclosureChecklist>>(settings.values[PATHING_DISCLOSURE_KEY], {});
+  await ensurePathingMigrated();
+  const entries = await ipc.careerListPathEntries();
+  const out: Record<string, PathDisclosureChecklist> = {};
+  await Promise.all(
+    entries.map(async (e) => {
+      const row = await ipc.careerGetPathDisclosure(e.id);
+      if (row) {
+        out[e.id] = { comp: row.comp, benefits: row.benefits, equity: row.equity };
+      }
+    }),
+  );
+  return out;
 }
 
 export async function saveDisclosureMap(map: Record<string, PathDisclosureChecklist>): Promise<void> {
-  await ipc.settingsSet(PATHING_DISCLOSURE_KEY, JSON.stringify(map));
+  await ensurePathingMigrated();
+  await Promise.all(
+    Object.entries(map).map(([entryId, checklist]) =>
+      ipc.careerSavePathDisclosure({
+        entryId,
+        comp: checklist.comp,
+        benefits: checklist.benefits,
+        equity: checklist.equity,
+      }),
+    ),
+  );
 }

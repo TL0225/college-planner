@@ -668,6 +668,7 @@ pub fn import_swift_workspace_inner(
                 finance_rows += import_finance_accounts_swift(conn, "swift_finance").unwrap_or(0);
                 finance_rows +=
                     import_finance_transactions_swift(conn, "swift_finance").unwrap_or(0);
+                finance_rows += import_finance_tables(conn, "swift_finance").unwrap_or(0);
                 let fin_mirror = mirror_all_tables(conn, "swift_finance").unwrap_or_default();
                 finance_rows += fin_mirror.rows;
                 mirrored_tables += fin_mirror.tables;
@@ -783,7 +784,12 @@ pub fn import_swift_workspace_inner(
         });
     }
 
-    Ok(report)
+    // Always attempt vault file copy even when vault domain rows are empty.
+    let copied = copy_swift_vault_files(paths).unwrap_or(0);
+    Ok(ImportSwiftWorkspaceReport {
+        vault_files_copied: copied,
+        ..report
+    })
 }
 
 #[tauri::command]

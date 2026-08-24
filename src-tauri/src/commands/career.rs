@@ -3779,6 +3779,467 @@ pub fn career_merge_path_entries(
     Ok(())
 }
 
+// MARK: - Pathing goals / scenarios / disclosure (GRDB)
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathGoalDto {
+    pub id: String,
+    pub entry_id: String,
+    pub title: String,
+    pub category: String,
+    pub cadence: String,
+    pub target_date: Option<String>,
+    pub notes: String,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertPathGoalInput {
+    pub id: Option<String>,
+    pub entry_id: String,
+    pub title: String,
+    pub category: Option<String>,
+    pub cadence: Option<String>,
+    pub target_date: Option<String>,
+    pub notes: Option<String>,
+    pub sort_order: Option<i64>,
+}
+
+#[tauri::command]
+pub fn career_list_path_goals(
+    state: State<'_, AppState>,
+    entry_id: Option<String>,
+) -> CmdResult<Vec<PathGoalDto>> {
+    state
+        .db
+        .with_conn(|conn| {
+            let mut out = Vec::new();
+            if let Some(eid) = entry_id.filter(|s| !s.trim().is_empty()) {
+                let mut stmt = conn.prepare(
+                    "SELECT id, path_entry_id, title, category, cadence, target_date, notes, sort_order
+                     FROM career_path_goal WHERE path_entry_id = ?1 ORDER BY sort_order, title",
+                )?;
+                let rows = stmt.query_map(rusqlite::params![eid], |r| {
+                    Ok(PathGoalDto {
+                        id: r.get(0)?,
+                        entry_id: r.get(1)?,
+                        title: r.get(2)?,
+                        category: r.get(3)?,
+                        cadence: r.get(4)?,
+                        target_date: r.get(5)?,
+                        notes: r.get(6)?,
+                        sort_order: r.get(7)?,
+                    })
+                })?;
+                out.extend(rows.filter_map(|r| r.ok()));
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, path_entry_id, title, category, cadence, target_date, notes, sort_order
+                     FROM career_path_goal ORDER BY path_entry_id, sort_order, title",
+                )?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(PathGoalDto {
+                        id: r.get(0)?,
+                        entry_id: r.get(1)?,
+                        title: r.get(2)?,
+                        category: r.get(3)?,
+                        cadence: r.get(4)?,
+                        target_date: r.get(5)?,
+                        notes: r.get(6)?,
+                        sort_order: r.get(7)?,
+                    })
+                })?;
+                out.extend(rows.filter_map(|r| r.ok()));
+            }
+            Ok(out)
+        })
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn career_upsert_path_goal(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: UpsertPathGoalInput,
+) -> CmdResult<String> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err(anyhow::anyhow!("Goal title is required").into());
+    }
+    let now = Utc::now().to_rfc3339();
+    let category = input.category.unwrap_or_else(|| "custom".into());
+    let cadence = input.cadence.unwrap_or_else(|| "yearly".into());
+    let notes = input.notes.unwrap_or_default();
+    let sort_order = input.sort_order.unwrap_or(0);
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE career_path_goal
+                 SET path_entry_id = ?1, title = ?2, category = ?3, cadence = ?4,
+                     target_date = ?5, notes = ?6, sort_order = ?7, updated_at = ?8
+                 WHERE id = ?9",
+                rusqlite::params![
+                    input.entry_id,
+                    title,
+                    category,
+                    cadence,
+                    input.target_date,
+                    notes,
+                    sort_order,
+                    now,
+                    existing
+                ],
+            )?;
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO career_path_goal
+                 (id, path_entry_id, title, category, cadence, target_date, notes, sort_order, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                rusqlite::params![
+                    id,
+                    input.entry_id,
+                    title,
+                    category,
+                    cadence,
+                    input.target_date,
+                    notes,
+                    sort_order,
+                    now
+                ],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
+    let _ = app.emit(
+        "db:change",
+        DbChangeEvent {
+            domain: "career".into(),
+            revision: state.db.bump_revision("career")?,
+        },
+    );
+    Ok(id)
+}
+
+#[tauri::command]
+pub fn career_delete_path_goal(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> CmdResult<()> {
+    state
+        .db
+        .with_conn(|conn| {
+            conn.execute("DELETE FROM career_path_goal WHERE id = ?1", rusqlite::params![id])?;
+            Ok(())
+        })?;
+    let _ = app.emit(
+        "db:change",
+        DbChangeEvent {
+            domain: "career".into(),
+            revision: state.db.bump_revision("career")?,
+        },
+    );
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathScenarioCardDto {
+    pub title: String,
+    pub notes: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathScenarioDto {
+    pub entry_id: String,
+    pub current: PathScenarioCardDto,
+    pub alternate: PathScenarioCardDto,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePathScenarioInput {
+    pub entry_id: String,
+    pub current: PathScenarioCardDto,
+    pub alternate: PathScenarioCardDto,
+}
+
+#[tauri::command]
+pub fn career_get_path_scenario(
+    state: State<'_, AppState>,
+    entry_id: String,
+) -> CmdResult<Option<PathScenarioDto>> {
+    state
+        .db
+        .with_conn(|conn| {
+            let row: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT current_json, alternate_json FROM career_path_scenario WHERE path_entry_id = ?1",
+                    rusqlite::params![entry_id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            Ok(row.map(|(cur, alt)| {
+                let current: PathScenarioCardDto =
+                    serde_json::from_str(&cur).unwrap_or(PathScenarioCardDto {
+                        title: "Current path".into(),
+                        notes: String::new(),
+                    });
+                let alternate: PathScenarioCardDto =
+                    serde_json::from_str(&alt).unwrap_or(PathScenarioCardDto {
+                        title: "Alternate path".into(),
+                        notes: String::new(),
+                    });
+                PathScenarioDto {
+                    entry_id: entry_id.clone(),
+                    current,
+                    alternate,
+                }
+            }))
+        })
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn career_save_path_scenario(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: SavePathScenarioInput,
+) -> CmdResult<()> {
+    let now = Utc::now().to_rfc3339();
+    let cur = serde_json::to_string(&input.current)
+        .map_err(|e| anyhow::anyhow!("Failed to encode scenario: {e}"))?;
+    let alt = serde_json::to_string(&input.alternate)
+        .map_err(|e| anyhow::anyhow!("Failed to encode scenario: {e}"))?;
+    state.db.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO career_path_scenario (path_entry_id, current_json, alternate_json, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(path_entry_id) DO UPDATE SET
+               current_json = excluded.current_json,
+               alternate_json = excluded.alternate_json,
+               updated_at = excluded.updated_at",
+            rusqlite::params![input.entry_id, cur, alt, now],
+        )?;
+        Ok(())
+    })?;
+    let _ = app.emit(
+        "db:change",
+        DbChangeEvent {
+            domain: "career".into(),
+            revision: state.db.bump_revision("career")?,
+        },
+    );
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathDisclosureDto {
+    pub entry_id: String,
+    pub comp: bool,
+    pub benefits: bool,
+    pub equity: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavePathDisclosureInput {
+    pub entry_id: String,
+    pub comp: bool,
+    pub benefits: bool,
+    pub equity: bool,
+}
+
+#[tauri::command]
+pub fn career_get_path_disclosure(
+    state: State<'_, AppState>,
+    entry_id: String,
+) -> CmdResult<Option<PathDisclosureDto>> {
+    state
+        .db
+        .with_conn(|conn| {
+            let row: Option<(i64, i64, i64)> = conn
+                .query_row(
+                    "SELECT comp, benefits, equity FROM career_path_disclosure WHERE path_entry_id = ?1",
+                    rusqlite::params![entry_id],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                )
+                .optional()?;
+            Ok(row.map(|(c, b, e)| PathDisclosureDto {
+                entry_id: entry_id.clone(),
+                comp: c != 0,
+                benefits: b != 0,
+                equity: e != 0,
+            }))
+        })
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn career_save_path_disclosure(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: SavePathDisclosureInput,
+) -> CmdResult<()> {
+    let now = Utc::now().to_rfc3339();
+    state.db.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO career_path_disclosure (path_entry_id, comp, benefits, equity, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(path_entry_id) DO UPDATE SET
+               comp = excluded.comp, benefits = excluded.benefits, equity = excluded.equity,
+               updated_at = excluded.updated_at",
+            rusqlite::params![
+                input.entry_id,
+                i64::from(input.comp),
+                i64::from(input.benefits),
+                i64::from(input.equity),
+                now
+            ],
+        )?;
+        Ok(())
+    })?;
+    let _ = app.emit(
+        "db:change",
+        DbChangeEvent {
+            domain: "career".into(),
+            revision: state.db.bump_revision("career")?,
+        },
+    );
+    Ok(())
+}
+
+/// One-shot migration from legacy settings JSON keys to GRDB tables.
+#[tauri::command]
+pub fn career_migrate_pathing_settings(state: State<'_, AppState>) -> CmdResult<i64> {
+    let goals_key = "career.pathing.goals";
+    let scenarios_key = "career.pathing.scenarios";
+    let disclosure_key = "career.pathing.disclosure";
+    let mut migrated = 0i64;
+    state.db.with_conn(|conn| {
+        let goal_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM career_path_goal", [], |r| r.get(0))
+            .unwrap_or(0);
+        if goal_count == 0 {
+            if let Ok(raw) = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                rusqlite::params![goals_key],
+                |r| r.get::<_, String>(0),
+            ) {
+                if let Ok(goals) = serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
+                    let now = Utc::now().to_rfc3339();
+                    for g in goals {
+                        let id = g
+                            .get("id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if id.is_empty() {
+                            continue;
+                        }
+                        let entry_id = g
+                            .get("entryId")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        if entry_id.is_empty() {
+                            continue;
+                        }
+                        conn.execute(
+                            "INSERT OR IGNORE INTO career_path_goal
+                             (id, path_entry_id, title, category, cadence, target_date, notes, sort_order, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8)",
+                            rusqlite::params![
+                                id,
+                                entry_id,
+                                g.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+                                g.get("category").and_then(|v| v.as_str()).unwrap_or("custom"),
+                                g.get("cadence").and_then(|v| v.as_str()).unwrap_or("yearly"),
+                                g.get("targetDate").and_then(|v| v.as_str()),
+                                g.get("notes").and_then(|v| v.as_str()).unwrap_or(""),
+                                now
+                            ],
+                        )?;
+                        migrated += 1;
+                    }
+                }
+            }
+        }
+        let scenario_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM career_path_scenario", [], |r| r.get(0))
+            .unwrap_or(0);
+        if scenario_count == 0 {
+            if let Ok(raw) = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                rusqlite::params![scenarios_key],
+                |r| r.get::<_, String>(0),
+            ) {
+                if let Ok(map) =
+                    serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(&raw)
+                {
+                    let now = Utc::now().to_rfc3339();
+                    for (entry_id, pair) in map {
+                        let cur = pair.get("current").cloned().unwrap_or_default();
+                        let alt = pair.get("alternate").cloned().unwrap_or_default();
+                        let cur_s = serde_json::to_string(&cur).unwrap_or_else(|_| "{}".into());
+                        let alt_s = serde_json::to_string(&alt).unwrap_or_else(|_| "{}".into());
+                        conn.execute(
+                            "INSERT OR IGNORE INTO career_path_scenario
+                             (path_entry_id, current_json, alternate_json, updated_at)
+                             VALUES (?1, ?2, ?3, ?4)",
+                            rusqlite::params![entry_id, cur_s, alt_s, now],
+                        )?;
+                        migrated += 1;
+                    }
+                }
+            }
+        }
+        let disclosure_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM career_path_disclosure", [], |r| r.get(0))
+            .unwrap_or(0);
+        if disclosure_count == 0 {
+            if let Ok(raw) = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = ?1",
+                rusqlite::params![disclosure_key],
+                |r| r.get::<_, String>(0),
+            ) {
+                if let Ok(map) =
+                    serde_json::from_str::<std::collections::HashMap<String, serde_json::Value>>(&raw)
+                {
+                    let now = Utc::now().to_rfc3339();
+                    for (entry_id, checklist) in map {
+                        conn.execute(
+                            "INSERT OR IGNORE INTO career_path_disclosure
+                             (path_entry_id, comp, benefits, equity, updated_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5)",
+                            rusqlite::params![
+                                entry_id,
+                                i64::from(checklist.get("comp").and_then(|v| v.as_bool()).unwrap_or(false)),
+                                i64::from(checklist.get("benefits").and_then(|v| v.as_bool()).unwrap_or(false)),
+                                i64::from(checklist.get("equity").and_then(|v| v.as_bool()).unwrap_or(false)),
+                                now
+                            ],
+                        )?;
+                        migrated += 1;
+                    }
+                }
+            }
+        }
+        Ok(migrated)
+    })?;
+    Ok(migrated)
+}
+
 /// Write Typst source to a sibling `.typ` file and compile to PDF via the `typst` CLI on PATH.
 #[tauri::command]
 pub fn career_compile_typst_pdf(source: String, pdf_path: String) -> CmdResult<()> {

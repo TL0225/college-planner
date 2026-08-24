@@ -93,9 +93,18 @@ The Swift app remains supported. Tauri uses a **separate data root** and one-way
 
 ## Release / CI
 
-- Tag `desktop-v0.1.0` (or similar) triggers `.github/workflows/cross-platform-release.yml`  
-- Set signing secrets for notarized macOS + signed Windows (optional; unsigned draft artifacts when unset)  
+- Tag `desktop-v0.1.0` (or similar) triggers `.github/workflows/cross-platform-release.yml`
+- Set signing secrets for notarized macOS + signed Windows (optional; unsigned draft artifacts when unset)
 - macOS local release: `npm run tauri:build` (requires `default-run = "college"` in `src-tauri/Cargo.toml`)
+- **Pre-release gate:** `bash scripts/check-tauri-parity.sh`
+
+## Verification checklist (agent / CI)
+
+- [ ] `bash scripts/check-tauri-parity.sh` exits 0
+- [ ] `npm run tauri:dev` — Settings → Documents watchdog **Active**
+- [ ] Career → Pathing → Expectations / Related / Resume tabs persist after restart
+- [ ] Settings → Catalog → Reindex → Catalog semantic search works
+- [ ] `bash scripts/import-swift-workspace.sh --force` — finance rows > 0 if Swift Finance DB exists
 
 ---
 

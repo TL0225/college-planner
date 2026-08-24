@@ -757,6 +757,53 @@ export const ipc = {
     invoke<void>("career_set_path_resume", { pathEntryId, resumeDocumentId }),
   careerMergePathEntries: (fromId: string, toId: string) =>
     invoke<void>("career_merge_path_entries", { fromId, toId }),
+  careerListPathGoals: (entryId?: string) =>
+    invoke<
+      Array<{
+        id: string;
+        entryId: string;
+        title: string;
+        category: string;
+        cadence: string;
+        targetDate?: string | null;
+        notes: string;
+        sortOrder: number;
+      }>
+    >("career_list_path_goals", { entryId: entryId ?? null }),
+  careerUpsertPathGoal: (input: {
+    id?: string;
+    entryId: string;
+    title: string;
+    category?: string;
+    cadence?: string;
+    targetDate?: string;
+    notes?: string;
+    sortOrder?: number;
+  }) => invoke<string>("career_upsert_path_goal", { input }),
+  careerDeletePathGoal: (id: string) => invoke<void>("career_delete_path_goal", { id }),
+  careerGetPathScenario: (entryId: string) =>
+    invoke<{
+      entryId: string;
+      current: { title: string; notes: string };
+      alternate: { title: string; notes: string };
+    } | null>("career_get_path_scenario", { entryId }),
+  careerSavePathScenario: (input: {
+    entryId: string;
+    current: { title: string; notes: string };
+    alternate: { title: string; notes: string };
+  }) => invoke<void>("career_save_path_scenario", { input }),
+  careerGetPathDisclosure: (entryId: string) =>
+    invoke<{ entryId: string; comp: boolean; benefits: boolean; equity: boolean } | null>(
+      "career_get_path_disclosure",
+      { entryId },
+    ),
+  careerSavePathDisclosure: (input: {
+    entryId: string;
+    comp: boolean;
+    benefits: boolean;
+    equity: boolean;
+  }) => invoke<void>("career_save_path_disclosure", { input }),
+  careerMigratePathingSettings: () => invoke<number>("career_migrate_pathing_settings"),
   careerListEvents: (applicationId?: string) =>
     invoke<
       Array<{

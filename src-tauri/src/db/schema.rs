@@ -912,6 +912,42 @@ const MIGRATIONS: &[(&str, &str)] = &[
             ON catalog_course_embedding(model_tag, updated_at);
         "#,
     ),
+    (
+        "035_pathing_goals_scenarios",
+        r#"
+        CREATE TABLE IF NOT EXISTS career_path_goal (
+            id TEXT PRIMARY KEY NOT NULL,
+            path_entry_id TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            category TEXT NOT NULL DEFAULT 'custom',
+            cadence TEXT NOT NULL DEFAULT 'yearly',
+            target_date TEXT,
+            notes TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(path_entry_id) REFERENCES career_path_entry(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_career_path_goal_entry
+            ON career_path_goal(path_entry_id, sort_order);
+
+        CREATE TABLE IF NOT EXISTS career_path_scenario (
+            path_entry_id TEXT PRIMARY KEY NOT NULL,
+            current_json TEXT NOT NULL DEFAULT '{}',
+            alternate_json TEXT NOT NULL DEFAULT '{}',
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(path_entry_id) REFERENCES career_path_entry(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS career_path_disclosure (
+            path_entry_id TEXT PRIMARY KEY NOT NULL,
+            comp INTEGER NOT NULL DEFAULT 0,
+            benefits INTEGER NOT NULL DEFAULT 0,
+            equity INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(path_entry_id) REFERENCES career_path_entry(id) ON DELETE CASCADE
+        );
+        "#,
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {
