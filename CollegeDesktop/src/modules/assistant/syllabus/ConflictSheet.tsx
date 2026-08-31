@@ -37,7 +37,7 @@ export function ConflictSheet({
   return (
     <ModalSheet open={open} onOpenChange={onOpenChange} title={title} width={520}>
       {events.length === 0 ? (
-        <p className="text-[13px] text-[var(--color-text-light)]">No conflicts found.</p>
+        <p className="text-body text-[var(--color-text-light)]">No conflicts found.</p>
       ) : (
         <ul className="max-h-[360px] space-y-2 overflow-auto">
           {events.map((event) => (
@@ -46,14 +46,14 @@ export function ConflictSheet({
               className="rounded-lg border border-[var(--color-chrome-stroke)] px-3 py-2.5"
               style={{ background: "var(--color-content-surface)" }}
             >
-              <div className="text-[13px] font-semibold text-[var(--color-text-main)]">
+              <div className="text-section-title">
                 {event.title}
               </div>
-              <div className="mt-1 text-[11px] text-[var(--color-text-light)]">
+              <div className="mt-1 text-caption">
                 {formatWhen(event.startAt, event.endAt, event.allDay)}
               </div>
               {event.location ? (
-                <div className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                <div className="mt-0.5 text-caption">
                   {event.location}
                 </div>
               ) : null}

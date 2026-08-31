@@ -1,5 +1,6 @@
 import { cn } from "../cn";
 import { dateKey } from "./MonthGrid";
+import type { MonthGridAnchor } from "./MonthGrid";
 
 export type DayTimedItem = {
   id: string;
@@ -9,6 +10,7 @@ export type DayTimedItem = {
   location?: string;
   kind: "event" | "task";
   color?: string;
+  allDay?: boolean;
 };
 
 function sameDay(a: Date, b: Date): boolean {
@@ -19,134 +21,157 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-const HOURS = Array.from({ length: 14 }, (_, i) => i + 7); // 7am–8pm
+function anchorFromElement(el: HTMLElement): MonthGridAnchor {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, width: r.width, height: r.height };
+}
+
+const HOURS = Array.from({ length: 14 }, (_, i) => i + 7);
+const accentSoft = "color-mix(in srgb, var(--registrar-accent) 14%, transparent)";
 
 export function DayTimeline({
   day,
   items,
-  onPrev,
-  onNext,
-  onToday,
+  onSelectSlot,
+  onSelectEvent,
 }: {
   day: Date;
   items: DayTimedItem[];
-  onPrev: () => void;
-  onNext: () => void;
-  onToday: () => void;
+  onSelectSlot?: (hour: number, anchor: MonthGridAnchor) => void;
+  onSelectEvent?: (eventId: string, anchor: MonthGridAnchor) => void;
 }) {
-  const label = day.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
   const isToday = sameDay(day, new Date());
   const dayItems = items
     .filter((i) => sameDay(new Date(i.startAt), day))
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
 
+  const allDayItems = dayItems.filter((i) => i.allDay);
+  const timedItems = dayItems.filter((i) => !i.allDay);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        style={{ borderTop: "1px solid var(--registrar-rule)" }}
+      >
         <button
           type="button"
-          className="chrome-nav-btn"
-          onClick={onPrev}
-          aria-label="Previous day"
+          className="shrink-0 border-b border-[var(--registrar-rule)] bg-[var(--color-shell-canvas)] px-3 py-2 text-left hover:bg-[var(--color-row-hover)]"
+          onClick={(e) =>
+            onSelectSlot?.(-1, anchorFromElement(e.currentTarget))
+          }
         >
-          ‹
-        </button>
-        <div
-          className="text-[var(--color-text-main)]"
-          style={{ font: "var(--type-section-title)", fontSize: 15, letterSpacing: "-0.01em" }}
-        >
-          {label}
-          {isToday ? " · Today" : ""}
-        </div>
-        <div className="flex items-center gap-1">
-          <button type="button" className="chrome-nav-btn" onClick={onToday}>
-            Today
-          </button>
-          <button
-            type="button"
-            className="chrome-nav-btn"
-            onClick={onNext}
-            aria-label="Next day"
-          >
-            ›
-          </button>
-        </div>
-      </div>
-
-      <div
-        className="min-h-0 flex-1 overflow-auto"
-        style={{
-          borderRadius: 14,
-          border: "1px solid var(--color-chrome-stroke)",
-          boxShadow: "var(--shadow-elevated)",
-        }}
-      >
-        {HOURS.map((hour) => {
-          const slotItems = dayItems.filter((i) => new Date(i.startAt).getHours() === hour);
-          return (
-            <div
-              key={hour}
-              className="grid min-h-[52px] grid-cols-[56px_1fr] border-b border-[var(--color-chrome-stroke)] last:border-b-0"
-            >
-              <div
-                className={cn(
-                  "px-2 py-1.5 text-right text-[10px] font-semibold tabular-nums text-[var(--color-text-light)]",
-                  isToday && new Date().getHours() === hour && "text-[var(--color-primary)]",
-                )}
-              >
-                {hour === 0
-                  ? "12 AM"
-                  : hour < 12
-                    ? `${hour} AM`
-                    : hour === 12
-                      ? "12 PM"
-                      : `${hour - 12} PM`}
-              </div>
-              <div className="space-y-1 p-1.5">
-                {slotItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className={cn(
-                      "rounded-[8px] px-2 py-1.5 text-[12px]",
-                      item.kind === "event"
-                        ? "bg-[var(--color-primary)]/12 text-[var(--color-primary)]"
-                        : "bg-[var(--color-warning)]/15 text-[var(--color-warning)]",
-                    )}
-                    style={
-                      item.kind === "event" && item.color
-                        ? {
-                            backgroundColor: `${item.color}1F`,
-                            color: item.color,
-                          }
-                        : undefined
-                    }
-                  >
-                    <div className="font-semibold">
-                      {new Date(item.startAt).toLocaleTimeString(undefined, {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}{" "}
-                      · {item.title}
-                    </div>
-                    {item.location && (
-                      <div className="text-[10px] opacity-80">{item.location}</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-        {dayItems.length === 0 && (
-          <div className="p-4 text-[12px] text-[var(--color-text-light)]">
-            Nothing scheduled for {dateKey(day)}.
+          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-light)]">
+            All day
+          </span>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {allDayItems.length === 0 ? (
+              <span className="text-caption text-[var(--color-text-light)]">Click to add</span>
+            ) : (
+              allDayItems.map((item) => (
+                <span
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    onSelectEvent?.(item.id, anchorFromElement(ev.currentTarget));
+                  }}
+                  className="rounded-[4px] px-2 py-0.5 text-caption font-medium"
+                  style={
+                    item.color
+                      ? { backgroundColor: `${item.color}22`, color: item.color }
+                      : { background: accentSoft, color: "var(--registrar-ink)" }
+                  }
+                >
+                  {item.title}
+                </span>
+              ))
+            )}
           </div>
-        )}
+        </button>
+
+        <div className="min-h-0 flex-1 overflow-auto">
+          {HOURS.map((hour) => {
+            const slotItems = timedItems.filter((i) => new Date(i.startAt).getHours() === hour);
+            return (
+              <button
+                key={hour}
+                type="button"
+                className="grid min-h-[52px] w-full grid-cols-[56px_1fr] border-b border-[var(--registrar-rule)] bg-[var(--color-shell-canvas)] text-left hover:bg-[var(--color-row-hover)]"
+                onClick={(e) => onSelectSlot?.(hour, anchorFromElement(e.currentTarget))}
+              >
+                <div
+                  className={cn(
+                    "px-2 py-1.5 text-right text-caption font-semibold tabular-nums",
+                    isToday && new Date().getHours() === hour && "text-[var(--registrar-accent)]",
+                  )}
+                >
+                  {hour === 0
+                    ? "12 AM"
+                    : hour < 12
+                      ? `${hour} AM`
+                      : hour === 12
+                        ? "12 PM"
+                        : `${hour - 12} PM`}
+                </div>
+                <div className="space-y-1 p-1.5">
+                  {slotItems.map((item) => (
+                    <div
+                      key={item.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        onSelectEvent?.(item.id, anchorFromElement(ev.currentTarget));
+                      }}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.stopPropagation();
+                          ev.preventDefault();
+                          onSelectEvent?.(item.id, anchorFromElement(ev.currentTarget));
+                        }
+                      }}
+                      className="rounded-[6px] px-2 py-1.5 text-meta transition-opacity hover:opacity-80"
+                      style={
+                        item.kind === "event" && item.color
+                          ? {
+                              backgroundColor: `${item.color}22`,
+                              color: item.color,
+                              borderLeft: `2px solid ${item.color}`,
+                            }
+                          : item.kind === "event"
+                            ? {
+                                background: accentSoft,
+                                color: "var(--registrar-ink)",
+                                borderLeft: "2px solid var(--registrar-accent)",
+                              }
+                            : {
+                                background: "color-mix(in srgb, var(--color-warning) 15%, transparent)",
+                                color: "var(--color-warning)",
+                              }
+                      }
+                    >
+                      <div className="font-semibold">
+                        {new Date(item.startAt).toLocaleTimeString(undefined, {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}{" "}
+                        · {item.title}
+                      </div>
+                      {item.location && (
+                        <div className="text-caption opacity-80">{item.location}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+          {dayItems.length === 0 && (
+            <div className="p-4 text-meta">Nothing scheduled for {dateKey(day)}.</div>
+          )}
+        </div>
       </div>
     </div>
   );

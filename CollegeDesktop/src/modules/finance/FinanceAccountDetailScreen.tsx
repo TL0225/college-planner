@@ -3,10 +3,11 @@ import { Button, ListRow, SegmentedPills, StatusChip } from "@/design-system";
 import { FormAmountHero, InsetChartCard } from "@/design-system";
 import {
   BalanceSparkline,
+  CashFlowMeter,
   CategoryDonutChart,
-  SpendingBarChart,
   balanceSparklinePoints,
   monthCashFlow,
+  periodCashFlow,
   totalsByCategory,
 } from "./FinanceCharts";
 
@@ -68,6 +69,7 @@ export function FinanceAccountDetailScreen({
 
   const categoryRows = useMemo(() => totalsByCategory(chartTxs), [chartTxs]);
   const monthly = useMemo(() => monthCashFlow(accountTxs), [accountTxs]);
+  const periodFlow = useMemo(() => periodCashFlow(chartTxs), [chartTxs]);
 
   const toggleLayer = (layer: ChartLayer) => {
     setLayers((prev) => {
@@ -94,7 +96,10 @@ export function FinanceAccountDetailScreen({
           <StatusChip title={account.accountType} filled />
           {account.institution ? <StatusChip title={account.institution} /> : null}
         </div>
-        <h3 className="mt-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--color-text-main)]">
+        <h3
+          className="mt-2 text-section-title font-semibold tracking-[-0.02em] text-[var(--color-text-main)]"
+          style={{ fontSize: 18 }}
+        >
           {account.name}
         </h3>
         <FormAmountHero
@@ -140,7 +145,7 @@ export function FinanceAccountDetailScreen({
                       key={layer}
                       type="button"
                       onClick={() => toggleLayer(layer)}
-                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-label"
                       style={{
                         border: `1px solid ${on ? meta.color : "var(--color-chrome-stroke)"}`,
                         background: on ? `color-mix(in srgb, ${meta.color} 14%, transparent)` : "var(--color-surface)",
@@ -154,12 +159,17 @@ export function FinanceAccountDetailScreen({
                 })}
               </div>
               {layers.has("balance") ? <BalanceSparkline points={sparkPoints} /> : null}
-              {layers.has("spending") || layers.has("income") ? (
-                <SpendingBarChart txs={chartTxs.slice(0, 12)} />
-              ) : null}
+              {(layers.has("spending") || layers.has("income")) && (
+                <div className={layers.has("balance") ? "mt-3 border-t border-[var(--registrar-rule)] pt-3" : ""}>
+                  <CashFlowMeter
+                    income={layers.has("income") ? periodFlow.income : 0}
+                    spending={layers.has("spending") ? periodFlow.spending : 0}
+                  />
+                </div>
+              )}
             </>
           ) : categoryRows.length === 0 ? (
-            <p className="text-[12px] text-[var(--color-text-light)]">
+            <p className="text-meta">
               Add transactions with categories to see a breakdown.
             </p>
           ) : (
@@ -169,21 +179,27 @@ export function FinanceAccountDetailScreen({
 
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] p-3">
-            <p className="text-[11px] text-[var(--color-text-light)]">Deposits this month</p>
-            <p className="mt-1 text-[20px] font-semibold tabular-nums text-[var(--color-success)]">
+            <p className="text-caption">Deposits this month</p>
+            <p
+              className="mt-1 text-section-title font-semibold tabular-nums text-[var(--color-success)]"
+              style={{ fontSize: 20 }}
+            >
               {money(monthly.income)}
             </p>
           </div>
           <div className="rounded-xl border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] p-3">
-            <p className="text-[11px] text-[var(--color-text-light)]">Withdrawals this month</p>
-            <p className="mt-1 text-[20px] font-semibold tabular-nums text-[var(--color-error)]">
+            <p className="text-caption">Withdrawals this month</p>
+            <p
+              className="mt-1 text-section-title font-semibold tabular-nums text-[var(--color-error)]"
+              style={{ fontSize: 20 }}
+            >
               {money(monthly.spending)}
             </p>
           </div>
         </div>
 
         <div>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+          <p className="mb-2 text-label font-semibold uppercase tracking-[0.05em]">
             Recent transactions
           </p>
           <ul className="divide-y divide-[var(--color-chrome-stroke)] rounded-[10px] border border-[var(--color-chrome-stroke)]">
@@ -195,7 +211,7 @@ export function FinanceAccountDetailScreen({
                   leading={t.category ? <StatusChip title={t.category} /> : undefined}
                   trailing={
                     <span
-                      className={`text-[12px] font-semibold tabular-nums ${
+                      className={`text-meta font-semibold tabular-nums ${
                         t.amount < 0 ? "text-[var(--color-error)]" : "text-[var(--color-success)]"
                       }`}
                     >

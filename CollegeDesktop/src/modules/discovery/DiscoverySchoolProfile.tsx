@@ -49,7 +49,7 @@ function CoveragePill({ title, status }: { title: string; status: CoverageStatus
   const chip = coverageChip(status);
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[10px] font-medium text-[var(--color-text-light)]">{title}</span>
+      <span className="text-label font-medium text-[var(--color-text-light)]">{title}</span>
       <StatusChip title={chip.title} tint={chip.tint} filled={chip.filled} />
     </div>
   );
@@ -77,18 +77,18 @@ function OverviewSection({ profile }: { profile: DiscoveryProfile }) {
       </div>
 
       <AppCard title="School">
-        <div className="space-y-2 p-1 text-[12px]">
+        <div className="space-y-2 p-1 text-meta">
           <p className="text-[var(--color-text-main)]">{institution.name}</p>
           <p className="text-[var(--color-text-light)]">{locationLabel(institution)}</p>
           {institution.unitId ? (
             <StatusChip title={`Unit ID ${institution.unitId}`} tint="var(--color-primary)" />
           ) : null}
           {cds ? (
-            <p className="text-[11px] text-[var(--color-text-light)]">
+            <p className="text-caption">
               CDS data available for {academicYearLabel(cds.academicYear)} cycle.
             </p>
           ) : (
-            <p className="text-[11px] text-[var(--color-text-light)]">
+            <p className="text-caption">
               No Common Data Set on file for this school yet.
             </p>
           )}
@@ -114,7 +114,7 @@ function AdmissionsSection({ profile }: { profile: DiscoveryProfile }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+      <p className="text-meta leading-relaxed">
         These figures are from the institution&apos;s published Common Data Set. They describe a
         past admissions cycle and do not confirm current deadlines or your chances.
       </p>
@@ -129,7 +129,7 @@ function CostSection({ profile }: { profile: DiscoveryProfile }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+      <p className="text-meta leading-relaxed">
         Cost metrics come from CDS snapshots when available. Add CDS data under Discovery → school profile.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -141,7 +141,7 @@ function CostSection({ profile }: { profile: DiscoveryProfile }) {
         <MetricTile label="Admit rate" value={formatPercent(cds?.admitRate, 1)} />
       </div>
       <AppCard title="Cost notes">
-        <div className="space-y-2 p-1 text-[12px] text-[var(--color-text-light)]">
+        <div className="space-y-2 p-1 text-meta">
           <p>
             {cds
               ? `CDS ${year} snapshot loaded for ${institution.name}.`
@@ -164,7 +164,7 @@ function OutcomesSection({ profile }: { profile: DiscoveryProfile }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+      <p className="text-meta leading-relaxed">
         Outcomes derive from CDS enrollment and test-profile fields when present.
       </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -176,7 +176,7 @@ function OutcomesSection({ profile }: { profile: DiscoveryProfile }) {
         />
       </div>
       <AppCard title="Outcomes notes">
-        <div className="space-y-2 p-1 text-[12px] text-[var(--color-text-light)]">
+        <div className="space-y-2 p-1 text-meta">
           <p>
             {cds
               ? `Using CDS ${year} data for ${institution.name}.`
@@ -210,7 +210,7 @@ function PerspectivesSection({
             <div className="flex flex-wrap gap-1.5">
               <StatusChip title="Common Data Set profile" tint="var(--color-success)" filled />
             </div>
-            <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+            <p className="text-meta leading-relaxed">
               CDS class profile, test mid-50%, and factor highlights are on the Admissions tab.
             </p>
             <Button size="sm" variant="secondary" onClick={onOpenAdmissions}>
@@ -230,16 +230,16 @@ function PerspectivesSection({
       {cds ? (
         <AppCard title="CDS snapshot">
           <div className="space-y-2 p-1">
-            <p className="text-[13px] font-medium text-[var(--color-text-main)]">
+            <p className="text-section-title font-medium">
               Common Data Set [{academicYearLabel(cds.academicYear)}]
             </p>
             {cds.admitRate != null && (
-              <p className="text-[12px] text-[var(--color-text-light)]">
+              <p className="text-meta">
                 Admit rate: {formatPercent(cds.admitRate, 1)}
               </p>
             )}
             {cds.hsGpaAverage != null && (
-              <p className="text-[12px] text-[var(--color-text-light)]">
+              <p className="text-meta">
                 HS GPA average: {cds.hsGpaAverage.toFixed(2)}
               </p>
             )}
@@ -330,7 +330,7 @@ export function DiscoverySchoolProfile({
             >
               {institution.name}
             </h3>
-            <p className="mt-0.5 text-[12px] text-[var(--color-text-light)]">
+            <p className="mt-0.5 text-meta">
               {locationLabel(institution) === "—" ? "Location unknown" : locationLabel(institution)}
             </p>
           </div>

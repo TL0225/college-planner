@@ -74,8 +74,9 @@ export async function openCareerApplyWindow(input: CareerApplyWindowInput): Prom
               );
             }
           })
-          .catch(() => {
-            // Unsupported ATS or page not ready — user can still apply manually.
+          .catch((err) => {
+            console.warn("Career apply autofill failed:", err);
+            showToast(formatIpcError(err), "error");
           });
       }, 2500);
     });

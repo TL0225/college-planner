@@ -22,7 +22,7 @@ function renderInline(text: string): ReactNode[] {
       parts.push(
         <code
           key={key++}
-          className="rounded-[5px] bg-[var(--color-shell-chrome)] px-1 py-px font-mono text-[12px] text-[var(--color-text-main)]"
+          className="rounded-[5px] bg-[var(--color-shell-chrome)] px-1 py-px font-mono text-meta text-[var(--color-text-main)]"
         >
           {match[3]}
         </code>,

@@ -680,6 +680,53 @@ pub async fn refine_tools_with_llm(
     parse_tool_names_json(&content, candidates)
 }
 
+/// Tool refinement via the on-device Gemma LLM (no Ollama required).
+pub fn refine_tools_with_local_llm(
+    state: &crate::AppState,
+    message: &str,
+    role: &str,
+    candidates: &[(String, f32)],
+) -> Option<Vec<String>> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let tool_json: Vec<LlmToolCandidate> = candidates
+        .iter()
+        .filter_map(|(name, _)| {
+            TOOLS.iter().find(|t| t.name == name.as_str()).map(|t| LlmToolCandidate {
+                name: t.name,
+                description: t.description,
+                category: category_label(t.category),
+            })
+        })
+        .collect();
+
+    if tool_json.is_empty() {
+        return None;
+    }
+
+    let tools_payload = serde_json::to_string(&tool_json).ok()?;
+    let system = "You select assistant tools for a college app. Reply with ONLY a JSON array of tool name strings from the provided list (1-5 tools). No markdown, no explanation.";
+    let user = format!(
+        "Role: {role}\nMessage: {message}\n\nTools:\n{tools_payload}\n\nJSON array:"
+    );
+
+    let messages = vec![
+        ChatMessage {
+            role: "system".into(),
+            content: system.into(),
+        },
+        ChatMessage {
+            role: "user".into(),
+            content: user,
+        },
+    ];
+
+    let content = state.ai.complete_sync(&messages, 200).ok()?;
+    parse_tool_names_json(&content, candidates)
+}
+
 fn parse_tool_names_json(content: &str, candidates: &[(String, f32)]) -> Option<Vec<String>> {
     let trimmed = content.trim();
     let json_slice = trimmed

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   AppCard,
   AppPageHeader,
@@ -55,6 +55,7 @@ export function CatalogModule() {
       lastError?: string | null;
     }>
   >([]);
+  const [showCatalogTools, setShowCatalogTools] = useState(false);
   const [syncBusyId, setSyncBusyId] = useState<string | null>(null);
   const [semesters, setSemesters] = useState<Array<{ id: string; label: string }>>([]);
   const [semesterId, setSemesterId] = useState("");
@@ -131,6 +132,20 @@ export function CatalogModule() {
   const { refresh, error } = useLiveQuery(load, ["catalog", "planner"]);
   const selectedCourse = courses.find((c) => c.id === selected) ?? null;
 
+  useEffect(() => {
+    const onCatalogQuery = (ev: Event) => {
+      const next = (ev as CustomEvent<{ query?: string }>).detail?.query?.trim();
+      if (!next) return;
+      setQuery(next);
+      void ipc
+        .catalogSearchCourses(next)
+        .then((hits) => setCourses(hits))
+        .catch(() => undefined);
+    };
+    window.addEventListener("college:catalog-query", onCatalogQuery);
+    return () => window.removeEventListener("college:catalog-query", onCatalogQuery);
+  }, []);
+
   const runPreview = async () => {
     setScrapeBusy(true);
     setScrapeError(null);
@@ -169,7 +184,7 @@ export function CatalogModule() {
   return (
     <div className="flex h-full flex-col">
       <AppPageHeader
-        title="Catalog"
+        title="Browse catalog"
         actions={
           <div className="flex items-center gap-2">
             <input
@@ -191,16 +206,23 @@ export function CatalogModule() {
                 variant={semanticMode ? "primary" : "ghost"}
                 onClick={() => setSemanticMode((v) => !v)}
               >
-                Semantic
+                Smart search
               </Button>
             ) : null}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setShowCatalogTools((v) => !v)}
+            >
+              {showCatalogTools ? "Hide tools" : "Catalog tools"}
+            </Button>
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
       {selectedProgramIds.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-3 pb-1">
-          <span className="text-[11px] text-[var(--color-text-light)]">Programs:</span>
+          <span className="text-caption">Programs:</span>
           {selectedProgramIds.map((id) => (
             <StatusChip key={id} title={id} tint="var(--color-primary)" filled />
           ))}
@@ -221,7 +243,7 @@ export function CatalogModule() {
                     <ListRow
                       leading={
                         <span
-                          className="flex h-8 w-8 shrink-0 items-center justify-center text-[12px] font-semibold text-[var(--color-primary)]"
+                          className="flex h-8 w-8 shrink-0 items-center justify-center text-meta font-semibold text-[var(--color-primary)]"
                           style={{
                             borderRadius: 8,
                             border: "1px solid var(--color-chrome-stroke)",
@@ -352,7 +374,7 @@ export function CatalogModule() {
                   </div>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto p-4">
-                  <p className="text-[12px] leading-relaxed text-[var(--color-text-main)]">
+                  <p className="text-meta leading-relaxed text-[var(--color-text-main)]">
                     {selectedCourse.description || "No description."}
                   </p>
                 </div>
@@ -373,8 +395,9 @@ export function CatalogModule() {
           </TrailingInspector>
         </div>
 
+        {showCatalogTools && (
         <AppCard title="Catalog sync">
-          <p className="mb-3 text-[12px] leading-relaxed text-[var(--color-text-light)]">
+          <p className="mb-3 text-meta leading-relaxed">
             Background-style sync per university using each school&apos;s catalog_base_url. Skips
             unchanged signatures unless you force a re-scrape.
           </p>
@@ -470,7 +493,9 @@ export function CatalogModule() {
             </ul>
           )}
         </AppCard>
+        )}
 
+        {showCatalogTools && (
         <AppCard title="Scrape preview">
           <div className="mb-3 flex flex-wrap gap-2">
             <input
@@ -496,9 +521,9 @@ export function CatalogModule() {
               Ingest courses
             </Button>
           </div>
-          {scrapeError && <p className="text-[12px] text-[var(--color-error)]">{scrapeError}</p>}
+          {scrapeError && <p className="text-meta text-[var(--color-error)]">{scrapeError}</p>}
           {ingestNote && (
-            <p className="mb-2 text-[12px] text-[var(--color-success)]">{ingestNote}</p>
+            <p className="mb-2 text-meta text-[var(--color-success)]">{ingestNote}</p>
           )}
           {preview ? (
             <div className="space-y-2">
@@ -518,7 +543,7 @@ export function CatalogModule() {
                 }
               />
               <pre
-                className="max-h-48 overflow-auto whitespace-pre-wrap p-3 text-[11px] leading-relaxed text-[var(--color-text-light)]"
+                className="max-h-48 overflow-auto whitespace-pre-wrap p-3 text-caption leading-relaxed text-[var(--color-text-light)]"
                 style={{
                   borderRadius: 10,
                   border: "1px solid var(--color-chrome-stroke)",
@@ -536,11 +561,12 @@ export function CatalogModule() {
             />
           )}
         </AppCard>
+        )}
       </div>
 
       <ModalSheet open={addSheet} onOpenChange={setAddSheet} title="Add to planner">
         <div className="space-y-3">
-          <p className="text-[12px] text-[var(--color-text-light)]">
+          <p className="text-meta">
             {selectedCourse
               ? `${selectedCourse.code} — ${selectedCourse.title}`
               : "Select a course first."}

@@ -85,7 +85,7 @@ export function PathingGoalsPanel({ entryId, organization }: Props) {
   return (
     <div className="space-y-3">
       <AppCard title="Goals">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+        <p className="mb-3 text-meta">
           Track tenure, benefits windows, and tuition targets for{" "}
           {organization.trim() || "this role"}.
         </p>
@@ -100,10 +100,10 @@ export function PathingGoalsPanel({ entryId, organization }: Props) {
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium text-[var(--color-text-main)]">
+                    <div className="text-body font-medium">
                       {goal.title}
                     </div>
-                    <p className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                    <p className="mt-0.5 text-caption">
                       {pathGoalCategoryLabels[goal.category]} ·{" "}
                       {pathGoalCadenceLabels[goal.cadence]}
                       {goal.targetDate
@@ -111,7 +111,7 @@ export function PathingGoalsPanel({ entryId, organization }: Props) {
                         : ""}
                     </p>
                     {goal.notes?.trim() ? (
-                      <p className="mt-1 text-[12px] text-[var(--color-text-light)]">
+                      <p className="mt-1 text-meta">
                         {goal.notes}
                       </p>
                     ) : null}

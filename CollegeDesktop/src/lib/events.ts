@@ -53,3 +53,17 @@ export async function onAssistantChunk(
 ): Promise<UnlistenFn> {
   return listen<AssistantChunkEvent>("assistant:chunk", (event) => handler(event.payload));
 }
+
+export type LlmDownloadEvent = {
+  progress: number;
+  bytesDownloaded: number;
+  bytesTotal: number | null;
+  done: boolean;
+  error?: string | null;
+};
+
+export async function onLlmDownload(
+  handler: (payload: LlmDownloadEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<LlmDownloadEvent>("ai:llm-download", (event) => handler(event.payload));
+}

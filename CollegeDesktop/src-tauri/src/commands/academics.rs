@@ -47,6 +47,7 @@ pub struct AuditSummary {
     pub completed_credits: f64,
     pub semester_count: i64,
     pub course_count: i64,
+    pub total_required_credits: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -104,38 +105,110 @@ fn codes_from_rule(rule_json: &str) -> Vec<String> {
     codes
 }
 
+fn merge_transfer_equivalencies(
+    conn: &Connection,
+    by_code: &mut std::collections::HashMap<String, (f64, String)>,
+) -> anyhow::Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT target_code, credits FROM transfer_equivalency WHERE TRIM(target_code) != ''",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<f64>>(1)?))
+    })?;
+    for row in rows {
+        let (target_code, credits) = row?;
+        let key = normalize_code(&target_code);
+        if by_code.contains_key(&key) {
+            continue;
+        }
+        by_code.insert(key, (credits.unwrap_or(0.0), "completed".to_string()));
+    }
+    Ok(())
+}
+
+fn transfer_only_completed_credits(conn: &Connection) -> anyhow::Result<f64> {
+    let mut planner_codes = std::collections::HashSet::new();
+    let mut stmt = conn.prepare("SELECT code FROM planner_course WHERE status != 'dropped'")?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    for code in rows {
+        planner_codes.insert(normalize_code(&code?));
+    }
+
+    let mut transfer_stmt = conn.prepare(
+        "SELECT target_code, credits FROM transfer_equivalency WHERE TRIM(target_code) != ''",
+    )?;
+    let transfer_rows = transfer_stmt.query_map([], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, Option<f64>>(1)?))
+    })?;
+    let mut total = 0.0;
+    for row in transfer_rows {
+        let (target_code, credits) = row?;
+        if !planner_codes.contains(&normalize_code(&target_code)) {
+            total += credits.unwrap_or(0.0);
+        }
+    }
+    Ok(total)
+}
+
+pub(crate) fn query_audit_summary(conn: &Connection) -> anyhow::Result<AuditSummary> {
+    let planned: f64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(credits), 0) FROM planner_course WHERE status != 'dropped'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0.0);
+    let completed: f64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(credits), 0) FROM planner_course WHERE status = 'completed'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0.0)
+        + transfer_only_completed_credits(conn).unwrap_or(0.0);
+    let semester_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM planner_semester", [], |r| r.get(0))
+        .unwrap_or(0);
+    let course_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM planner_course", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    let active_major_id: Option<String> = conn
+        .query_row(
+            "SELECT value FROM app_settings WHERE key = ?1",
+            rusqlite::params![ACTIVE_PROGRAM_SETTING_KEY],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let total_required_credits = if let Some(major_id) = active_major_id.filter(|s| !s.is_empty()) {
+        let sum: f64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(credits_required), 0)
+                 FROM catalog_degree_requirement
+                 WHERE major_id = ?1 AND credits_required IS NOT NULL",
+                rusqlite::params![major_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0.0);
+        if sum > 0.0 { Some(sum) } else { None }
+    } else {
+        None
+    };
+
+    Ok(AuditSummary {
+        planned_credits: planned,
+        completed_credits: completed,
+        semester_count,
+        course_count,
+        total_required_credits,
+    })
+}
+
 #[tauri::command]
 pub fn academics_get_audit_summary(state: State<'_, AppState>) -> CmdResult<AuditSummary> {
     state
         .db
-        .with_conn(|conn| {
-            let planned: f64 = conn
-                .query_row(
-                    "SELECT COALESCE(SUM(credits), 0) FROM planner_course WHERE status != 'dropped'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap_or(0.0);
-            let completed: f64 = conn
-                .query_row(
-                    "SELECT COALESCE(SUM(credits), 0) FROM planner_course WHERE status = 'completed'",
-                    [],
-                    |r| r.get(0),
-                )
-                .unwrap_or(0.0);
-            let semester_count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM planner_semester", [], |r| r.get(0))
-                .unwrap_or(0);
-            let course_count: i64 = conn
-                .query_row("SELECT COUNT(*) FROM planner_course", [], |r| r.get(0))
-                .unwrap_or(0);
-            Ok(AuditSummary {
-                planned_credits: planned,
-                completed_credits: completed,
-                semester_count,
-                course_count,
-            })
-        })
+        .with_conn(|conn| query_audit_summary(conn).map_err(Into::into))
         .map_err(Into::into)
 }
 
@@ -249,6 +322,7 @@ pub fn academics_get_requirement_audit(state: State<'_, AppState>) -> CmdResult<
             for (code, credits, status) in &planner {
                 by_code.insert(normalize_code(code), (*credits, status.clone()));
             }
+            merge_transfer_equivalencies(conn, &mut by_code)?;
 
             let active_major_id: Option<String> = conn
                 .query_row(

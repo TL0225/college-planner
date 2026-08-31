@@ -6,7 +6,7 @@ export const EVENT_COLOR_PRESETS = [
   { id: "green", label: "Green", hex: "#10B981" },
   { id: "amber", label: "Amber", hex: "#F59E0B" },
   { id: "red", label: "Red", hex: "#EF4444" },
-  { id: "purple", label: "Purple", hex: "#8B5CF6" },
+  { id: "brass", label: "Brass", hex: "#a6813f" },
   { id: "pink", label: "Pink", hex: "#EC4899" },
 ] as const;
 

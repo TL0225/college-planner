@@ -1,5 +1,5 @@
 import { cn } from "../cn";
-import { radius, spacing } from "../tokens";
+import { spacing } from "../tokens";
 
 export function AppCard({
   children,
@@ -17,18 +17,22 @@ export function AppCard({
       className={cn("frame-card w-full", className)}
       style={{
         padding: spacing.md,
-        borderRadius: radius.lg,
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-chrome-stroke)",
-        boxShadow: "inset 0 1px 0 color-mix(in srgb, white 40%, transparent)",
+        borderRadius: "var(--registrar-radius)",
+        background: "var(--registrar-surface)",
+        border: "1px solid var(--registrar-rule)",
       }}
     >
       {title && (
         <h2
-          className="mb-2 flex items-center gap-2 text-[var(--color-text-main)]"
-          style={{ marginBottom: spacing.sm, font: "var(--type-section-title)" }}
+          className="mb-3 flex items-center gap-2"
+          style={{
+            fontFamily: "var(--font-display)",
+            fontWeight: 600,
+            fontSize: 17,
+            color: "var(--registrar-ink)",
+          }}
         >
-          {icon && <span className="text-[var(--color-primary)]">{icon}</span>}
+          {icon && <span style={{ color: "var(--registrar-accent)" }}>{icon}</span>}
           {title}
         </h2>
       )}

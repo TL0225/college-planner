@@ -35,7 +35,7 @@ export function AcademicsStatsSidebar({
       }}
     >
       <div className="border-b border-[var(--color-chrome-stroke)] px-3 py-2.5">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+        <div className="text-label font-semibold uppercase tracking-[0.05em]">
           Planner stats
         </div>
       </div>
@@ -57,7 +57,7 @@ export function AcademicsStatsSidebar({
         </div>
 
         <div>
-          <div className="mb-1.5 flex items-center justify-between text-[11px] text-[var(--color-text-light)]">
+          <div className="mb-1.5 flex items-center justify-between text-caption">
             <span className="font-semibold uppercase tracking-[0.04em]">Credit progress</span>
             <span className="tabular-nums">{Math.round(completedRatio * 100)}%</span>
           </div>
@@ -66,7 +66,7 @@ export function AcademicsStatsSidebar({
 
         {auditProgress != null ? (
           <div>
-            <div className="mb-1.5 flex items-center justify-between text-[11px] text-[var(--color-text-light)]">
+            <div className="mb-1.5 flex items-center justify-between text-caption">
               <span className="font-semibold uppercase tracking-[0.04em]">Degree progress</span>
               <span className="tabular-nums">{Math.round(auditProgress * 100)}%</span>
             </div>
@@ -75,12 +75,12 @@ export function AcademicsStatsSidebar({
         ) : null}
 
         <div>
-          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-text-light)]">
+          <div className="mb-2 text-label font-semibold uppercase tracking-[0.04em]">
             Legend
           </div>
           <ul className="space-y-1.5">
             {LEGEND.map((row) => (
-              <li key={row.label} className="flex items-center gap-2 text-[12px]">
+              <li key={row.label} className="flex items-center gap-2 text-meta">
                 <span
                   className="inline-block h-2 w-2 shrink-0 rounded-full"
                   style={{ background: row.tint }}

@@ -1,6 +1,6 @@
 //! Assistant write tools — prepare confirmed mutations (Swift write-tool parity).
 
-use crate::commands::assistant::{pending_action, AssistantPendingAction};
+use crate::commands::assistant::{detect_create_application, pending_action, AssistantPendingAction};
 use crate::commands::CmdResult;
 use crate::AppState;
 use regex::Regex;
@@ -430,29 +430,19 @@ fn prepare_update_event(msg: &str) -> CmdResult<WriteToolOutcome> {
 }
 
 fn prepare_track_application(msg: &str) -> CmdResult<WriteToolOutcome> {
-    let patterns = [
-        r"(?i)^track job at (.+)$",
-        r"(?i)^track application at (.+)$",
-        r"(?i)^add job at (.+)$",
-        r"(?i)^track (?:a )?job (?:at|for) (.+)$",
-    ];
-    for pat in patterns {
-        if let Ok(re) = Regex::new(pat) {
-            if let Some(caps) = re.captures(msg.trim()) {
-                let company = caps.get(1).map(|m| m.as_str().trim()).unwrap_or("");
-                if !company.is_empty() {
-                    let mut action = pending_action("createApplication", &format!("Role at {company}"));
-                    action.company = Some(company.to_string());
-                    return Ok(WriteToolOutcome {
-                        summary: format!("Prepared tracking job at {company}."),
-                        pending: Some(action),
-                    });
-                }
-            }
-        }
+    if let Some(action) = detect_create_application(msg) {
+        let company = action.company.clone().unwrap_or_default();
+        let role = action
+            .role_title
+            .clone()
+            .unwrap_or_else(|| action.title.clone());
+        return Ok(WriteToolOutcome {
+            summary: format!("Prepared tracking {role} at {company}."),
+            pending: Some(action),
+        });
     }
     Ok(WriteToolOutcome {
-        summary: "Say e.g. \"track job at Acme Corp\".".into(),
+        summary: "Say e.g. \"track Software Engineer at Acme Corp\".".into(),
         pending: None,
     })
 }

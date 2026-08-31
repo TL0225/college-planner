@@ -1,5 +1,6 @@
 import { cn } from "../cn";
 import { dateKey } from "./MonthGrid";
+import type { MonthGridAnchor } from "./MonthGrid";
 
 function startOfWeek(d: Date): Date {
   const day = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -15,6 +16,11 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
+function anchorFromElement(el: HTMLElement): MonthGridAnchor {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, width: r.width, height: r.height };
+}
+
 export type WeekEventChip = {
   id: string;
   title: string;
@@ -22,18 +28,20 @@ export type WeekEventChip = {
   color?: string;
 };
 
+const accentSoft = "color-mix(in srgb, var(--registrar-accent) 14%, transparent)";
+
 export function WeekGrid({
   anchor,
   selected,
   eventsByDay,
   onSelectDay,
-  onAnchorChange,
+  onSelectEvent,
 }: {
   anchor: Date;
   selected: Date | null;
   eventsByDay: Map<string, WeekEventChip[]>;
-  onSelectDay: (day: Date) => void;
-  onAnchorChange: (next: Date) => void;
+  onSelectDay: (day: Date, anchor: MonthGridAnchor) => void;
+  onSelectEvent?: (eventId: string, anchor: MonthGridAnchor) => void;
 }) {
   const weekStart = startOfWeek(anchor);
   const today = new Date();
@@ -42,71 +50,12 @@ export function WeekGrid({
     d.setDate(weekStart.getDate() + i);
     return d;
   });
-  const rangeLabel = `${days[0]!.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  })} – ${days[6]!.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  })}`;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
-        <button
-          type="button"
-          className="chrome-nav-btn"
-          onClick={() => {
-            const prev = new Date(weekStart);
-            prev.setDate(prev.getDate() - 7);
-            onAnchorChange(prev);
-          }}
-          aria-label="Previous week"
-        >
-          ‹
-        </button>
-        <div
-          className="text-[var(--color-text-main)]"
-          style={{ font: "var(--type-section-title)", fontSize: 15, letterSpacing: "-0.01em" }}
-        >
-          {rangeLabel}
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="chrome-nav-btn"
-            onClick={() => {
-              const now = new Date();
-              onAnchorChange(now);
-              onSelectDay(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-            }}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            className="chrome-nav-btn"
-            onClick={() => {
-              const next = new Date(weekStart);
-              next.setDate(next.getDate() + 7);
-              onAnchorChange(next);
-            }}
-            aria-label="Next week"
-          >
-            ›
-          </button>
-        </div>
-      </div>
-
       <div
-        className="grid min-h-0 flex-1 grid-cols-7 gap-px overflow-hidden"
-        style={{
-          borderRadius: 14,
-          border: "1px solid var(--color-chrome-stroke)",
-          background: "var(--color-chrome-stroke)",
-          boxShadow: "var(--shadow-elevated)",
-        }}
+        className="grid min-h-0 flex-1 grid-cols-7 overflow-hidden"
+        style={{ borderTop: "1px solid var(--registrar-rule)" }}
       >
         {days.map((day) => {
           const key = dateKey(day);
@@ -117,39 +66,61 @@ export function WeekGrid({
             <button
               key={key}
               type="button"
-              onClick={() => onSelectDay(new Date(day.getFullYear(), day.getMonth(), day.getDate()))}
+              onClick={(e) =>
+                onSelectDay(
+                  new Date(day.getFullYear(), day.getMonth(), day.getDate()),
+                  anchorFromElement(e.currentTarget),
+                )
+              }
               className={cn(
-                "flex min-h-0 flex-col bg-[var(--color-content-surface)] p-2 text-left transition-colors hover:bg-[var(--color-row-hover)]",
-                isSelected && "bg-[var(--color-primary-soft)] ring-1 ring-inset ring-[var(--color-primary)]/30",
+                "flex min-h-0 flex-col border-b border-r border-[var(--registrar-rule)] bg-[var(--color-shell-canvas)] p-2 text-left transition-colors hover:bg-[var(--color-row-hover)]",
+                isSelected && "bg-[color-mix(in_srgb,var(--registrar-accent)_8%,var(--color-shell-canvas))]",
               )}
             >
               <div className="mb-1.5 flex items-center justify-between gap-1">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
                   {day.toLocaleDateString(undefined, { weekday: "short" })}
                 </span>
                 <span
                   className={cn(
-                    "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[12px] font-semibold tabular-nums",
-                    isToday
-                      ? "bg-[var(--color-primary)] text-white shadow-[var(--shadow-pill)]"
-                      : "text-[var(--color-text-main)]",
+                    "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-meta font-semibold tabular-nums",
+                    isToday ? "text-white" : "text-[var(--registrar-ink)]",
                   )}
+                  style={isToday ? { background: "var(--registrar-accent)" } : undefined}
                 >
                   {day.getDate()}
                 </span>
               </div>
               <div className="min-h-0 flex-1 space-y-1 overflow-y-auto">
-                {chips.slice(0, 6).map((e) => (
+                {chips.slice(0, 8).map((e) => (
                   <div
                     key={e.id}
-                    className="truncate rounded-[6px] bg-[var(--color-primary-soft)] px-1.5 py-1 text-[10px] font-medium leading-snug text-[var(--color-primary)]"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onSelectEvent?.(e.id, anchorFromElement(ev.currentTarget));
+                    }}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.stopPropagation();
+                        ev.preventDefault();
+                        onSelectEvent?.(e.id, anchorFromElement(ev.currentTarget));
+                      }
+                    }}
+                    className="truncate rounded-[4px] px-1.5 py-1 text-[10px] font-medium leading-snug transition-opacity hover:opacity-80"
                     style={
                       e.color
                         ? {
-                            backgroundColor: `${e.color}1F`,
+                            backgroundColor: `${e.color}22`,
                             color: e.color,
+                            borderLeft: `2px solid ${e.color}`,
                           }
-                        : undefined
+                        : {
+                            background: accentSoft,
+                            color: "var(--registrar-ink)",
+                            borderLeft: "2px solid var(--registrar-accent)",
+                          }
                     }
                     title={e.title}
                   >
@@ -160,10 +131,8 @@ export function WeekGrid({
                     {e.title}
                   </div>
                 ))}
-                {chips.length > 6 && (
-                  <div className="px-1 text-[10px] text-[var(--color-text-light)]">
-                    +{chips.length - 6} more
-                  </div>
+                {chips.length > 8 && (
+                  <div className="px-1 text-caption">+{chips.length - 8} more</div>
                 )}
               </div>
             </button>

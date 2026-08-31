@@ -26,6 +26,7 @@ import { useLiveQuery } from "@/lib/useLiveQuery";
 import { OverviewWidgetGrid, type AdvisorPrepSummary } from "./OverviewWidgets";
 import { DegreeRequirementsScreen } from "./DegreeRequirementsScreen";
 import { PlannerCanvas } from "./PlannerCanvas";
+import { CourseRegistryScreen } from "./CourseRegistryScreen";
 import { CourseDashboard } from "./CourseDashboard";
 import { AcademicsStatsSidebar } from "./AcademicsStatsSidebar";
 import {
@@ -65,12 +66,21 @@ function addDays(date: Date, days: number): Date {
 export function AcademicsModule({
   page = "academics",
   highlightSectionId,
+  hideChrome = false,
 }: {
   page?: string;
   highlightSectionId?: string;
+  /** Overview-only embed for Home hub (no page header / actions). */
+  hideChrome?: boolean;
 }) {
   const view =
-    page === "planner" ? "planner" : page === "degree" ? "degree" : "overview";
+    page === "planner"
+      ? "planner"
+      : page === "courses"
+        ? "courses"
+        : page === "degree"
+          ? "degree"
+          : "overview";
   const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [courses, setCourses] = useState<PlannerCourse[]>([]);
@@ -89,9 +99,13 @@ export function AcademicsModule({
     progressRatio: number;
   } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingSemester, setEditingSemester] = useState<Semester | null>(null);
   const [courseSheet, setCourseSheet] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<PlannerCourse | null>(null);
   const [season, setSeason] = useState("Fall");
   const [year, setYear] = useState(new Date().getFullYear());
+  const [customLabel, setCustomLabel] = useState("");
+  const [isCurrentSemester, setIsCurrentSemester] = useState(false);
   const [courseForm, setCourseForm] = useState({
     semesterId: "",
     code: "",
@@ -229,10 +243,6 @@ export function AcademicsModule({
     "planner",
     "catalog",
     "calendar",
-    "career",
-    "finance",
-    "vault",
-    "discovery",
     "profile",
   ]);
 
@@ -278,6 +288,26 @@ export function AcademicsModule({
     [courses],
   );
 
+  const courseCreditsByCode = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const course of courses) {
+      map.set(course.code.trim().toUpperCase(), course.credits);
+    }
+    return map;
+  }, [courses]);
+
+  const creditsForRequirementCode = useCallback(
+    (code: string, creditsRequired?: number | null, missingCount?: number) => {
+      const fromPlanner = courseCreditsByCode.get(code.trim().toUpperCase());
+      if (fromPlanner != null) return fromPlanner;
+      if (creditsRequired != null && creditsRequired > 0 && missingCount && missingCount > 0) {
+        return creditsRequired / missingCount;
+      }
+      return 3;
+    },
+    [courseCreditsByCode],
+  );
+
   const draggableRequirements = useMemo(() => {
     if (!audit) return [];
     const seen = new Set<string>();
@@ -287,16 +317,35 @@ export function AcademicsModule({
         const normalized = code.trim().toUpperCase();
         if (!normalized || seen.has(normalized)) continue;
         seen.add(normalized);
-        rows.push({ code: normalized, title: normalized, credits: 3 });
+        rows.push({
+          code: normalized,
+          title: normalized,
+          credits: creditsForRequirementCode(
+            normalized,
+            item.creditsRequired,
+            item.missingCodes.length,
+          ),
+        });
       }
     }
     return rows;
-  }, [audit]);
+  }, [audit, creditsForRequirementCode]);
 
   const dashboardSemester = useMemo(
     () => semesters.find((s) => s.id === dashboardCourse?.semesterId) ?? null,
     [semesters, dashboardCourse],
   );
+
+  const openCourseEditor = useCallback((course: PlannerCourse) => {
+    setEditingCourse(course);
+    setCourseForm({
+      semesterId: course.semesterId,
+      code: course.code,
+      title: course.title,
+      credits: course.credits,
+    });
+    setCourseSheet(true);
+  }, []);
 
   const handleRequirementDrop = useCallback(
     async (semesterId: string, payload: PlannerDragPayload) => {
@@ -345,27 +394,75 @@ export function AcademicsModule({
   }, []);
 
   const title =
-    view === "planner" ? "Planner" : view === "degree" ? "Requirements" : "Overview";
+    view === "planner"
+      ? "Academic Plan"
+      : view === "courses"
+        ? "Course Registry"
+        : view === "degree"
+          ? "Degree Audit"
+          : "School Overview";
 
   return (
     <div className="flex h-full flex-col">
-      <AppPageHeader
-        title={title}
-        actions={
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" onClick={() => void refresh()}>
-              Refresh
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setSheetOpen(true)}>
-              Add semester
-            </Button>
-            <Button size="sm" onClick={() => setCourseSheet(true)}>
-              Add course
-            </Button>
-          </div>
-        }
-      />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {!hideChrome && view !== "courses" && (
+        <AppPageHeader
+          title={title}
+          actions={
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={() => void refresh()}>
+                Refresh
+              </Button>
+              {view === "planner" && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      setEditingSemester(null);
+                      setSeason("Fall");
+                      setYear(new Date().getFullYear());
+                      setCustomLabel("");
+                      setIsCurrentSemester(false);
+                      setSheetOpen(true);
+                    }}
+                  >
+                    Add semester
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setEditingCourse(null);
+                      setCourseForm((prev) => ({
+                        semesterId: prev.semesterId || semesters[0]?.id || "",
+                        code: "",
+                        title: "",
+                        credits: 3,
+                      }));
+                      setCourseSheet(true);
+                    }}
+                  >
+                    Add course
+                  </Button>
+                </>
+              )}
+            </div>
+          }
+        />
+      )}
+      {!hideChrome && error && (
+        <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>
+      )}
+
+      {view === "courses" && (
+        <div className="min-h-0 flex-1">
+          <CourseRegistryScreen
+            semesters={semesters}
+            courses={courses}
+            onOpenDashboard={setDashboardCourse}
+            onRefresh={() => void refresh()}
+          />
+        </div>
+      )}
 
       {view === "overview" && (
         <div className="min-h-0 flex-1 overflow-auto px-3 pb-4 pt-1">
@@ -403,7 +500,7 @@ export function AcademicsModule({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {draggableRequirements.length > 0 ? (
               <AppCard title="Drag to planner" className="mx-3 mb-1 shrink-0">
-                <p className="mb-2 text-[11px] text-[var(--color-text-light)]">
+                <p className="mb-2 text-caption">
                   Drop a requirement course onto a semester row in the planner canvas.
                 </p>
                 <div className="flex flex-wrap gap-1.5">
@@ -416,7 +513,22 @@ export function AcademicsModule({
             <PlannerCanvas
               semesters={semesters}
               coursesBySemester={coursesBySemester}
-              onAddSemester={() => setSheetOpen(true)}
+              onAddSemester={() => {
+                setEditingSemester(null);
+                setSeason("Fall");
+                setYear(new Date().getFullYear());
+                setCustomLabel("");
+                setIsCurrentSemester(false);
+                setSheetOpen(true);
+              }}
+              onEditSemester={(s) => {
+                setEditingSemester(s);
+                setSeason(s.season || "Fall");
+                setYear(s.year || new Date().getFullYear());
+                setCustomLabel(s.label || "");
+                setIsCurrentSemester(s.isCurrent ?? false);
+                setSheetOpen(true);
+              }}
               onDeleteSemester={(s) => {
                 if (!confirmDelete(s.label || `${s.season} ${s.year}`)) return;
                 void ipc
@@ -446,6 +558,7 @@ export function AcademicsModule({
           onCreditsClick={() => setCreditsSheetOpen(true)}
           onGpaClick={() => setGpaSheetOpen(true)}
           onProgramChanged={() => void refresh()}
+          courseCreditsByCode={courseCreditsByCode}
           requirementDragChip={(payload) => <RequirementDragChip payload={payload} />}
         />
       )}
@@ -469,7 +582,7 @@ export function AcademicsModule({
           ) : (
             <ul className="divide-y divide-[var(--color-chrome-stroke)] rounded-lg border border-[var(--color-chrome-stroke)]">
               {gradedCourses.map((c) => (
-                <li key={c.id} className="flex items-center justify-between px-3 py-2 text-[13px]">
+                <li key={c.id} className="flex items-center justify-between px-3 py-2 text-body">
                   <span>
                     {c.code} · {c.title}
                   </span>
@@ -492,14 +605,21 @@ export function AcademicsModule({
             <MetricTile label="Planned" value={summary?.plannedCredits.toFixed(1) ?? "0"} />
             <MetricTile label="Total courses" value={summary?.courseCount ?? 0} />
           </div>
-          <p className="text-[12px] text-[var(--color-text-light)]">
+          <p className="text-meta">
             Completed credits count courses marked completed in the planner. Planned credits include
             in-progress and planned rows (excluding dropped).
           </p>
         </div>
       </ModalSheet>
 
-      <ModalSheet open={sheetOpen} onOpenChange={setSheetOpen} title="Add semester">
+      <ModalSheet
+        open={sheetOpen}
+        onOpenChange={(open) => {
+          setSheetOpen(open);
+          if (!open) setEditingSemester(null);
+        }}
+        title={editingSemester ? "Edit semester" : "Add semester"}
+      >
         <div className="space-y-3">
           <FormField label="Season">
             <select
@@ -522,18 +642,58 @@ export function AcademicsModule({
               onChange={(e) => setYear(Number(e.target.value))}
             />
           </FormField>
+          <FormField label="Custom label (optional)">
+            <input
+              className={fieldControlClass}
+              placeholder={`${season} ${year}`}
+              value={customLabel}
+              onChange={(e) => setCustomLabel(e.target.value)}
+            />
+          </FormField>
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="checkbox"
+              id="isCurrentSemester"
+              checked={isCurrentSemester}
+              onChange={(e) => setIsCurrentSemester(e.target.checked)}
+              className="h-4 w-4 rounded border-[var(--color-chrome-stroke)] text-[var(--color-primary)]"
+            />
+            <label htmlFor="isCurrentSemester" className="text-body font-medium text-[var(--color-text-main)] cursor-pointer">
+              Current active term
+            </label>
+          </div>
           <Button
             onClick={async () => {
-              await ipc.academicsUpsertSemester({ year, season, isCurrent: true });
-              setSheetOpen(false);
+              try {
+                await ipc.academicsUpsertSemester({
+                  id: editingSemester?.id,
+                  year,
+                  season,
+                  label: customLabel.trim() || undefined,
+                  isCurrent: isCurrentSemester,
+                });
+                showToast(editingSemester ? "Semester updated" : "Semester created", "success");
+                setSheetOpen(false);
+                setEditingSemester(null);
+                await refresh();
+              } catch (err) {
+                showToast(formatIpcError(err), "error");
+              }
             }}
           >
-            Save semester
+            {editingSemester ? "Save changes" : "Create semester"}
           </Button>
         </div>
       </ModalSheet>
 
-      <ModalSheet open={courseSheet} onOpenChange={setCourseSheet} title="Add course">
+      <ModalSheet
+        open={courseSheet}
+        onOpenChange={(open) => {
+          setCourseSheet(open);
+          if (!open) setEditingCourse(null);
+        }}
+        title={editingCourse ? "Edit course" : "Add course"}
+      >
         <div className="space-y-3">
           <FormField label="Semester">
             <select
@@ -576,17 +736,20 @@ export function AcademicsModule({
             disabled={!courseForm.semesterId || !courseForm.code.trim()}
             onClick={async () => {
               await ipc.academicsUpsertCourse({
+                id: editingCourse?.id,
                 semesterId: courseForm.semesterId,
                 code: courseForm.code.trim(),
                 title: courseForm.title.trim() || courseForm.code.trim(),
                 credits: courseForm.credits,
-                status: "planned",
+                status: editingCourse?.status ?? "planned",
               });
               setCourseSheet(false);
+              setEditingCourse(null);
               setCourseForm((prev) => ({ ...prev, code: "", title: "" }));
+              await refresh();
             }}
           >
-            Save course
+            {editingCourse ? "Save changes" : "Save course"}
           </Button>
         </div>
       </ModalSheet>
@@ -598,6 +761,7 @@ export function AcademicsModule({
         }}
         course={dashboardCourse}
         semester={dashboardSemester}
+        onEditCourse={openCourseEditor}
       />
     </div>
   );
@@ -614,7 +778,7 @@ function RequirementDragChip({ payload }: { payload: PlannerDragPayload }) {
         e.dataTransfer.setData("application/x-college-planner-course", dt.getData("application/x-college-planner-course"));
         e.dataTransfer.setData("text/plain", dt.getData("text/plain"));
       }}
-      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium"
+      className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-caption font-medium"
       style={{
         border: "1px solid var(--color-chrome-stroke)",
         background: "var(--color-surface)",

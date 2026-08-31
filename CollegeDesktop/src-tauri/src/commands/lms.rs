@@ -431,6 +431,219 @@ pub async fn lms_portal_find(
 
 const LMS_SECRET_NS: &str = "lms.portal";
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LmsCanvasConfigDto {
+    pub base_url: String,
+    pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth_method: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LmsCanvasSetConfigInput {
+    pub base_url: String,
+    pub access_token: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LmsCanvasSyncResult {
+    pub tasks_created: i64,
+    pub events_created: i64,
+    pub skipped: i64,
+    pub courses_fetched: i64,
+}
+
+fn load_canvas_secret(state: &AppState) -> CmdResult<Option<super::lms_canvas_oauth::CanvasSecretConfig>> {
+    super::lms_canvas_oauth::load_canvas_config(state)
+}
+
+fn save_canvas_secret(
+    state: &AppState,
+    config: &super::lms_canvas_oauth::CanvasSecretConfig,
+) -> CmdResult<()> {
+    super::lms_canvas_oauth::save_canvas_config(state, config)
+}
+
+#[tauri::command]
+pub fn lms_canvas_get_config(state: State<'_, AppState>) -> CmdResult<LmsCanvasConfigDto> {
+    let config = load_canvas_secret(state.inner())?;
+    Ok(LmsCanvasConfigDto {
+        base_url: config
+            .as_ref()
+            .map(|c| c.base_url.clone())
+            .unwrap_or_default(),
+        connected: config
+            .as_ref()
+            .map(|c| !c.access_token.trim().is_empty())
+            .unwrap_or(false),
+        auth_method: config.as_ref().and_then(|c| {
+            if c.refresh_token.is_some() {
+                Some("oauth".into())
+            } else if !c.access_token.is_empty() {
+                Some("token".into())
+            } else {
+                None
+            }
+        }),
+    })
+}
+
+#[tauri::command]
+pub fn lms_canvas_set_config(
+    state: State<'_, AppState>,
+    input: LmsCanvasSetConfigInput,
+) -> CmdResult<()> {
+    let base_url = super::lms_canvas_oauth::normalize_canvas_base_url(&input.base_url);
+    if base_url.is_empty() {
+        return Err(anyhow::anyhow!("Canvas base URL required").into());
+    }
+    let access_token = input.access_token.trim().to_string();
+    if access_token.is_empty() {
+        let existing = load_canvas_secret(state.inner())?;
+        let kept = existing
+            .as_ref()
+            .map(|c| c.access_token.clone())
+            .filter(|t| !t.is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Canvas access token required"))?;
+        save_canvas_secret(
+            state.inner(),
+            &super::lms_canvas_oauth::CanvasSecretConfig {
+                base_url,
+                access_token: kept,
+                refresh_token: existing.as_ref().and_then(|c| c.refresh_token.clone()),
+            },
+        )
+    } else {
+        save_canvas_secret(
+            state.inner(),
+            &super::lms_canvas_oauth::CanvasSecretConfig {
+                base_url,
+                access_token,
+                refresh_token: None,
+            },
+        )
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct CanvasCourse {
+    id: i64,
+    name: Option<String>,
+    course_code: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CanvasAssignment {
+    id: i64,
+    name: Option<String>,
+    due_at: Option<String>,
+    html_url: Option<String>,
+}
+
+#[tauri::command]
+pub async fn lms_canvas_sync(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<LmsCanvasSyncResult> {
+    let config = load_canvas_secret(state.inner())?
+        .filter(|c| !c.base_url.is_empty() && !c.access_token.trim().is_empty())
+        .ok_or_else(|| anyhow::anyhow!("Canvas is not configured — add base URL and access token"))?;
+
+    let client = reqwest::Client::builder()
+        .user_agent("CollegeDesktop/0.1")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    let courses_url = format!(
+        "{}/api/v1/courses?enrollment_state=active&per_page=100",
+        config.base_url.trim_end_matches('/')
+    );
+    let courses_resp = client
+        .get(&courses_url)
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {}", config.access_token.trim()),
+        )
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Canvas courses fetch failed: {e}"))?;
+    if !courses_resp.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Canvas courses HTTP {} — check base URL and token",
+            courses_resp.status()
+        )
+        .into());
+    }
+    let courses: Vec<CanvasCourse> = courses_resp
+        .json()
+        .await
+        .map_err(|e| anyhow::anyhow!("Canvas courses parse failed: {e}"))?;
+
+    let mut import_items: Vec<LmsImportItemInput> = Vec::new();
+    for course in &courses {
+        let course_label = course
+            .course_code
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or(course.name.as_deref())
+            .unwrap_or("Course")
+            .to_string();
+        let assignments_url = format!(
+            "{}/api/v1/courses/{}/assignments?per_page=100",
+            config.base_url.trim_end_matches('/'),
+            course.id
+        );
+        let assignments_resp = client
+            .get(&assignments_url)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", config.access_token.trim()),
+            )
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Canvas assignments fetch failed: {e}"))?;
+        if !assignments_resp.status().is_success() {
+            continue;
+        }
+        let assignments: Vec<CanvasAssignment> = assignments_resp
+            .json()
+            .await
+            .unwrap_or_default();
+        for assignment in assignments {
+            let title = assignment
+                .name
+                .unwrap_or_else(|| "Assignment".to_string())
+                .trim()
+                .to_string();
+            if title.is_empty() {
+                continue;
+            }
+            import_items.push(LmsImportItemInput {
+                kind: "assignment".to_string(),
+                title,
+                due_at: assignment.due_at,
+                course_code: Some(course_label.clone()),
+                notes: assignment.html_url,
+                lms_item_id: Some(format!("canvas:{}:{}", course.id, assignment.id)),
+                portal_id: None,
+            });
+        }
+    }
+
+    let courses_fetched = courses.len() as i64;
+    let import_result = lms_import_items(app, state, import_items)?;
+    Ok(LmsCanvasSyncResult {
+        tasks_created: import_result.tasks_created,
+        events_created: import_result.events_created,
+        skipped: import_result.skipped,
+        courses_fetched,
+    })
+}
+
 fn portal_user_key(portal_id: &str) -> String {
     format!("{portal_id}.user")
 }

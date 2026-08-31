@@ -57,7 +57,7 @@ export function PathingScenariosPanel({ entryId }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[12px] text-[var(--color-text-light)]">
+      <p className="text-meta">
         Compare your current trajectory with an alternate option. There is no single “best” score.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">

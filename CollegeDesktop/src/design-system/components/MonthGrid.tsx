@@ -1,9 +1,16 @@
 import { cn } from "../cn";
-import { radius } from "../tokens";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
+export type MonthGridAnchor = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 export type MonthDayLabel = {
+  id: string;
   title: string;
   color?: string;
 };
@@ -37,27 +44,33 @@ export function dateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+function anchorFromElement(el: HTMLElement): MonthGridAnchor {
+  const r = el.getBoundingClientRect();
+  return { x: r.left, y: r.top, width: r.width, height: r.height };
+}
+
+const accentSoft = "color-mix(in srgb, var(--registrar-accent) 14%, transparent)";
+
 export function MonthGrid({
   cursor,
   selected,
   countsByDay,
   labelsByDay,
   onSelectDay,
-  onCursorChange,
+  onSelectEvent,
 }: {
   cursor: Date;
   selected: Date | null;
   countsByDay: Map<string, number>;
   labelsByDay?: Map<string, MonthDayLabel[]>;
-  onSelectDay: (day: Date) => void;
-  onCursorChange: (next: Date) => void;
+  onSelectDay: (day: Date, anchor: MonthGridAnchor) => void;
+  onSelectEvent?: (eventId: string, anchor: MonthGridAnchor) => void;
 }) {
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const first = new Date(year, month, 1);
   const startPad = first.getDay();
   const today = startOfDay(new Date());
-  const label = cursor.toLocaleString(undefined, { month: "long", year: "numeric" });
 
   const cells: MonthDayCell[] = [];
   for (let i = 0; i < 42; i++) {
@@ -69,55 +82,17 @@ export function MonthGrid({
       isToday: sameDay(day, today),
       isSelected: selected ? sameDay(day, selected) : false,
       dotCount: Math.min(3, countsByDay.get(key) ?? 0),
-      labels: labelsByDay?.get(key)?.slice(0, 2),
+      labels: labelsByDay?.get(key)?.slice(0, 3),
     });
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
-        <button
-          type="button"
-          className="chrome-nav-btn"
-          onClick={() => onCursorChange(new Date(year, month - 1, 1))}
-          aria-label="Previous month"
-        >
-          ‹
-        </button>
-        <div
-          className="text-[var(--color-text-main)]"
-          style={{ font: "var(--type-section-title)", letterSpacing: "-0.01em", fontSize: 15 }}
-        >
-          {label}
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="chrome-nav-btn"
-            onClick={() => {
-              const now = new Date();
-              onCursorChange(new Date(now.getFullYear(), now.getMonth(), 1));
-              onSelectDay(startOfDay(now));
-            }}
-          >
-            Today
-          </button>
-          <button
-            type="button"
-            className="chrome-nav-btn"
-            onClick={() => onCursorChange(new Date(year, month + 1, 1))}
-            aria-label="Next month"
-          >
-            ›
-          </button>
-        </div>
-      </div>
-
-      <div className="mb-1.5 grid grid-cols-7 gap-px">
+      <div className="mb-1.5 grid grid-cols-7">
         {WEEKDAYS.map((d) => (
           <div
             key={d}
-            className="py-1 text-center text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-light)]"
+            className="py-1 text-center text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-light)]"
           >
             {d}
           </div>
@@ -125,13 +100,8 @@ export function MonthGrid({
       </div>
 
       <div
-        className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-px overflow-hidden"
-        style={{
-          borderRadius: radius.lg,
-          background: "var(--color-chrome-stroke)",
-          border: "1px solid var(--color-chrome-stroke)",
-          boxShadow: "var(--shadow-elevated)",
-        }}
+        className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6 overflow-hidden"
+        style={{ borderTop: "1px solid var(--registrar-rule)" }}
       >
         {cells.map((cell) => {
           const key = dateKey(cell.date);
@@ -139,38 +109,64 @@ export function MonthGrid({
             <button
               key={key + String(cell.inMonth)}
               type="button"
-              onClick={() => onSelectDay(startOfDay(cell.date))}
+              onClick={(e) => onSelectDay(startOfDay(cell.date), anchorFromElement(e.currentTarget))}
               className={cn(
-                "relative flex min-h-[64px] flex-col items-start gap-1 bg-[var(--color-content-surface)] p-1.5 text-left transition-colors",
+                "relative flex min-h-[64px] flex-col items-start gap-0.5 border-b border-r border-[var(--registrar-rule)] bg-[var(--color-shell-canvas)] p-1.5 text-left transition-colors",
                 "hover:bg-[var(--color-row-hover)]",
-                !cell.inMonth && "opacity-35",
-                cell.isSelected && "ring-1 ring-inset ring-[var(--color-primary)]/35",
-                cell.isSelected && "bg-[var(--color-primary-soft)]",
+                !cell.inMonth && "opacity-40",
+                cell.isSelected && "bg-[color-mix(in_srgb,var(--registrar-accent)_8%,var(--color-shell-canvas))]",
               )}
             >
               <span
                 className={cn(
-                  "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-[12px] font-semibold tabular-nums",
+                  "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1 text-meta font-semibold tabular-nums",
                   cell.isToday
-                    ? "bg-[var(--color-primary)] text-white shadow-[var(--shadow-pill)]"
-                    : "text-[var(--color-text-main)]",
+                    ? "text-white"
+                    : "text-[var(--registrar-ink)]",
                 )}
+                style={
+                  cell.isToday
+                    ? { background: "var(--registrar-accent)" }
+                    : undefined
+                }
               >
                 {cell.date.getDate()}
               </span>
               {cell.labels && cell.labels.length > 0 ? (
                 <div className="mt-auto w-full space-y-0.5 pb-0.5">
-                  {cell.labels.map((item, i) => (
+                  {cell.labels.map((item) => (
                     <div
-                      key={i}
-                      className="truncate rounded-[5px] bg-[var(--color-primary-soft)] px-1 py-px text-[9px] font-medium leading-tight text-[var(--color-primary)]"
+                      key={item.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onSelectEvent) {
+                          onSelectEvent(item.id, anchorFromElement(e.currentTarget));
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          if (onSelectEvent) {
+                            onSelectEvent(item.id, anchorFromElement(e.currentTarget));
+                          }
+                        }
+                      }}
+                      className="truncate rounded-[4px] px-1 py-px text-[9px] font-medium leading-tight transition-opacity hover:opacity-80"
                       style={
                         item.color
                           ? {
-                              backgroundColor: `${item.color}1F`,
+                              backgroundColor: `${item.color}22`,
                               color: item.color,
+                              borderLeft: `2px solid ${item.color}`,
                             }
-                          : undefined
+                          : {
+                              background: accentSoft,
+                              color: "var(--registrar-ink)",
+                              borderLeft: "2px solid var(--registrar-accent)",
+                            }
                       }
                     >
                       {item.title}
@@ -183,7 +179,8 @@ export function MonthGrid({
                     {Array.from({ length: cell.dotCount }).map((_, i) => (
                       <span
                         key={i}
-                        className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]"
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ background: "var(--registrar-accent)" }}
                       />
                     ))}
                   </span>

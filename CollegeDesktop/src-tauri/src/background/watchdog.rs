@@ -74,18 +74,8 @@ fn load_watched_paths(state: &AppState) -> Vec<PathBuf> {
         })
         .unwrap_or_default();
 
-    let mut paths: Vec<PathBuf> = if from_db.is_empty() {
-        let mut defaults = Vec::new();
-        if let Some(d) = dirs::download_dir() {
-            defaults.push(d);
-        }
-        if let Some(d) = dirs::desktop_dir() {
-            defaults.push(d);
-        }
-        defaults
-    } else {
-        from_db.into_iter().map(PathBuf::from).collect()
-    };
+    // Opt-in only: do not watch Downloads/Desktop by default (production privacy + I/O).
+    let mut paths: Vec<PathBuf> = from_db.into_iter().map(PathBuf::from).collect();
 
     if let Some(cloud) = icloud_college_folder() {
         if cloud.is_dir() && !paths.iter().any(|p| p == &cloud) {

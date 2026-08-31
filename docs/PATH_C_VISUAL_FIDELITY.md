@@ -7,7 +7,23 @@
 
 Platform APIs that cannot exist in WebView (EventKit FFI, MapKit NSView, MLX Metal, Share Extension) still need the closest visual + behavioral stand-in, but **layouts must match Swift**, not a thin card grid.
 
-## Method
+## Path D — Reference-app IA (2026)
+
+Path D supersedes the 7-hub pill bar for `CollegeDesktop`. See `docs/COPY_STYLE.md` and `docs/OVERHAUL_AUDIT.md`.
+
+| Hub | Replaces |
+|-----|----------|
+| Home | College Overview default |
+| School | college academics + catalog + discovery + transfer + LMS |
+| Life | finance + calendar |
+| Library | documents + profile |
+| Career | career (sidebar: Pipeline · Pathing · Resume · Growth) |
+
+Assistant is an omnipresent slide-over (⌘J / sparkles FAB). Settings remains sidebar-footer + gear.
+
+Migration: `shell.iaVersion=2` in `lib/shell/migration.ts`.
+
+---
 
 1. Open the Swift screen.
 2. Port structure (headers, rows, inspectors, empty states, spacing) into React using design-system primitives.

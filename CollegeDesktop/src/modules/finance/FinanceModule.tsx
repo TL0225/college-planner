@@ -16,9 +16,10 @@ import {
 } from "@/design-system";
 import { ipc, formatIpcError, type FinanceDashboardSummary, type FinanceHolding } from "@/lib/ipc";
 import { confirmDelete } from "@/lib/confirm";
-import { shellNavigate } from "@/lib/shellNavigate";
+import { navigate } from "@/lib/shellNavigate";
 import { showToast } from "@/lib/toast";
 import { useLiveQuery } from "@/lib/useLiveQuery";
+import { VirtualList } from "@/lib/VirtualList";
 import { FinanceDashboardScreen } from "./FinanceDashboardScreen";
 import { FinanceAccountDetailScreen } from "./FinanceAccountDetailScreen";
 import { FinanceReportsScreen } from "./FinanceReportsScreen";
@@ -151,7 +152,9 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
   const [accountSheet, setAccountSheet] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [txSheet, setTxSheet] = useState(false);
+  const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
   const [budgetSheet, setBudgetSheet] = useState(false);
+  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
   const [goalSheet, setGoalSheet] = useState(false);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [inventorySheet, setInventorySheet] = useState(false);
@@ -216,7 +219,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
       !accounts.some((a) => a.id === accountIdFromPage)
     ) {
       setSelectedAccountId(null);
-      shellNavigate("finance", "accounts");
+      navigate({ hub: "life", page: "money" });
     }
   }, [accountIdFromPage, accounts]);
 
@@ -287,12 +290,12 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
 
   const selectAccount = (id: string) => {
     setSelectedAccountId(id);
-    shellNavigate("finance", `account-${id}`);
+    navigate({ hub: "life", page: `account-${id}` });
   };
 
   const closeAccountInspector = () => {
     setSelectedAccountId(null);
-    shellNavigate("finance", "accounts");
+    navigate({ hub: "life", page: "money" });
   };
 
   const openAccountEditor = (account: Account) => {
@@ -322,7 +325,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
     view === "accounts"
       ? "Accounts"
       : view === "ledger"
-        ? "Ledger"
+        ? "Transactions"
         : view === "budgets"
           ? "Budgets"
           : view === "goals"
@@ -335,7 +338,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                   ? "Reports"
             : view === "net-worth"
               ? "Net worth"
-              : "Dashboard";
+              : "Money";
 
   return (
     <div className="flex h-full flex-col">
@@ -377,7 +380,21 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                 >
                   Import CSV
                 </Button>
-                <Button size="sm" onClick={() => setTxSheet(true)} disabled={accounts.length === 0}>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setEditingTransactionId(null);
+                    setTxForm({
+                      accountId: accounts[0]?.id ?? "",
+                      amount: -10,
+                      payee: "",
+                      category: "General",
+                      postedAt: new Date().toISOString().slice(0, 10),
+                    });
+                    setTxSheet(true);
+                  }}
+                  disabled={accounts.length === 0}
+                >
                   Add transaction
                 </Button>
               </>
@@ -453,7 +470,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
 
       {view === "dashboard" && (
         <FinanceDashboardScreen
@@ -462,8 +479,8 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
           txs={txs}
           money={money}
           onSelectAccount={selectAccount}
-          onViewAllAccounts={() => shellNavigate("finance", "accounts")}
-          onViewAllTransactions={() => shellNavigate("finance", "accounts")}
+          onViewAllAccounts={() => navigate({ hub: "life", page: "accounts" })}
+          onViewAllTransactions={() => navigate({ hub: "life", page: "ledger" })}
           onAddAccount={() => {
             setEditingAccountId(null);
             setForm({ name: "", institution: "", accountType: "checking", balance: 0 });
@@ -476,6 +493,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
         <div className="min-h-0 flex-1 space-y-3 p-3 pt-1">
           <TrailingInspector
             open={!!selectedAccount}
+            storageKey="life.inspectorWidth"
             main={
               <AppCard title={`Bank accounts · ${accounts.length}`}>
                 {accounts.length === 0 ? (
@@ -614,6 +632,22 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                     >
                       Edit
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!confirmDelete(r.title)) return;
+                        void ipc
+                          .financeDeleteRecurring(r.id)
+                          .then(async () => {
+                            await refresh();
+                            showToast("Recurring deleted", "success");
+                          })
+                          .catch((e) => showToast(formatIpcError(e), "error"));
+                      }}
+                    >
+                      Delete
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -627,13 +661,17 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
           <AppCard title="Transactions">
             {txs.length === 0 ? (
               <EmptyState
-                title="Ledger is empty"
-                body="Add a transaction, import a CSV, or reload sample data from Settings."
+                title="No transactions yet"
+                body="Add a transaction or import a CSV to get started."
               />
             ) : (
-              <ul className="divide-y divide-[var(--color-chrome-stroke)]">
-                {txs.map((t) => (
-                  <li key={t.id} className="flex items-center gap-2">
+              <VirtualList
+                items={txs}
+                rowHeight={56}
+                height={Math.min(560, Math.max(240, txs.length * 56))}
+                className="divide-y divide-[var(--color-chrome-stroke)]"
+                renderRow={(t) => (
+                  <div key={t.id} className="flex items-center gap-2" style={{ height: 56 }}>
                     <div className="min-w-0 flex-1">
                       <ListRow
                         title={t.payee || "Untitled"}
@@ -658,6 +696,23 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                       size="sm"
                       variant="ghost"
                       onClick={() => {
+                        setEditingTransactionId(t.id);
+                        setTxForm({
+                          accountId: t.accountId,
+                          amount: t.amount,
+                          payee: t.payee,
+                          category: t.category || "General",
+                          postedAt: t.postedAt.slice(0, 10),
+                        });
+                        setTxSheet(true);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
                         if (!confirmDelete(t.payee || "transaction")) return;
                         void ipc
                           .financeDeleteTransaction(t.id)
@@ -667,9 +722,9 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                     >
                       Delete
                     </Button>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                )}
+              />
             )}
           </AppCard>
         </div>
@@ -702,6 +757,22 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                             }
                           />
                         </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditingBudgetId(b.id);
+                            setBudgetForm({
+                              name: b.name,
+                              category: b.category || "General",
+                              amount: b.amount,
+                              period: b.period || "monthly",
+                            });
+                            setBudgetSheet(true);
+                          }}
+                        >
+                          Edit
+                        </Button>
                         <Button
                           size="sm"
                           variant="ghost"
@@ -775,7 +846,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                                 <StatusChip title={status.label} filled={status.filled} />
                               }
                               trailing={
-                                <span className="text-[13px] font-semibold tracking-[-0.02em] tabular-nums text-[var(--color-text-main)]">
+                                <span className="text-section-title tracking-[-0.02em] tabular-nums text-[var(--color-text-main)]">
                                   {money(g.currentAmount)} / {money(g.targetAmount)}
                                 </span>
                               }
@@ -877,7 +948,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                             />
                           }
                           trailing={
-                            <span className="text-[13px] font-semibold tracking-[-0.02em] tabular-nums text-[var(--color-text-main)]">
+                            <span className="text-section-title tracking-[-0.02em] tabular-nums text-[var(--color-text-main)]">
                               {money(item.value)}
                             </span>
                           }
@@ -1053,7 +1124,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                           leading={<StatusChip title={type} filled />}
                           trailing={
                             <span
-                              className={`text-[13px] font-semibold tracking-[-0.02em] tabular-nums ${
+                              className={`text-section-title tracking-[-0.02em] tabular-nums ${
                                 total < 0
                                   ? "text-[var(--color-error)]"
                                   : "text-[var(--color-success)]"
@@ -1069,7 +1140,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                 )}
               </AppCard>
               <AppCard title={`Holdings · ${holdings.length}`}>
-                <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+                <p className="mb-3 text-meta">
                   Stocks and crypto included in net worth.
                 </p>
                 <div className="mb-3 flex justify-end">
@@ -1114,7 +1185,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                             />
                           }
                           trailing={
-                            <span className="text-[13px] font-semibold tabular-nums">
+                            <span className="text-section-title tabular-nums">
                               {money(h.marketValue)}
                             </span>
                           }
@@ -1135,7 +1206,10 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                           variant="danger"
                           onClick={() => {
                             if (!confirmDelete(`${h.symbol} holding`)) return;
-                            void ipc.financeDeleteHolding(h.id).then(refresh);
+                            void ipc
+                              .financeDeleteHolding(h.id)
+                              .then(refresh)
+                              .catch((e) => showToast(formatIpcError(e), "error"));
                           }}
                         >
                           Delete
@@ -1161,7 +1235,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                           leading={<StatusChip title={a.accountType} filled />}
                           trailing={
                             <span
-                              className={`text-[13px] font-semibold tracking-[-0.02em] tabular-nums ${
+                              className={`text-section-title tracking-[-0.02em] tabular-nums ${
                                 a.balance < 0
                                   ? "text-[var(--color-error)]"
                                   : "text-[var(--color-text-main)]"
@@ -1248,7 +1322,23 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
         </div>
       </ModalSheet>
 
-      <ModalSheet open={txSheet} onOpenChange={setTxSheet} title="Add transaction">
+      <ModalSheet
+        open={txSheet}
+        onOpenChange={(open) => {
+          setTxSheet(open);
+          if (!open) {
+            setEditingTransactionId(null);
+            setTxForm({
+              accountId: accounts[0]?.id ?? "",
+              amount: -10,
+              payee: "",
+              category: "General",
+              postedAt: new Date().toISOString().slice(0, 10),
+            });
+          }
+        }}
+        title={editingTransactionId ? "Edit transaction" : "Add transaction"}
+      >
         <div className="space-y-3">
           <FormField label="Account">
             <select
@@ -1297,23 +1387,41 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
           <Button
             disabled={!txForm.accountId || !txForm.payee.trim()}
             onClick={async () => {
-              await ipc.financeUpsertTransaction({
-                accountId: txForm.accountId,
-                amount: txForm.amount,
-                payee: txForm.payee.trim(),
-                category: txForm.category.trim() || undefined,
-                postedAt: new Date(txForm.postedAt + "T12:00:00").toISOString(),
-              });
-              setTxSheet(false);
-              setTxForm((prev) => ({ ...prev, payee: "", amount: -10 }));
+              try {
+                const wasEdit = Boolean(editingTransactionId);
+                await ipc.financeUpsertTransaction({
+                  id: editingTransactionId ?? undefined,
+                  accountId: txForm.accountId,
+                  amount: txForm.amount,
+                  payee: txForm.payee.trim(),
+                  category: txForm.category.trim() || undefined,
+                  postedAt: new Date(txForm.postedAt + "T12:00:00").toISOString(),
+                });
+                setTxSheet(false);
+                setEditingTransactionId(null);
+                setTxForm((prev) => ({ ...prev, payee: "", amount: -10 }));
+                showToast(wasEdit ? "Transaction updated" : "Transaction saved", "success");
+              } catch (e) {
+                showToast(formatIpcError(e), "error");
+              }
             }}
           >
-            Save transaction
+            {editingTransactionId ? "Save changes" : "Save transaction"}
           </Button>
         </div>
       </ModalSheet>
 
-      <ModalSheet open={budgetSheet} onOpenChange={setBudgetSheet} title="Add budget">
+      <ModalSheet
+        open={budgetSheet}
+        onOpenChange={(open) => {
+          setBudgetSheet(open);
+          if (!open) {
+            setEditingBudgetId(null);
+            setBudgetForm({ name: "", category: "General", amount: 100, period: "monthly" });
+          }
+        }}
+        title={editingBudgetId ? "Edit budget" : "Add budget"}
+      >
         <div className="space-y-3">
           <FormField label="Name">
             <input
@@ -1354,17 +1462,24 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
           <Button
             disabled={!budgetForm.name.trim() || !(budgetForm.amount > 0)}
             onClick={async () => {
-              await ipc.financeUpsertBudget({
-                name: budgetForm.name.trim(),
-                category: budgetForm.category.trim() || undefined,
-                amount: budgetForm.amount,
-                period: budgetForm.period,
-              });
-              setBudgetSheet(false);
-              setBudgetForm({ name: "", category: "General", amount: 100, period: "monthly" });
+              try {
+                await ipc.financeUpsertBudget({
+                  id: editingBudgetId ?? undefined,
+                  name: budgetForm.name.trim(),
+                  category: budgetForm.category.trim() || undefined,
+                  amount: budgetForm.amount,
+                  period: budgetForm.period,
+                });
+                showToast(editingBudgetId ? "Budget updated" : "Budget created", "success");
+                setBudgetSheet(false);
+                setEditingBudgetId(null);
+                setBudgetForm({ name: "", category: "General", amount: 100, period: "monthly" });
+              } catch (e) {
+                showToast(formatIpcError(e), "error");
+              }
             }}
           >
-            Save budget
+            {editingBudgetId ? "Save changes" : "Create budget"}
           </Button>
         </div>
       </ModalSheet>
@@ -1722,7 +1837,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
 
       <ModalSheet open={csvSheet} onOpenChange={setCsvSheet} title="Import transactions CSV">
         <div className="space-y-3">
-          <p className="text-[12px] text-[var(--color-text-light)]">
+          <p className="text-meta">
             Columns: date, amount, payee, category (optional). One row per line — or choose a `.csv`
             file.
           </p>
@@ -1775,7 +1890,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
               onChange={(e) => setCsvForm({ ...csvForm, csvText: e.target.value })}
             />
           </FormField>
-          {csvNote && <p className="text-[12px] text-[var(--color-success)]">{csvNote}</p>}
+          {csvNote && <p className="text-meta text-[var(--color-success)]">{csvNote}</p>}
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!csvForm.accountId || !csvForm.csvText.trim()}
@@ -1790,6 +1905,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                   showToast(`Imported ${count} transactions`, "success");
                 } catch (e) {
                   setCsvNote(formatIpcError(e));
+                  showToast(formatIpcError(e), "error");
                 }
               }}
             >
@@ -1884,6 +2000,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
             disabled={!recurringForm.accountId || !recurringForm.title.trim()}
             onClick={async () => {
               try {
+                const wasEdit = Boolean(editingRecurringId);
                 await ipc.financeUpsertRecurring({
                   id: editingRecurringId ?? undefined,
                   accountId: recurringForm.accountId,
@@ -1898,7 +2015,7 @@ export function FinanceModule({ page = "dashboard" }: { page?: string }) {
                 setRecurringSheet(false);
                 setEditingRecurringId(null);
                 await refresh();
-                showToast(editingRecurringId ? "Recurring updated" : "Recurring saved", "success");
+                showToast(wasEdit ? "Recurring updated" : "Recurring saved", "success");
               } catch (e) {
                 showToast(formatIpcError(e), "error");
               }

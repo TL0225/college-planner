@@ -29,6 +29,7 @@ fn bump(app: &AppHandle, state: &AppState, domain: &str) -> CmdResult<i64> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpsertSemesterInput {
+    pub id: Option<String>,
     pub year: i64,
     pub season: String,
     pub label: Option<String>,
@@ -38,6 +39,7 @@ pub struct UpsertSemesterInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpsertCourseInput {
+    pub id: Option<String>,
     pub semester_id: String,
     pub code: String,
     pub title: String,
@@ -109,6 +111,7 @@ pub struct UpsertAccountInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpsertTransactionInput {
+    pub id: Option<String>,
     pub account_id: String,
     pub amount: f64,
     pub payee: String,
@@ -139,6 +142,7 @@ pub struct UpsertProfileInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpsertExperienceInput {
+    pub id: Option<String>,
     pub title: String,
     pub organization: String,
     pub summary: Option<String>,
@@ -148,7 +152,17 @@ pub struct UpsertExperienceInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpsertAchievementInput {
+    pub id: Option<String>,
+    pub title: String,
+    pub issuer: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpsertBudgetInput {
+    pub id: Option<String>,
     pub name: String,
     pub category: Option<String>,
     pub amount: f64,
@@ -211,22 +225,39 @@ pub fn academics_upsert_semester(
     state: State<'_, AppState>,
     input: UpsertSemesterInput,
 ) -> CmdResult<String> {
-    let id = Uuid::new_v4().to_string();
     let label = input
         .label
         .unwrap_or_else(|| format!("{} {}", input.season, input.year));
     let is_current = i64::from(input.is_current.unwrap_or(false));
-    state.db.with_conn(|conn| {
-        if is_current == 1 {
-            conn.execute("UPDATE planner_semester SET is_current = 0", [])?;
-        }
-        conn.execute(
-            "INSERT INTO planner_semester (id, plan_id, year, season, label, is_current, sort_order)
-             VALUES (?1, NULL, ?2, ?3, ?4, ?5, 0)",
-            rusqlite::params![id, input.year, input.season, label, is_current],
-        )?;
-        Ok(())
-    })?;
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            if is_current == 1 {
+                conn.execute("UPDATE planner_semester SET is_current = 0", [])?;
+            }
+            conn.execute(
+                "UPDATE planner_semester
+                 SET year = ?1, season = ?2, label = ?3, is_current = ?4
+                 WHERE id = ?5",
+                rusqlite::params![input.year, input.season, label, is_current, existing],
+            )?;
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            if is_current == 1 {
+                conn.execute("UPDATE planner_semester SET is_current = 0", [])?;
+            }
+            conn.execute(
+                "INSERT INTO planner_semester (id, plan_id, year, season, label, is_current, sort_order)
+                 VALUES (?1, NULL, ?2, ?3, ?4, ?5, 0)",
+                rusqlite::params![id, input.year, input.season, label, is_current],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
     bump(&app, &state, "planner")?;
     Ok(id)
 }
@@ -237,18 +268,39 @@ pub fn academics_upsert_course(
     state: State<'_, AppState>,
     input: UpsertCourseInput,
 ) -> CmdResult<String> {
-    let id = Uuid::new_v4().to_string();
     let status = input.status.unwrap_or_else(|| "planned".into());
     let credits = input.credits.unwrap_or(3.0);
-    state.db.with_conn(|conn| {
-        conn.execute(
-            "INSERT INTO planner_course
-             (id, semester_id, catalog_course_id, code, title, credits, grade, status, sort_order)
-             VALUES (?1, ?2, NULL, ?3, ?4, ?5, NULL, ?6, 0)",
-            rusqlite::params![id, input.semester_id, input.code, input.title, credits, status],
-        )?;
-        Ok(())
-    })?;
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE planner_course
+                 SET semester_id = ?1, code = ?2, title = ?3, credits = ?4, status = ?5
+                 WHERE id = ?6",
+                rusqlite::params![
+                    input.semester_id,
+                    input.code,
+                    input.title,
+                    credits,
+                    status,
+                    existing
+                ],
+            )?;
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO planner_course
+                 (id, semester_id, catalog_course_id, code, title, credits, grade, status, sort_order)
+                 VALUES (?1, ?2, NULL, ?3, ?4, ?5, NULL, ?6, 0)",
+                rusqlite::params![id, input.semester_id, input.code, input.title, credits, status],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
     bump(&app, &state, "planner")?;
     Ok(id)
 }
@@ -697,6 +749,29 @@ pub fn career_move_application(
 }
 
 #[tauri::command]
+pub fn career_reorder_applications(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    status: String,
+    ordered_ids: Vec<String>,
+) -> CmdResult<()> {
+    let now = Utc::now().to_rfc3339();
+    state.db.with_conn(|conn| {
+        for (sort_order, id) in ordered_ids.iter().enumerate() {
+            conn.execute(
+                "UPDATE job_application
+                 SET sort_order = ?1, updated_at = ?2
+                 WHERE id = ?3 AND status = ?4",
+                rusqlite::params![sort_order as i64, now, id, status],
+            )?;
+        }
+        Ok(())
+    })?;
+    bump(&app, &state, "career")?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn career_apply_complete(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -774,32 +849,78 @@ pub fn finance_upsert_transaction(
     state: State<'_, AppState>,
     input: UpsertTransactionInput,
 ) -> CmdResult<String> {
-    let id = Uuid::new_v4().to_string();
     let posted = input
         .posted_at
         .unwrap_or_else(|| Utc::now().to_rfc3339());
-    state.db.with_conn(|conn| {
-        conn.execute(
-            "INSERT INTO finance_transaction
-             (id, account_id, posted_at, amount, payee, category, memo, external_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
-            rusqlite::params![
-                id,
-                input.account_id,
-                posted,
-                input.amount,
-                input.payee,
-                input.category.unwrap_or_default(),
-                input.memo.unwrap_or_default()
-            ],
-        )?;
-        // Keep account balance in sync for manual ledger entries.
-        conn.execute(
-            "UPDATE finance_account SET balance = balance + ?1 WHERE id = ?2",
-            rusqlite::params![input.amount, input.account_id],
-        )?;
-        Ok(())
-    })?;
+    let category = input.category.unwrap_or_default();
+    let memo = input.memo.unwrap_or_default();
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            let (old_account, old_amount): (String, f64) = conn.query_row(
+                "SELECT account_id, amount FROM finance_transaction WHERE id = ?1",
+                rusqlite::params![existing],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            conn.execute(
+                "UPDATE finance_transaction
+                 SET account_id = ?1, posted_at = ?2, amount = ?3, payee = ?4, category = ?5, memo = ?6
+                 WHERE id = ?7",
+                rusqlite::params![
+                    input.account_id,
+                    posted,
+                    input.amount,
+                    input.payee,
+                    category,
+                    memo,
+                    existing
+                ],
+            )?;
+            if old_account == input.account_id {
+                let delta = input.amount - old_amount;
+                if delta.abs() > f64::EPSILON {
+                    conn.execute(
+                        "UPDATE finance_account SET balance = balance + ?1 WHERE id = ?2",
+                        rusqlite::params![delta, input.account_id],
+                    )?;
+                }
+            } else {
+                conn.execute(
+                    "UPDATE finance_account SET balance = balance - ?1 WHERE id = ?2",
+                    rusqlite::params![old_amount, old_account],
+                )?;
+                conn.execute(
+                    "UPDATE finance_account SET balance = balance + ?1 WHERE id = ?2",
+                    rusqlite::params![input.amount, input.account_id],
+                )?;
+            }
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO finance_transaction
+                 (id, account_id, posted_at, amount, payee, category, memo, external_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
+                rusqlite::params![
+                    id,
+                    input.account_id,
+                    posted,
+                    input.amount,
+                    input.payee,
+                    category,
+                    memo
+                ],
+            )?;
+            conn.execute(
+                "UPDATE finance_account SET balance = balance + ?1 WHERE id = ?2",
+                rusqlite::params![input.amount, input.account_id],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
     bump(&app, &state, "finance")?;
     Ok(id)
 }
@@ -892,31 +1013,53 @@ pub fn profile_upsert_experience(
     state: State<'_, AppState>,
     input: UpsertExperienceInput,
 ) -> CmdResult<String> {
-    let id = Uuid::new_v4().to_string();
-    state.db.with_conn(|conn| {
-        let profile_id: String = conn
-            .query_row(
-                "SELECT id FROM profile ORDER BY updated_at DESC LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|_| anyhow::anyhow!("Create a profile identity before adding experience"))?;
-        conn.execute(
-            "INSERT INTO experience
-             (id, profile_id, title, organization, start_date, end_date, summary, sort_order)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
-            rusqlite::params![
-                id,
-                profile_id,
-                input.title,
-                input.organization,
-                input.start_date,
-                input.end_date,
-                input.summary.unwrap_or_default()
-            ],
-        )?;
-        Ok(())
-    })?;
+    let summary = input.summary.unwrap_or_default();
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE experience
+                 SET title = ?1, organization = ?2, start_date = ?3, end_date = ?4, summary = ?5
+                 WHERE id = ?6",
+                rusqlite::params![
+                    input.title,
+                    input.organization,
+                    input.start_date,
+                    input.end_date,
+                    summary,
+                    existing
+                ],
+            )?;
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            let profile_id: String = conn
+                .query_row(
+                    "SELECT id FROM profile ORDER BY updated_at DESC LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(|_| anyhow::anyhow!("Create a profile identity before adding experience"))?;
+            conn.execute(
+                "INSERT INTO experience
+                 (id, profile_id, title, organization, start_date, end_date, summary, sort_order)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
+                rusqlite::params![
+                    id,
+                    profile_id,
+                    input.title,
+                    input.organization,
+                    input.start_date,
+                    input.end_date,
+                    summary
+                ],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
     bump(&app, &state, "profile")?;
     Ok(id)
 }
@@ -1096,21 +1239,31 @@ pub fn finance_upsert_budget(
     state: State<'_, AppState>,
     input: UpsertBudgetInput,
 ) -> CmdResult<String> {
-    let id = Uuid::new_v4().to_string();
-    state.db.with_conn(|conn| {
-        conn.execute(
-            "INSERT INTO finance_budget (id, name, category, amount, period)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
-                id,
-                input.name,
-                input.category.unwrap_or_default(),
-                input.amount,
-                input.period.unwrap_or_else(|| "monthly".into())
-            ],
-        )?;
-        Ok(())
-    })?;
+    let category = input.category.unwrap_or_default();
+    let period = input.period.unwrap_or_else(|| "monthly".into());
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE finance_budget
+                 SET name = ?1, category = ?2, amount = ?3, period = ?4
+                 WHERE id = ?5",
+                rusqlite::params![input.name, category, input.amount, period, existing],
+            )?;
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO finance_budget (id, name, category, amount, period)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![id, input.name, category, input.amount, period],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
     bump(&app, &state, "finance")?;
     Ok(id)
 }
@@ -1278,6 +1431,23 @@ pub fn finance_mark_due_paid(
     Ok(())
 }
 
+#[tauri::command]
+pub fn finance_delete_recurring(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> CmdResult<()> {
+    state.db.with_conn(|conn| {
+        conn.execute(
+            "DELETE FROM finance_recurring WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    })?;
+    bump(&app, &state, "finance")?;
+    Ok(())
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCsvInput {
@@ -1379,32 +1549,38 @@ pub fn finance_import_transactions_csv_path(
 pub fn profile_upsert_achievement(
     app: AppHandle,
     state: State<'_, AppState>,
-    title: String,
-    issuer: Option<String>,
-    notes: Option<String>,
+    input: UpsertAchievementInput,
 ) -> CmdResult<String> {
-    let id = Uuid::new_v4().to_string();
-    state.db.with_conn(|conn| {
-        let profile_id: String = conn
-            .query_row(
-                "SELECT id FROM profile ORDER BY updated_at DESC LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|_| anyhow::anyhow!("Create a profile identity before adding achievements"))?;
-        conn.execute(
-            "INSERT INTO achievement (id, profile_id, title, issuer, date_received, notes)
-             VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
-            rusqlite::params![
-                id,
-                profile_id,
-                title,
-                issuer.unwrap_or_default(),
-                notes.unwrap_or_default()
-            ],
-        )?;
-        Ok(())
-    })?;
+    let issuer = input.issuer.unwrap_or_default();
+    let notes = input.notes.unwrap_or_default();
+    let id = if let Some(existing) = input.id.filter(|s| !s.is_empty()) {
+        state.db.with_conn(|conn| {
+            conn.execute(
+                "UPDATE achievement SET title = ?1, issuer = ?2, notes = ?3 WHERE id = ?4",
+                rusqlite::params![input.title, issuer, notes, existing],
+            )?;
+            Ok(())
+        })?;
+        existing
+    } else {
+        let id = Uuid::new_v4().to_string();
+        state.db.with_conn(|conn| {
+            let profile_id: String = conn
+                .query_row(
+                    "SELECT id FROM profile ORDER BY updated_at DESC LIMIT 1",
+                    [],
+                    |r| r.get(0),
+                )
+                .map_err(|_| anyhow::anyhow!("Create a profile identity before adding achievements"))?;
+            conn.execute(
+                "INSERT INTO achievement (id, profile_id, title, issuer, date_received, notes)
+                 VALUES (?1, ?2, ?3, ?4, NULL, ?5)",
+                rusqlite::params![id, profile_id, input.title, issuer, notes],
+            )?;
+            Ok(())
+        })?;
+        id
+    };
     bump(&app, &state, "profile")?;
     Ok(id)
 }

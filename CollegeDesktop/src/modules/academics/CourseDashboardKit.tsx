@@ -3,7 +3,6 @@ import { ChevronRight } from "lucide-react";
 import {
   courseStatusState,
   plannerStatusPalette,
-  type PlannerStatusState,
 } from "./plannerStatus";
 
 export function CourseDashboardSectionTitle({ children }: { children: ReactNode }) {
@@ -31,7 +30,7 @@ export function CourseStatusPill({ status }: { status: string }) {
   const palette = plannerStatusPalette(state);
   return (
     <span
-      className="inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-[11px] font-semibold"
+      className="inline-flex shrink-0 items-center rounded-full px-2 py-[3px] text-caption font-semibold"
       style={{ background: palette.pillBg, color: palette.pillFg }}
     >
       {palette.label}
@@ -41,7 +40,7 @@ export function CourseStatusPill({ status }: { status: string }) {
 
 export function CourseDashboardInlineMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex shrink-0 items-baseline gap-1.5 text-[13px]">
+    <div className="flex shrink-0 items-baseline gap-1.5 text-body">
       <span className="text-[var(--color-text-light)]">{label}</span>
       <span className="font-semibold tabular-nums text-[var(--color-text-main)]">{value}</span>
     </div>
@@ -72,16 +71,16 @@ export function CourseDashboardResourceRow({
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+        <div className="truncate text-section-title">
           {title}
         </div>
-        <div className="truncate text-[12px] font-medium text-[var(--color-text-light)]">
+        <div className="truncate text-meta font-medium">
           {subtitle}
         </div>
       </span>
       {onClick ? (
         trailing === "external" ? (
-          <span className="text-[12px] text-[var(--color-text-light)] opacity-60">↗</span>
+          <span className="text-meta opacity-60">↗</span>
         ) : (
           <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-text-light)] opacity-60" />
         )
@@ -133,7 +132,7 @@ export function CourseDashboardTaskRow({
       <div className="min-w-0 flex-1 p-4">
         <div className="mb-1.5 flex items-start gap-2">
           <span
-            className="inline-flex rounded px-2 py-1 text-[10px] font-bold uppercase tracking-[0.04em]"
+            className="inline-flex rounded px-2 py-1 text-label font-bold uppercase tracking-[0.04em]"
             style={{
               color: badgeTint,
               background: `color-mix(in srgb, ${badgeTint} 12%, transparent)`,
@@ -143,8 +142,9 @@ export function CourseDashboardTaskRow({
           </span>
         </div>
         <div
-          className="truncate text-[15px] font-bold text-[var(--color-text-main)]"
+          className="truncate text-section-title font-bold text-[var(--color-text-main)]"
           style={{
+            fontSize: 15,
             textDecoration: isComplete ? "line-through" : undefined,
             opacity: isComplete ? 0.38 : 1,
           }}
@@ -153,7 +153,7 @@ export function CourseDashboardTaskRow({
         </div>
         {subtitle ? (
           <div
-            className="mt-1 line-clamp-2 text-[13px] text-[var(--color-text-light)]"
+            className="mt-1 line-clamp-2 text-body text-[var(--color-text-light)]"
             style={{ opacity: isComplete ? 0.28 : 1 }}
           >
             {subtitle}
@@ -165,19 +165,19 @@ export function CourseDashboardTaskRow({
         style={{ background: "color-mix(in srgb, var(--color-surface) 35%, transparent)" }}
       >
         <div
-          className="text-[10px] font-bold uppercase tracking-[0.06em]"
+          className="text-label font-bold uppercase tracking-[0.06em]"
           style={{ color: accent, opacity: isComplete ? 0.45 : 1 }}
         >
           {isComplete ? "Done" : isPast ? "Past" : "Due date"}
         </div>
         <div
-          className="text-[18px] font-bold tabular-nums"
-          style={{ color: accent, opacity: isComplete ? 0.38 : 1 }}
+          className="text-section-title font-bold tabular-nums"
+          style={{ fontSize: 18, color: accent, opacity: isComplete ? 0.38 : 1 }}
         >
           {dateLabel}
         </div>
         <div
-          className="text-[13px] text-[var(--color-text-light)]"
+          className="text-body text-[var(--color-text-light)]"
           style={{ opacity: isComplete ? 0.28 : 1 }}
         >
           {weekdayLabel}
@@ -187,10 +187,3 @@ export function CourseDashboardTaskRow({
   );
 }
 
-export function courseProgressPercent(status: string): string {
-  const state: PlannerStatusState = courseStatusState({ status });
-  if (state === "completed") return "100%";
-  if (state === "in_progress") return "55%";
-  if (state === "remaining") return "0%";
-  return "18%";
-}

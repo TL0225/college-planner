@@ -1,10 +1,11 @@
-export type RecurrenceKind = "none" | "weekly" | "monthly";
+import type { RecurrenceKind } from "./recurrence";
 
 export type CalendarEventBase = {
   id: string;
   title: string;
   startAt: string;
   endAt?: string;
+  allDay?: boolean;
   location: string;
   provider: string;
   color?: string;
@@ -16,7 +17,7 @@ export type CalendarEventOccurrence = CalendarEventBase & {
   baseId: string;
 };
 
-const MAX_OCCURRENCES = 60;
+const MAX_OCCURRENCES = 120;
 
 function endOfDay(d: Date): Date {
   const out = new Date(d);
@@ -35,6 +36,11 @@ function withTimeFrom(base: Date, template: Date): Date {
   return out;
 }
 
+function isWeekday(d: Date): boolean {
+  const day = d.getDay();
+  return day !== 0 && day !== 6;
+}
+
 function pushOccurrence(
   event: CalendarEventBase,
   when: Date,
@@ -47,6 +53,35 @@ function pushOccurrence(
     occurrenceId: index === 0 ? event.id : `${event.id}:${index}`,
     baseId: event.id,
   });
+}
+
+function advance(current: Date, recurrence: RecurrenceKind, anchor: Date): Date {
+  const next = new Date(current);
+  switch (recurrence) {
+    case "daily":
+      next.setDate(next.getDate() + 1);
+      break;
+    case "weekdays":
+      do {
+        next.setDate(next.getDate() + 1);
+      } while (!isWeekday(next));
+      break;
+    case "weekly":
+      next.setDate(next.getDate() + 7);
+      break;
+    case "biweekly":
+      next.setDate(next.getDate() + 14);
+      break;
+    case "monthly":
+      next.setMonth(next.getMonth() + 1);
+      break;
+    case "yearly":
+      next.setFullYear(next.getFullYear() + 1);
+      break;
+    default:
+      next.setDate(next.getDate() + 1);
+  }
+  return withTimeFrom(next, anchor);
 }
 
 export function expandRecurringEvents(
@@ -72,33 +107,17 @@ export function expandRecurringEvents(
     let current = new Date(anchor);
     let index = 0;
 
-    if (recurrence === "weekly") {
-      while (current < rangeStart && index < MAX_OCCURRENCES) {
-        current.setDate(current.getDate() + 7);
-        index += 1;
-      }
-      while (current <= end && index < MAX_OCCURRENCES) {
-        if (current >= rangeStart) {
-          pushOccurrence(event, withTimeFrom(current, anchor), index, out);
-        }
-        current.setDate(current.getDate() + 7);
-        index += 1;
-      }
-      continue;
+    while (current < rangeStart && index < MAX_OCCURRENCES) {
+      current = advance(current, recurrence, anchor);
+      index += 1;
     }
 
-    if (recurrence === "monthly") {
-      while (current < rangeStart && index < MAX_OCCURRENCES) {
-        current.setMonth(current.getMonth() + 1);
-        index += 1;
+    while (current <= end && index < MAX_OCCURRENCES) {
+      if (current >= rangeStart) {
+        pushOccurrence(event, withTimeFrom(current, anchor), index, out);
       }
-      while (current <= end && index < MAX_OCCURRENCES) {
-        if (current >= rangeStart) {
-          pushOccurrence(event, withTimeFrom(current, anchor), index, out);
-        }
-        current.setMonth(current.getMonth() + 1);
-        index += 1;
-      }
+      current = advance(current, recurrence, anchor);
+      index += 1;
     }
   }
 

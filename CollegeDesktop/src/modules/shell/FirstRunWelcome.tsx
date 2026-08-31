@@ -1,37 +1,36 @@
 import { useState } from "react";
-import { ModalSheet, Button, FormField, fieldControlClass } from "@/design-system";
+import { ModalSheet, Button, FormField, fieldControlClass, usePlatform } from "@/design-system";
 import { ipc } from "@/lib/ipc";
 import { showToast } from "@/lib/toast";
 import { formatIpcError } from "@/lib/ipc";
 
 const STEPS = [
-  { id: "identity", title: "Identity", hint: "Name, school, and contact" },
-  { id: "academic", title: "Academic setup", hint: "Degrees and programs" },
-  { id: "history", title: "Academic history", hint: "Transfer credits (optional)" },
-  { id: "integrations", title: "Integrations", hint: "LMS and shortcuts" },
-  { id: "ready", title: "Ready", hint: "Review and enter workspace" },
+  { id: "identity", title: "About you", hint: "Tell us a bit about yourself" },
+  { id: "demo", title: "See it in action", hint: "Start with a ready-made example semester" },
+  { id: "ready", title: "You're ready", hint: "Your schedule, courses, and tasks are on Home" },
 ] as const;
 
 export function FirstRunWelcome({
   open,
   onDismiss,
-  onLoadSample,
+  onComplete,
 }: {
   open: boolean;
   onDismiss: () => void;
-  onLoadSample: () => void;
+  /** Called after demo seed (if enabled) so parent can refresh data. */
+  onComplete?: () => void;
 }) {
+  const { modKey } = usePlatform();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [showContact, setShowContact] = useState(false);
   const [identity, setIdentity] = useState({
     fullName: "",
     email: "",
     universityName: "",
     phone: "",
   });
-  const [lmsUrl, setLmsUrl] = useState("https://canvas.instructure.com");
-  const [catalogUrl, setCatalogUrl] = useState("");
-  const [loadSample, setLoadSample] = useState(false);
+  const [loadSample, setLoadSample] = useState(true);
 
   const saveIdentity = async () => {
     if (identity.fullName.trim()) {
@@ -48,20 +47,32 @@ export function FirstRunWelcome({
     }
   };
 
-  const finish = async () => {
+  const finish = async (seedDemo: boolean) => {
     setBusy(true);
     try {
       await saveIdentity();
-      if (lmsUrl.trim()) {
-        await ipc.settingsSet("lms.defaultPortalUrl", lmsUrl.trim());
-      }
-      if (catalogUrl.trim()) {
-        await ipc.settingsSet("catalog.portalBaseUrl", catalogUrl.trim());
-      }
-      if (loadSample) {
+      if (seedDemo) {
         await ipc.demoSeedSampleData();
       }
-      await ipc.settingsSet("shell.onboardingStep", String(STEPS.length - 1));
+      await ipc.settingsSet("shell.onboarded", "true");
+      onComplete?.();
+      onDismiss();
+    } catch (e) {
+      showToast(formatIpcError(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const skip = async () => {
+    setBusy(true);
+    try {
+      await saveIdentity();
+      if (step >= 1 && loadSample) {
+        await ipc.demoSeedSampleData();
+        onComplete?.();
+      }
+      await ipc.settingsSet("shell.onboarded", "true");
       onDismiss();
     } catch (e) {
       showToast(formatIpcError(e), "error");
@@ -75,7 +86,7 @@ export function FirstRunWelcome({
   return (
     <ModalSheet
       open={open}
-      onOpenChange={(v) => !v && onDismiss()}
+      onOpenChange={(v) => !v && void skip()}
       title={`Welcome · ${current.title}`}
     >
       <div className="space-y-4">
@@ -91,100 +102,93 @@ export function FirstRunWelcome({
             />
           ))}
         </div>
-        <p className="text-[12px] text-[var(--color-text-light)]">{current.hint}</p>
+        <p className="text-meta">{current.hint}</p>
 
         {step === 0 && (
           <div className="space-y-3">
-            <FormField label="Full name">
+            <FormField label="Your name">
               <input
                 className={fieldControlClass}
                 value={identity.fullName}
                 onChange={(e) => setIdentity((v) => ({ ...v, fullName: e.target.value }))}
+                placeholder="Alex Johnson"
+                autoFocus
               />
             </FormField>
-            <FormField label="Email">
-              <input
-                className={fieldControlClass}
-                value={identity.email}
-                onChange={(e) => setIdentity((v) => ({ ...v, email: e.target.value }))}
-              />
-            </FormField>
-            <FormField label="University">
+            <FormField label="School">
               <input
                 className={fieldControlClass}
                 value={identity.universityName}
                 onChange={(e) => setIdentity((v) => ({ ...v, universityName: e.target.value }))}
+                placeholder="State University"
               />
             </FormField>
-            <FormField label="Phone (optional)">
-              <input
-                className={fieldControlClass}
-                value={identity.phone}
-                onChange={(e) => setIdentity((v) => ({ ...v, phone: e.target.value }))}
-              />
-            </FormField>
+            {!showContact ? (
+              <button
+                type="button"
+                className="text-meta text-[var(--color-primary)] hover:underline"
+                onClick={() => setShowContact(true)}
+              >
+                Add email or phone (optional)
+              </button>
+            ) : (
+              <>
+                <FormField label="Email (optional)">
+                  <input
+                    className={fieldControlClass}
+                    value={identity.email}
+                    onChange={(e) => setIdentity((v) => ({ ...v, email: e.target.value }))}
+                  />
+                </FormField>
+                <FormField label="Phone (optional)">
+                  <input
+                    className={fieldControlClass}
+                    value={identity.phone}
+                    onChange={(e) => setIdentity((v) => ({ ...v, phone: e.target.value }))}
+                  />
+                </FormField>
+              </>
+            )}
           </div>
         )}
 
         {step === 1 && (
-          <div className="space-y-3 text-[13px] text-[var(--color-text-main)]">
-            <p>
-              Set your active program later under Academics → Requirements. You can load demo
-              semesters and a CS major audit now, or start with an empty planner.
-            </p>
-            <label className="flex items-center gap-2 text-[12px]">
+          <div className="space-y-4">
+            <label className="flex cursor-pointer items-start gap-3 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] p-4">
               <input
                 type="checkbox"
+                className="mt-1"
                 checked={loadSample}
                 onChange={(e) => setLoadSample(e.target.checked)}
               />
-              Load sample academic data (recommended for first look)
+              <div>
+                <div className="text-body font-medium text-[var(--color-text-main)]">
+                  Start with example semester
+                </div>
+                <p className="mt-1 text-meta leading-relaxed">
+                  See a full schedule, courses, tasks, and career applications right away. You can
+                  clear it anytime.
+                </p>
+              </div>
             </label>
-            <FormField label="Course catalog URL (optional)">
-              <input
-                className={fieldControlClass}
-                value={catalogUrl}
-                onChange={(e) => setCatalogUrl(e.target.value)}
-                placeholder="https://catalog.university.edu"
-              />
-            </FormField>
           </div>
         )}
 
         {step === 2 && (
-          <p className="text-[13px] leading-relaxed text-[var(--color-text-main)]">
-            Transfer equivalencies can be added anytime under College → Transfer. Skip this step if
-            you are not bringing credits from another school.
-          </p>
-        )}
-
-        {step === 3 && (
           <div className="space-y-3">
-            <FormField label="Default LMS portal URL">
-              <input
-                className={fieldControlClass}
-                value={lmsUrl}
-                onChange={(e) => setLmsUrl(e.target.value)}
-              />
-            </FormField>
-            <p className="text-[12px] text-[var(--color-text-light)]">
-              Add web shortcuts anytime in Settings → Shortcuts. They appear in the College sidebar.
+            <p className="text-body leading-relaxed">
+              Your schedule, courses, and tasks are on <strong>Home</strong>. Connect calendars and
+              course portals later under Settings when you&apos;re ready.
             </p>
-          </div>
-        )}
-
-        {step === 4 && (
-          <div className="space-y-3">
-            <ul className="list-inside list-disc space-y-1 text-[12px] text-[var(--color-text-light)]">
+            <ul className="list-inside list-disc space-y-1 text-meta">
               <li>
-                <kbd className="rounded border border-[var(--color-chrome-stroke)] px-1">⌘K</kbd>{" "}
-                command palette
+                <kbd className="rounded border border-[var(--color-chrome-stroke)] px-1">{modKey}+K</kbd>{" "}
+                search anything
               </li>
               <li>
-                <kbd className="rounded border border-[var(--color-chrome-stroke)] px-1">⌘1–7</kbd>{" "}
-                switch modules
+                <kbd className="rounded border border-[var(--color-chrome-stroke)] px-1">{modKey}+J</kbd>{" "}
+                ask the assistant
               </li>
-              <li>Your workspace data lives in CollegeDesktop, separate from the Swift app.</li>
             </ul>
           </div>
         )}
@@ -198,7 +202,7 @@ export function FirstRunWelcome({
             Back
           </Button>
           <div className="flex gap-2">
-            <Button variant="ghost" disabled={busy} onClick={onDismiss}>
+            <Button variant="ghost" disabled={busy} onClick={() => void skip()}>
               Skip for now
             </Button>
             {step < STEPS.length - 1 ? (
@@ -212,14 +216,8 @@ export function FirstRunWelcome({
                 Next
               </Button>
             ) : (
-              <Button
-                disabled={busy}
-                onClick={() => {
-                  if (loadSample) onLoadSample();
-                  void finish();
-                }}
-              >
-                {busy ? "Setting up…" : "Enter College"}
+              <Button disabled={busy} onClick={() => void finish(loadSample)}>
+                {busy ? "Setting up…" : "Go to Today"}
               </Button>
             )}
           </div>

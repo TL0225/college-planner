@@ -82,12 +82,5 @@ export const shell = {
   sidebarRowMinHeight: 28,
 } as const;
 
-export type ModuleId =
-  | "college"
-  | "finance"
-  | "calendar"
-  | "career"
-  | "documents"
-  | "assistant"
-  | "profile"
-  | "settings";
+export type HubId = "home" | "school" | "career" | "life" | "library";
+export type ModuleId = HubId | "settings";

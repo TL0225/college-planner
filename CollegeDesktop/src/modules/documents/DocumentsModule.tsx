@@ -166,7 +166,7 @@ function folderContents(docs: Doc[], folderId: string | null): Doc[] {
 }
 
 function buildBreadcrumb(docs: Doc[], folderId: string | null): Array<{ id: string | null; title: string }> {
-  const trail: Array<{ id: string | null; title: string }> = [{ id: null, title: "Vault" }];
+  const trail: Array<{ id: string | null; title: string }> = [{ id: null, title: "Files" }];
   if (!folderId) return trail;
   const byId = new Map(docs.map((d) => [d.id, d]));
   const chain: Doc[] = [];
@@ -231,7 +231,7 @@ function emptyStateForPage(page: string, inFolder: boolean): { title: string; bo
       }
       return {
         title: "No documents",
-        body: "Import a PDF or file, create a folder, or load sample data from Settings.",
+        body: "Import a PDF or file, create a folder, or try demo data.",
       };
     }
   }
@@ -260,7 +260,7 @@ function VaultFolderTree({
         <button
           type="button"
           onClick={() => onSelect(folder.id)}
-          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[12px] hover:bg-[var(--color-surface-elevated)]"
+          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-meta hover:bg-[var(--color-surface-elevated)]"
           style={{
             paddingLeft: 8 + depth * 14,
             color: selected ? "var(--color-primary)" : "var(--color-text-main)",
@@ -280,19 +280,19 @@ function VaultFolderTree({
 
   return (
     <div className="hidden w-[200px] shrink-0 flex-col border-r border-[var(--color-chrome-stroke)] pr-2 lg:flex">
-      <div className="mb-1 px-1.5 text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+      <div className="mb-1 px-1.5 text-label font-semibold uppercase tracking-[0.05em]">
         Folders
       </div>
       <button
         type="button"
         onClick={() => onSelect(null)}
-        className="rounded px-1.5 py-1 text-left text-[12px] hover:bg-[var(--color-surface-elevated)]"
+        className="rounded px-1.5 py-1 text-left text-meta hover:bg-[var(--color-surface-elevated)]"
         style={{
           color: currentFolderId === null ? "var(--color-primary)" : "var(--color-text-main)",
           fontWeight: currentFolderId === null ? 600 : 400,
         }}
       >
-        Vault root
+        Files root
       </button>
       <div className="min-h-0 flex-1 overflow-auto">{roots.map((f) => renderNode(f, 0))}</div>
     </div>
@@ -328,14 +328,14 @@ function DocumentPreviewPanel({ docId }: { docId: string }) {
   }, [docId]);
 
   if (error) {
-    return <p className="text-[12px] text-[var(--color-error)]">{error}</p>;
+    return <p className="text-meta text-[var(--color-error)]">{error}</p>;
   }
   if (!preview) {
-    return <p className="text-[12px] text-[var(--color-text-light)]">Loading preview…</p>;
+    return <p className="text-meta text-[var(--color-text-light)]">Loading preview…</p>;
   }
   if (preview.isEncrypted && !preview.tempPath && !preview.base64Preview) {
     return (
-      <p className="text-[12px] text-[var(--color-warning)]">
+      <p className="text-meta text-[var(--color-warning)]">
         Encrypted file — unlock College in Settings → Privacy to preview.
       </p>
     );
@@ -345,7 +345,7 @@ function DocumentPreviewPanel({ docId }: { docId: string }) {
   if (preview.base64Preview) {
     const decoded = atob(preview.base64Preview);
     return (
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-chrome-stroke)] bg-[var(--color-surface-elevated)] p-2 text-[11px] text-[var(--color-text-main)]">
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-[var(--color-chrome-stroke)] bg-[var(--color-surface-elevated)] p-2 text-caption text-[var(--color-text-main)]">
         {decoded}
       </pre>
     );
@@ -369,7 +369,7 @@ function DocumentPreviewPanel({ docId }: { docId: string }) {
     );
   }
   return (
-    <p className="text-[12px] text-[var(--color-text-light)]">
+    <p className="text-meta text-[var(--color-text-light)]">
       No in-pane preview for this file type. Use Quick Look or Open.
     </p>
   );
@@ -594,7 +594,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
     const picked = await open({
       multiple: false,
       directory: false,
-      title: "Import into Vault",
+      title: "Add a file",
     });
     if (!picked || typeof picked !== "string") return;
     setBusy(true);
@@ -668,7 +668,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
     }
     return (
       <span
-        className="flex h-8 w-8 shrink-0 items-center justify-center text-[10px] font-bold tracking-wide"
+        className="flex h-8 w-8 shrink-0 items-center justify-center text-label font-bold tracking-wide"
         style={{
           borderRadius: 8,
           border: "1px solid var(--color-chrome-stroke)",
@@ -780,7 +780,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
             </span>
           ) : (
             <span
-              className="flex h-10 w-10 shrink-0 items-center justify-center text-[11px] font-bold tracking-wide"
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-label font-bold tracking-wide"
               style={{
                 borderRadius: 8,
                 border: "1px solid var(--color-chrome-stroke)",
@@ -796,12 +796,12 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
           )}
         </div>
         <p
-          className="mt-2 line-clamp-2 text-[13px] font-medium text-[var(--color-text-main)]"
+          className="mt-2 line-clamp-2 text-body font-medium text-[var(--color-text-main)]"
           style={{ letterSpacing: "-0.02em" }}
         >
           {d.title || "Untitled"}
         </p>
-        <p className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+        <p className="mt-0.5 text-caption">
           {d.isFolder
             ? "Folder"
             : d.hasFile
@@ -858,7 +858,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
       <ListRow
         leading={
           <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center text-[13px] font-semibold text-[var(--color-text-light)]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center text-section-title text-[var(--color-text-light)]"
             style={{
               borderRadius: 8,
               border: "1px solid var(--color-chrome-stroke)",
@@ -952,7 +952,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
       />
       {usesFolderBrowser && breadcrumb.length > 1 && (
         <nav
-          className="flex flex-wrap items-center gap-1 px-3 pb-1 text-[12px] text-[var(--color-text-light)]"
+          className="flex flex-wrap items-center gap-1 px-3 pb-1 text-meta text-[var(--color-text-light)]"
           aria-label="Folder breadcrumb"
         >
           {breadcrumb.map((crumb, index) => (
@@ -980,10 +980,11 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
           ))}
         </nav>
       )}
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
       <div className="min-h-0 flex-1 p-3 pt-1">
         <TrailingInspector
           open={!!selectedDoc}
+          storageKey="library.inspectorWidth"
           main={
             <AppCard className="flex min-h-0 flex-1 flex-col">
               <div className="flex min-h-0 flex-1">
@@ -1012,8 +1013,8 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
                         background: "var(--color-surface)",
                       }}
                     >
-                      <span className="text-[13px] font-medium">..</span>
-                      <span className="text-[11px] text-[var(--color-text-light)]">Parent folder</span>
+                      <span className="text-body font-medium">..</span>
+                      <span className="text-caption">Parent folder</span>
                     </button>
                   )}
                   {filtered.map((d) => docCard(d))}
@@ -1064,7 +1065,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
                     />
                   </Button>
                 </div>
-                <p className="mt-0.5 text-[12px] text-[var(--color-text-light)]">
+                <p className="mt-0.5 text-meta text-[var(--color-text-light)]">
                   {selectedDoc.isFolder
                     ? "Folder"
                     : `Updated ${new Date(selectedDoc.updatedAt).toLocaleString()}`}
@@ -1098,7 +1099,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
                 {!selectedDoc.isFolder && selectedDoc.hasFile ? (
                   <DocumentPreviewPanel docId={selectedDoc.id} />
                 ) : null}
-                <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+                <p className="text-meta leading-relaxed text-[var(--color-text-light)]">
                   {selectedDoc.isFolder
                     ? "Double-click to open this folder in the vault browser."
                     : selectedDoc.hasFile
@@ -1326,7 +1327,7 @@ export function DocumentsModule({ page }: DocumentsModuleProps) {
               value={moveTargetId}
               onChange={(e) => setMoveTargetId(e.target.value)}
             >
-              <option value="">Vault root</option>
+              <option value="">Files root</option>
               {moveFolderOptions.map((f) => (
                 <option key={f.id} value={f.id}>
                   {f.title}

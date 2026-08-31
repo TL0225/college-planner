@@ -49,11 +49,11 @@ export function PathingDisclosurePanel({ entryId }: Props) {
 
   return (
     <AppCard title="Disclosure readiness">
-      <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+      <p className="mb-3 text-meta">
         Confirm comp, benefits, and equity are documented before sharing this role in a disclosure
         bundle.
       </p>
-      <p className="mb-3 text-[11px] font-medium text-[var(--color-text-light)]">
+      <p className="mb-3 text-label">
         {doneCount} of {pathDisclosureItems.length} complete
       </p>
       <ul className="space-y-2">
@@ -79,7 +79,7 @@ export function PathingDisclosurePanel({ entryId }: Props) {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span
-                    className={`block text-[13px] font-medium ${
+                    className={`block text-body font-medium ${
                       checked
                         ? "text-[var(--color-text-light)] line-through"
                         : "text-[var(--color-text-main)]"
@@ -87,7 +87,7 @@ export function PathingDisclosurePanel({ entryId }: Props) {
                   >
                     {item.title}
                   </span>
-                  <span className="mt-0.5 block text-[11px] text-[var(--color-text-light)]">
+                  <span className="mt-0.5 block text-caption">
                     {item.subtitle}
                   </span>
                 </span>

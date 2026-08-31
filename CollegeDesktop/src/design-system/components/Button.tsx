@@ -1,15 +1,16 @@
 import { motion } from "framer-motion";
 import { cn } from "../cn";
 import { withReduceMotion, standardSpring } from "../motion/springPresets";
+import { useReduceMotion } from "../motion/useReduceMotion";
 import { radius, spacing } from "../tokens";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-[var(--color-primary)] text-white shadow-[0_1px_2px_rgba(99,102,241,0.35)] hover:brightness-[1.06] active:brightness-95",
+    "bg-[var(--color-primary)] text-white shadow-[0_1px_3px_rgba(99,102,241,0.4)] hover:brightness-[1.08] active:brightness-95",
   secondary:
-    "bg-[var(--color-shell-selection)] text-[var(--color-text-main)] border border-[var(--color-chrome-stroke)] shadow-[var(--shadow-pill)] hover:bg-[color-mix(in_srgb,var(--color-shell-selection)_88%,var(--color-text-main))]",
+    "bg-[var(--color-surface-elevated)] text-[var(--color-text-main)] border border-[var(--color-chrome-stroke)] shadow-[var(--shadow-pill)] hover:bg-[var(--color-row-hover)] hover:border-[var(--color-text-light)]",
   ghost:
     "bg-transparent text-[var(--color-text-main)] hover:bg-[var(--color-row-hover)]",
   danger:
@@ -20,7 +21,7 @@ export function Button({
   children,
   variant = "primary",
   className,
-  reduceMotion = false,
+  reduceMotion,
   onClick,
   disabled,
   type = "button",
@@ -35,16 +36,18 @@ export function Button({
   type?: "button" | "submit" | "reset";
   size?: "sm" | "md";
 }) {
+  const motionOff = useReduceMotion(reduceMotion);
   return (
     <motion.button
       type={type}
       disabled={disabled}
       onClick={onClick}
-      whileTap={reduceMotion || disabled ? undefined : { scale: 0.97 }}
-      transition={withReduceMotion(reduceMotion, standardSpring)}
+      whileHover={motionOff || disabled ? undefined : { scale: 1.02 }}
+      whileTap={motionOff || disabled ? undefined : { scale: 0.97 }}
+      transition={withReduceMotion(motionOff, standardSpring)}
       className={cn(
         "inline-flex items-center justify-center gap-1.5 font-medium transition-[filter,background-color,color] disabled:pointer-events-none disabled:opacity-45",
-        size === "sm" ? "rounded-[8px] px-2.5 py-1 text-[12px]" : "rounded-[10px] px-3.5 py-1.5 text-[13px]",
+        size === "sm" ? "rounded-[8px] px-2.5 py-1 text-chrome" : "rounded-[10px] px-3.5 py-1.5 text-body",
         variants[variant],
         className,
       )}
@@ -63,11 +66,8 @@ export function FormField({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block" style={{ fontSize: 13 }}>
-      <span
-        className="mb-1 block font-medium text-[var(--color-text-light)]"
-        style={{ fontSize: 12 }}
-      >
+    <label className="block text-body">
+      <span className="mb-1 block text-meta font-medium">
         {label}
       </span>
       {children}
@@ -76,7 +76,7 @@ export function FormField({
 }
 
 export const fieldControlClass =
-  "w-full rounded-[10px] border border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] px-3 py-2 text-[13px] outline-none transition-shadow placeholder:text-[var(--color-text-light)] focus:border-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-chrome-stroke))] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-primary)_25%,transparent)]";
+  "w-full rounded-[10px] border border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] px-3 py-2 text-body outline-none transition-shadow placeholder:text-[var(--color-text-light)] focus:border-[color-mix(in_srgb,var(--color-primary)_55%,var(--color-chrome-stroke))] focus:ring-2 focus:ring-[color-mix(in_srgb,var(--color-primary)_25%,transparent)]";
 
 export function EmptyState({
   title,
@@ -92,11 +92,14 @@ export function EmptyState({
       className="flex flex-col items-start justify-center"
       style={{ gap: spacing.sm, padding: `${spacing.lg}px 0` }}
     >
-      <h3 className="text-[15px] font-semibold tracking-tight text-[var(--color-text-main)]">
+      <h3
+        className="text-section-title font-semibold tracking-tight text-[var(--color-text-main)]"
+        style={{ fontSize: 15 }}
+      >
         {title}
       </h3>
       {body && (
-        <p className="max-w-md text-[13px] leading-relaxed text-[var(--color-text-light)]">{body}</p>
+        <p className="max-w-md text-body leading-relaxed text-[var(--color-text-light)]">{body}</p>
       )}
       {action && <div className="pt-1">{action}</div>}
     </div>

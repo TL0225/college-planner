@@ -1,6 +1,8 @@
 use crate::commands::CmdResult;
 use crate::db::DbChangeEvent;
 use crate::AppState;
+use regex::Regex;
+use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
@@ -367,6 +369,432 @@ pub struct TransferImportAssistInput {
     pub mode: Option<String>,
 }
 
+const ASSIST_ACADEMIC_YEAR_ID: i64 = 75;
+
+#[derive(Debug, Deserialize)]
+struct AssistInstitutionNode {
+    #[serde(rename = "institutionId")]
+    institution_id: Option<i64>,
+    id: Option<i64>,
+    #[serde(rename = "code")]
+    institution_code: Option<String>,
+    name: Option<String>,
+    #[serde(default)]
+    children: Vec<AssistInstitutionNode>,
+}
+
+async fn fetch_assist_institution_hierarchy(
+    client: &reqwest::Client,
+) -> Result<Vec<AssistInstitutionNode>, String> {
+    let response = client
+        .get("https://assist.org/api/institutions/hierarchy")
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("ASSIST hierarchy fetch failed: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("ASSIST hierarchy HTTP {}", response.status()));
+    }
+    response
+        .json::<Vec<AssistInstitutionNode>>()
+        .await
+        .map_err(|e| format!("ASSIST hierarchy parse failed: {e}"))
+}
+
+fn find_institution_in_tree(nodes: &[AssistInstitutionNode], needle: &str) -> Option<i64> {
+    let needle = needle.trim().to_lowercase().replace('_', " ");
+    if needle.is_empty() {
+        return None;
+    }
+    for node in nodes {
+        let id = node.institution_id.or(node.id);
+        let code = node
+            .institution_code
+            .as_deref()
+            .unwrap_or("")
+            .to_lowercase()
+            .replace('_', " ");
+        let name = node.name.as_deref().unwrap_or("").to_lowercase();
+        if let Some(id) = id {
+            if code == needle
+                || name == needle
+                || name.contains(&needle)
+                || needle.contains(&code)
+                || code.contains(&needle)
+            {
+                return Some(id);
+            }
+        }
+        if let Some(found) = find_institution_in_tree(&node.children, &needle) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+async fn resolve_assist_institution_id(client: &reqwest::Client, input: &str) -> Option<i64> {
+    if let Ok(id) = input.parse::<i64>() {
+        return Some(id);
+    }
+    let hierarchy = fetch_assist_institution_hierarchy(client).await.ok()?;
+    find_institution_in_tree(&hierarchy, input)
+}
+
+async fn fetch_assist_mirror_json(source: &str, target: &str) -> Result<String, String> {
+    let url = format!(
+        "https://raw.githubusercontent.com/TL0225/college-planner-data/main/transfer/assist/{source}__{target}.json"
+    );
+    let response = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("ASSIST mirror fetch failed: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("ASSIST mirror HTTP {}", response.status()));
+    }
+    response
+        .text()
+        .await
+        .map_err(|e| format!("ASSIST mirror read failed: {e}"))
+}
+
+fn parse_assist_json_rows(json_text: &str) -> Result<Vec<ImportTransferRow>, String> {
+    let payload: AssistPayload = serde_json::from_str(json_text)
+        .map_err(|e| format!("ASSIST JSON parse failed: {e}"))?;
+    let rows: Vec<ImportTransferRow> = payload
+        .equivalencies
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(assist_row_to_import)
+        .collect();
+    if rows.is_empty() {
+        return Err("No ASSIST equivalencies found in payload".into());
+    }
+    Ok(rows)
+}
+
+fn course_code_re() -> Regex {
+    Regex::new(r"\b([A-Z]{2,5}\s*\d{1,3}[A-Z]{0,3})\b").expect("course code regex")
+}
+
+fn parse_assist_html_rows(html: &str, source_label: &str, _target_label: &str) -> Vec<ImportTransferRow> {
+    let document = Html::parse_document(html);
+    let code_re = course_code_re();
+    let mut rows = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    if let Ok(row_sel) = Selector::parse("tr") {
+        for tr in document.select(&row_sel) {
+            let cells: Vec<String> = tr
+                .select(&Selector::parse("td, th").unwrap())
+                .map(|c| c.text().collect::<String>().trim().to_string())
+                .filter(|c| !c.is_empty())
+                .collect();
+            if cells.len() < 2 {
+                continue;
+            }
+            let source_code = cells[0].to_ascii_uppercase();
+            let target_code = cells[1].to_ascii_uppercase();
+            if !code_re.is_match(&source_code) || !code_re.is_match(&target_code) {
+                continue;
+            }
+            let key = format!("{source_code}|{target_code}");
+            if seen.insert(key) {
+                rows.push(ImportTransferRow {
+                    source_school: source_label.to_string(),
+                    source_code,
+                    target_code,
+                    credits: cells.get(2).and_then(|c| c.parse().ok()),
+                    notes: Some("ASSIST scrape".into()),
+                });
+            }
+        }
+    }
+
+    if rows.is_empty() {
+        let text: String = document.root_element().text().collect();
+        let codes: Vec<String> = code_re
+            .find_iter(&text.to_ascii_uppercase())
+            .map(|m| m.as_str().to_string())
+            .collect();
+        for pair in codes.windows(2) {
+            let key = format!("{}|{}", pair[0], pair[1]);
+            if seen.insert(key) {
+                rows.push(ImportTransferRow {
+                    source_school: source_label.to_string(),
+                    source_code: pair[0].clone(),
+                    target_code: pair[1].clone(),
+                    credits: None,
+                    notes: Some("ASSIST scrape (heuristic)".into()),
+                });
+            }
+        }
+    }
+
+    rows
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistAgreementList {
+    reports: Option<Vec<AssistAgreementReport>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistAgreementReport {
+    key: Option<String>,
+    label: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistAgreementDetail {
+    result: Option<AssistAgreementResult>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistAgreementResult {
+    name: Option<String>,
+    articulations: Option<Vec<AssistArticulation>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistArticulation {
+    #[serde(rename = "sendingArticulation")]
+    sending_articulation: Option<AssistSendingArticulation>,
+    #[serde(rename = "receivingArticulation")]
+    receiving_articulation: Option<AssistReceivingArticulation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistSendingArticulation {
+    items: Option<Vec<AssistArticulationItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistReceivingArticulation {
+    items: Option<Vec<AssistArticulationItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistArticulationItem {
+    #[serde(rename = "course")]
+    course: Option<AssistCourse>,
+    items: Option<Vec<AssistArticulationItem>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssistCourse {
+    #[serde(rename = "courseCode")]
+    course_code: Option<String>,
+    #[serde(rename = "courseTitle")]
+    course_title: Option<String>,
+    units: Option<f64>,
+}
+
+fn collect_assist_courses(item: &AssistArticulationItem, out: &mut Vec<(String, Option<f64>, Option<String>)>) {
+    if let Some(course) = &item.course {
+        if let Some(code) = course.course_code.as_ref().filter(|c| !c.trim().is_empty()) {
+            out.push((
+                code.trim().to_ascii_uppercase(),
+                course.units,
+                course.course_title.clone(),
+            ));
+        }
+    }
+    if let Some(children) = &item.items {
+        for child in children {
+            collect_assist_courses(child, out);
+        }
+    }
+}
+
+fn parse_assist_api_agreement(
+    detail: &AssistAgreementResult,
+    source_label: &str,
+    target_label: &str,
+) -> Vec<ImportTransferRow> {
+    let mut rows = Vec::new();
+    let articulations = detail.articulations.as_deref().unwrap_or_default();
+    for articulation in articulations {
+        let mut sending = Vec::new();
+        let mut receiving = Vec::new();
+        if let Some(sa) = &articulation.sending_articulation {
+            for item in sa.items.as_deref().unwrap_or_default() {
+                collect_assist_courses(item, &mut sending);
+            }
+        }
+        if let Some(ra) = &articulation.receiving_articulation {
+            for item in ra.items.as_deref().unwrap_or_default() {
+                collect_assist_courses(item, &mut receiving);
+            }
+        }
+        if sending.is_empty() || receiving.is_empty() {
+            continue;
+        }
+        for (source_code, credits, title) in &sending {
+            for (target_code, _, _) in &receiving {
+                rows.push(ImportTransferRow {
+                    source_school: source_label.to_string(),
+                    source_code: source_code.clone(),
+                    target_code: target_code.clone(),
+                    credits: *credits,
+                    notes: title
+                        .as_ref()
+                        .filter(|t| !t.trim().is_empty())
+                        .map(|t| format!("ASSIST API: {t}")),
+                });
+            }
+        }
+    }
+    if rows.is_empty() {
+        if let Some(name) = detail.name.as_deref().filter(|n| !n.is_empty()) {
+            rows.push(ImportTransferRow {
+                source_school: source_label.to_string(),
+                source_code: name.to_string(),
+                target_code: target_label.to_string(),
+                credits: None,
+                notes: Some("ASSIST API agreement".into()),
+            });
+        }
+    }
+    rows
+}
+
+async fn fetch_assist_api_rows(
+    source_id: i64,
+    target_id: i64,
+    source_label: &str,
+    target_label: &str,
+) -> Result<Vec<ImportTransferRow>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("CollegeDesktop/0.1 (+https://college.app)")
+        .timeout(std::time::Duration::from_secs(25))
+        .build()
+        .map_err(|e| format!("HTTP client: {e}"))?;
+
+    let list_url = format!(
+        "https://assist.org/api/agreements?receivingInstitutionId={target_id}&sendingInstitutionId={source_id}&academicYearId={ASSIST_ACADEMIC_YEAR_ID}"
+    );
+    let list_resp = client
+        .get(&list_url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("ASSIST API list failed: {e}"))?;
+    if !list_resp.status().is_success() {
+        return Err(format!("ASSIST API list HTTP {}", list_resp.status()));
+    }
+    let list: AssistAgreementList = list_resp
+        .json()
+        .await
+        .map_err(|e| format!("ASSIST API list parse failed: {e}"))?;
+
+    let mut rows = Vec::new();
+    for report in list.reports.unwrap_or_default() {
+        let Some(key) = report.key.filter(|k| !k.is_empty()) else {
+            continue;
+        };
+        let detail_url = format!(
+            "https://assist.org/api/articulation/Agreements?Key={}",
+            urlencoding::encode(&key)
+        );
+        let detail_resp = client
+            .get(&detail_url)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .map_err(|e| format!("ASSIST API detail failed: {e}"))?;
+        if !detail_resp.status().is_success() {
+            continue;
+        }
+        let detail: AssistAgreementDetail = detail_resp
+            .json()
+            .await
+            .map_err(|e| format!("ASSIST API detail parse failed: {e}"))?;
+        if let Some(result) = detail.result {
+            rows.extend(parse_assist_api_agreement(&result, source_label, target_label));
+        }
+    }
+    if rows.is_empty() {
+        return Err("ASSIST API returned no articulation rows".into());
+    }
+    Ok(rows)
+}
+
+async fn scrape_assist_rows(source: &str, target: &str) -> Result<Vec<ImportTransferRow>, String> {
+    let source_label = source.to_string();
+    let target_label = target.to_string();
+
+    let client = reqwest::Client::builder()
+        .user_agent("CollegeDesktop/0.1 (+https://college.app)")
+        .timeout(std::time::Duration::from_secs(25))
+        .build()
+        .map_err(|e| format!("HTTP client: {e}"))?;
+
+    let source_id = resolve_assist_institution_id(&client, source).await;
+    let target_id = resolve_assist_institution_id(&client, target).await;
+    if let (Some(source_id), Some(target_id)) = (source_id, target_id) {
+        if let Ok(rows) =
+            fetch_assist_api_rows(source_id, target_id, &source_label, &target_label).await
+        {
+            if !rows.is_empty() {
+                return Ok(rows);
+            }
+        }
+    }
+
+    if let (Ok(source_id), Ok(target_id)) = (source.parse::<i64>(), target.parse::<i64>()) {
+        if let Ok(rows) =
+            fetch_assist_api_rows(source_id, target_id, &source_label, &target_label).await
+        {
+            if !rows.is_empty() {
+                return Ok(rows);
+            }
+        }
+    }
+
+    let page_url = format!(
+        "https://assist.org/transfer/results?year={ASSIST_ACADEMIC_YEAR_ID}&institution={}&agreement={}",
+        urlencoding::encode(target),
+        urlencoding::encode(source)
+    );
+    let response = client
+        .get(&page_url)
+        .send()
+        .await
+        .map_err(|e| format!("ASSIST page fetch failed: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("ASSIST page HTTP {}", response.status()));
+    }
+    let html = response
+        .text()
+        .await
+        .map_err(|e| format!("ASSIST page read failed: {e}"))?;
+    let rows = parse_assist_html_rows(&html, &source_label, &target_label);
+    if rows.is_empty() {
+        return Err("ASSIST HTML scrape found no course rows".into());
+    }
+    Ok(rows)
+}
+
+async fn resolve_assist_rows(
+    source: &str,
+    target: &str,
+    mode: Option<&str>,
+) -> Result<Vec<ImportTransferRow>, String> {
+    match mode {
+        Some("scrape") => match scrape_assist_rows(source, target).await {
+            Ok(rows) if !rows.is_empty() => Ok(rows),
+            _ => match fetch_assist_mirror_json(source, target).await {
+                Ok(json) => parse_assist_json_rows(&json),
+                Err(_) => parse_assist_json_rows(ASSIST_SAMPLE_JSON),
+            },
+        },
+        Some("live") => {
+            let json = fetch_assist_mirror_json(source, target).await?;
+            parse_assist_json_rows(&json)
+        }
+        _ => parse_assist_json_rows(ASSIST_SAMPLE_JSON),
+    }
+}
+
 #[tauri::command]
 pub async fn transfer_import_assist(
     app: AppHandle,
@@ -381,41 +809,9 @@ pub async fn transfer_import_assist(
         });
     }
 
-    let json_text = if input.mode.as_deref() == Some("live") {
-        let url = format!(
-            "https://raw.githubusercontent.com/TL0225/college-planner-data/main/transfer/assist/{source}__{target}.json"
-        );
-        reqwest::get(&url)
-            .await
-            .map_err(|e| crate::commands::CommandError {
-                message: format!("ASSIST fetch failed: {e}"),
-            })?
-            .text()
-            .await
-            .map_err(|e| crate::commands::CommandError {
-                message: format!("ASSIST read failed: {e}"),
-            })?
-    } else {
-        ASSIST_SAMPLE_JSON.to_string()
-    };
-
-    let payload: AssistPayload = serde_json::from_str(&json_text).map_err(|e| {
-        crate::commands::CommandError {
-            message: format!("ASSIST JSON parse failed: {e}"),
-        }
-    })?;
-    let rows: Vec<ImportTransferRow> = payload
-        .equivalencies
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(assist_row_to_import)
-        .collect();
-
-    if rows.is_empty() {
-        return Err(crate::commands::CommandError {
-            message: "No ASSIST equivalencies found in payload".into(),
-        });
-    }
+    let rows = resolve_assist_rows(&source, &target, input.mode.as_deref())
+        .await
+        .map_err(|e| crate::commands::CommandError { message: e })?;
 
     let result = state
         .db

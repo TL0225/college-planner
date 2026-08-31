@@ -11,90 +11,112 @@
   --color-error: #ef4444;
   --color-info: #06b6d4;
 
-  /* Match DesignSystem.Colors — macOS windowBackground / paper stage */
-  --color-shell-chrome: #f2f2f4;
+  /* Default / Light mode theme variables */
+  --color-shell-chrome: #f4f4f6;
+  --color-shell-canvas: #fafafc;
   --color-content-surface: #ffffff;
   --color-surface: #ffffff;
+  --color-surface-elevated: #f8fafc;
   --color-shell-selection: #ffffff;
-  --color-text-main: #1d1d1f;
-  --color-text-light: #6e6e73;
-  --color-chrome-stroke: rgba(60, 60, 67, 0.14);
-  --color-sidebar-section: rgba(255, 255, 255, 0.62);
-  --color-row-hover: rgba(0, 0, 0, 0.045);
-  --color-primary-soft: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  --color-sidebar-section: #ffffff;
+  --color-text-main: #09090b;
+  --color-text-light: #64748b;
+  --color-chrome-stroke: rgba(0, 0, 0, 0.08);
+  --color-card-highlight: rgba(255, 255, 255, 0.9);
+  --color-row-hover: rgba(0, 0, 0, 0.04);
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 12%, transparent);
 
   --font-ui:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI Variable",
-    "Segoe UI", system-ui, sans-serif;
-  --font-rounded: ui-rounded, "SF Pro Rounded", var(--font-ui);
+    -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-rounded: ui-rounded, "SF Pro Rounded", "Segoe UI Variable", var(--font-ui);
 
-  --type-page-title: 600 22px/1.15 var(--font-rounded);
-  --type-section-title: 600 13px/1.3 var(--font-ui);
-  --type-chrome: 500 12px/1.2 var(--font-ui);
-  --type-body: 400 13px/1.45 var(--font-ui);
+  --type-page-title: 700 24px/1.2 var(--font-ui);
+  --type-section-title: 600 15px/1.35 var(--font-ui);
+  --type-chrome: 500 13px/1.25 var(--font-ui);
+  --type-body: 400 13.5px/1.5 var(--font-ui);
 
-  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-sheet: 0 24px 80px rgba(0, 0, 0, 0.22), 0 8px 24px rgba(0, 0, 0, 0.08);
-  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.06);
 
-  --radius-continuous: 14px;
+  --radius-continuous: 12px;
+
+  /* Windows 11 Fluent 2 motion curve */
+  --motion-spring: cubic-bezier(0.1, 0.9, 0.2, 1);
+
+  --ui-scale: 1;
+  --shell-titlebar-inset: 16px;
+  --shell-sidebar-width: 216px;
+  --shell-sidebar-row-height: 32px;
 
   font-family: var(--font-ui);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.01em;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-shell-chrome: #1c1c1e;
-    --color-content-surface: #242426;
-    --color-surface: #2c2c2e;
-    --color-shell-selection: #38383a;
-    --color-text-main: #f5f5f7;
-    --color-text-light: #98989d;
-    --color-chrome-stroke: rgba(84, 84, 88, 0.45);
-    --color-sidebar-section: rgba(44, 44, 46, 0.72);
-    --color-row-hover: rgba(255, 255, 255, 0.06);
+    color-scheme: dark;
+    --color-shell-chrome: #09090b;
+    --color-shell-canvas: #0c0d11;
+    --color-content-surface: #121318;
+    --color-surface: #181920;
+    --color-surface-elevated: #20222a;
+    --color-shell-selection: #242630;
+    --color-sidebar-section: #121318;
+    --color-text-main: #f8fafc;
+    --color-text-light: #94a3b8;
+    --color-chrome-stroke: rgba(255, 255, 255, 0.08);
+    --color-card-highlight: rgba(255, 255, 255, 0.04);
+    --color-row-hover: rgba(255, 255, 255, 0.05);
     --color-primary-soft: color-mix(in srgb, var(--color-primary) 22%, transparent);
-    --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.35);
-    --shadow-sheet: 0 24px 80px rgba(0, 0, 0, 0.55);
-    --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.35);
+    --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.45);
+    --shadow-sheet: 0 24px 80px rgba(0, 0, 0, 0.65);
+    --shadow-elevated: 0 4px 20px rgba(0, 0, 0, 0.4);
   }
 }
 
-html[data-theme="dark"] {
+html[data-theme="dark"],
+html.dark:not([data-theme="light"]) {
   color-scheme: dark;
-  --color-shell-chrome: #1c1c1e;
-  --color-content-surface: #242426;
-  --color-surface: #2c2c2e;
-  --color-shell-selection: #38383a;
-  --color-text-main: #f5f5f7;
-  --color-text-light: #98989d;
-  --color-chrome-stroke: rgba(84, 84, 88, 0.45);
-  --color-sidebar-section: rgba(44, 44, 46, 0.72);
-  --color-row-hover: rgba(255, 255, 255, 0.06);
+  --color-shell-chrome: #09090b;
+  --color-shell-canvas: #0c0d11;
+  --color-content-surface: #121318;
+  --color-surface: #181920;
+  --color-surface-elevated: #20222a;
+  --color-shell-selection: #242630;
+  --color-sidebar-section: #121318;
+  --color-text-main: #f8fafc;
+  --color-text-light: #94a3b8;
+  --color-chrome-stroke: rgba(255, 255, 255, 0.08);
+  --color-card-highlight: rgba(255, 255, 255, 0.04);
+  --color-row-hover: rgba(255, 255, 255, 0.05);
   --color-primary-soft: color-mix(in srgb, var(--color-primary) 22%, transparent);
-  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.35);
-  --shadow-sheet: 0 24px 80px rgba(0, 0, 0, 0.55);
-  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-sheet: 0 24px 80px rgba(0, 0, 0, 0.65);
+  --shadow-elevated: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 html[data-theme="light"] {
   color-scheme: light;
-  --color-shell-chrome: #f2f2f4;
+  --color-shell-chrome: #f4f4f6;
+  --color-shell-canvas: #fafafc;
   --color-content-surface: #ffffff;
   --color-surface: #ffffff;
+  --color-surface-elevated: #f8fafc;
   --color-shell-selection: #ffffff;
-  --color-text-main: #1d1d1f;
-  --color-text-light: #6e6e73;
-  --color-chrome-stroke: rgba(60, 60, 67, 0.14);
-  --color-sidebar-section: rgba(255, 255, 255, 0.62);
-  --color-row-hover: rgba(0, 0, 0, 0.045);
-  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --color-sidebar-section: #ffffff;
+  --color-text-main: #09090b;
+  --color-text-light: #64748b;
+  --color-chrome-stroke: rgba(0, 0, 0, 0.08);
+  --color-card-highlight: rgba(255, 255, 255, 0.9);
+  --color-row-hover: rgba(0, 0, 0, 0.04);
+  --color-primary-soft: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --shadow-pill: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-sheet: 0 24px 80px rgba(0, 0, 0, 0.22), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -109,6 +131,33 @@ body,
   background: var(--color-shell-chrome);
   color: var(--color-text-main);
   overflow: hidden;
+  outline: none;
+}
+
+/* Kill WebView2 / host focus outline on the shell; keep :focus-visible on controls. */
+html:focus,
+body:focus,
+#root:focus {
+  outline: none;
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+a:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* Optional subtle chrome stroke (replaces OS blue accent border). */
+html[data-window-stroke="subtle"] #root {
+  box-shadow: inset 0 0 0 1px var(--color-chrome-stroke);
 }
 
 button {
@@ -126,7 +175,7 @@ textarea {
   color: inherit;
 }
 
-/* Continuous-corner cards (Swift .rect(cornerRadius:style:.continuous)) */
+/* Continuous-corner cards */
 .frame-card {
   border-radius: var(--radius-continuous);
 }
@@ -137,8 +186,8 @@ textarea {
 
 .chrome-nav-btn {
   border-radius: 8px;
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 5px 9px;
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--color-text-light);
   transition: background-color 0.15s ease, color 0.15s ease;
@@ -148,18 +197,234 @@ textarea {
   color: var(--color-text-main);
 }
 
+/* Semantic typography utilities */
+.text-page-title {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--color-text-main);
+  letter-spacing: -0.025em;
+}
+.text-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text-main);
+  letter-spacing: -0.015em;
+}
+.text-body {
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text-main);
+}
+.text-chrome {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--color-text-main);
+}
+.text-meta {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-light);
+}
+.text-label {
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--color-text-light);
+  letter-spacing: 0.05em;
+}
+.text-caption {
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--color-text-light);
+}
+.prose-block {
+  max-width: 65ch;
+}
+
+html[data-density="compact"] {
+  --ui-scale: 0.92;
+}
+html[data-density="comfortable"] {
+  --ui-scale: 1.08;
+}
+html {
+  font-size: calc(16px * var(--ui-scale));
+}
+
+html[data-platform="macos"] {
+  --shell-titlebar-inset: 78px;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+  --radius-continuous: 14px;
+}
+html[data-platform="windows"] {
+  --shell-titlebar-inset: 16px;
+  --font-ui: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --radius-continuous: 12px;
+  --shell-sidebar-width: 216px;
+  --shell-sidebar-row-height: 32px;
+}
+html[data-platform="linux"] {
+  --shell-titlebar-inset: 16px;
+  --font-ui: system-ui, Cantarell, Ubuntu, "Noto Sans", sans-serif;
+  --radius-continuous: 12px;
+  --shell-sidebar-width: 216px;
+  --shell-sidebar-row-height: 32px;
+}
+
+.content-stage {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-text-main) 6%, transparent);
+  color: var(--color-text-main);
+  font: var(--type-body);
+}
+
+.content-stage :where(h1) {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text-main);
+  letter-spacing: -0.025em;
+}
+
+.content-stage :where(h2, h3) {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-main);
+}
+
+.content-stage :where(p, li) {
+  color: var(--color-text-main);
+}
+
+.content-stage :where(small, .text-muted) {
+  color: var(--color-text-light);
+}
+
+.content-stage :where(a:not([class])) {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.content-stage :where(a:not([class]):hover) {
+  text-decoration: underline;
+}
+
+.text-link {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.text-link:hover {
+  text-decoration: underline;
+}
+
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--color-text-light) 28%, transparent);
+  background: color-mix(in srgb, var(--color-text-light) 30%, transparent);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--color-text-light) 44%, transparent);
+  background: color-mix(in srgb, var(--color-text-light) 50%, transparent);
   background-clip: content-box;
   border: 2px solid transparent;
+}
+
+/* Windows high-contrast accessibility themes */
+html[data-high-contrast="true"] {
+  --color-text-main: #ffffff;
+  --color-text-light: #e2e8f0;
+  --color-shell-chrome: #000000;
+  --color-shell-canvas: #0a0a0a;
+  --color-content-surface: #111111;
+  --color-surface: #1a1a1a;
+  --color-chrome-stroke: #ffffff;
+  --color-primary: #ffff00;
+  --color-primary-soft: color-mix(in srgb, #ffff00 25%, transparent);
+}
+
+html[data-platform="windows"] .transition-colors {
+  transition-timing-function: var(--motion-spring);
+}
+
+/* =========================================================================
+   Registrar design tokens — app-wide visual system.
+   Shell surfaces inherit these via mapped --color-* aliases below.
+   ========================================================================= */
+:root {
+  --registrar-ink: #1c2333;
+  --registrar-paper: #f6f4ef;
+  --registrar-surface: #ffffff;
+  --registrar-rule: #d8d4ca;
+  --registrar-accent: #a6813f;
+  --registrar-assistant-bg: #1c2333;
+
+  --font-display: "Fraunces", "Source Serif 4", Georgia, serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --registrar-radius: 6px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+}
+
+/* Light theme registrar shell mapping */
+:root,
+html[data-theme="light"] {
+  --color-shell-chrome: #edeae3;
+  --color-shell-canvas: var(--registrar-paper);
+  --color-content-surface: var(--registrar-paper);
+  --color-surface: var(--registrar-surface);
+  --color-surface-elevated: var(--registrar-surface);
+  --color-text-main: var(--registrar-ink);
+  --color-chrome-stroke: var(--registrar-rule);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --registrar-ink: #f0ede6;
+    --registrar-paper: #14161c;
+    --registrar-surface: #1c1f28;
+    --registrar-rule: #2e3340;
+    --registrar-accent: #c9a45c;
+    --registrar-assistant-bg: #0f1117;
+
+    --color-shell-chrome: #0f1117;
+    --color-shell-canvas: var(--registrar-paper);
+    --color-content-surface: var(--registrar-paper);
+    --color-surface: var(--registrar-surface);
+    --color-surface-elevated: #242833;
+    --color-text-main: var(--registrar-ink);
+    --color-chrome-stroke: var(--registrar-rule);
+  }
+}
+
+html[data-theme="dark"],
+html.dark:not([data-theme="light"]) {
+  --registrar-ink: #f0ede6;
+  --registrar-paper: #14161c;
+  --registrar-surface: #1c1f28;
+  --registrar-rule: #2e3340;
+  --registrar-accent: #c9a45c;
+  --registrar-assistant-bg: #0f1117;
+
+  --color-shell-chrome: #0f1117;
+  --color-shell-canvas: var(--registrar-paper);
+  --color-content-surface: var(--registrar-paper);
+  --color-surface: var(--registrar-surface);
+  --color-surface-elevated: #242833;
+  --color-text-main: var(--registrar-ink);
+  --color-chrome-stroke: var(--registrar-rule);
 }

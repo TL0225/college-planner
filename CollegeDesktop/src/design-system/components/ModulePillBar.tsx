@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { cn } from "../cn";
 import { pillSpring, withReduceMotion } from "../motion/springPresets";
+import { useReduceMotion } from "../motion/useReduceMotion";
 import { shell } from "../tokens";
 
 export type ModulePillItem = {
@@ -14,7 +15,7 @@ export function ModulePillBar({
   selection,
   onSelect,
   onReselect,
-  reduceMotion = false,
+  reduceMotion,
   className,
 }: {
   items: ModulePillItem[];
@@ -24,6 +25,7 @@ export function ModulePillBar({
   reduceMotion?: boolean;
   className?: string;
 }) {
+  const motionOff = useReduceMotion(reduceMotion);
   return (
     <div
       className={cn("flex w-full items-center gap-2", className)}
@@ -36,8 +38,8 @@ export function ModulePillBar({
           <motion.button
             key={item.id}
             type="button"
-            whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-            transition={withReduceMotion(reduceMotion, pillSpring)}
+            whileTap={motionOff ? undefined : { scale: 0.96 }}
+            transition={withReduceMotion(motionOff, pillSpring)}
             onClick={() => {
               if (selected) onReselect?.(item.id);
               else onSelect(item.id);
@@ -56,7 +58,7 @@ export function ModulePillBar({
                 layoutId="modulePillSelection"
                 className="absolute inset-0 bg-[var(--color-shell-selection)] shadow-[var(--shadow-pill)]"
                 style={{ borderRadius: 999 }}
-                transition={withReduceMotion(reduceMotion, pillSpring)}
+                transition={withReduceMotion(motionOff, pillSpring)}
               />
             )}
             <span className="relative z-10 inline-flex items-center gap-1.5">

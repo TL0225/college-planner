@@ -1,13 +1,14 @@
 import { motion } from "framer-motion";
 import { cn } from "../cn";
 import { withReduceMotion, standardSpring } from "../motion/springPresets";
+import { useReduceMotion } from "../motion/useReduceMotion";
 
 /** Press/hover feedback matching DesignSystemInteractiveSurface */
 export function InteractiveSurface({
   children,
   className,
   style,
-  reduceMotion = false,
+  reduceMotion,
   onClick,
   disabled,
   type = "button",
@@ -24,6 +25,7 @@ export function InteractiveSurface({
   title?: string;
   "aria-label"?: string;
 }) {
+  const motionOff = useReduceMotion(reduceMotion);
   return (
     <motion.button
       type={type}
@@ -31,9 +33,9 @@ export function InteractiveSurface({
       title={title}
       aria-label={ariaLabel}
       onClick={onClick}
-      whileHover={reduceMotion || disabled ? undefined : { scale: 1.01 }}
-      whileTap={reduceMotion || disabled ? undefined : { scale: 0.97 }}
-      transition={withReduceMotion(reduceMotion, standardSpring)}
+      whileHover={motionOff || disabled ? undefined : { scale: 1.01 }}
+      whileTap={motionOff || disabled ? undefined : { scale: 0.97 }}
+      transition={withReduceMotion(motionOff, standardSpring)}
       className={cn("origin-center", className)}
       style={style}
     >

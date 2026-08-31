@@ -1,24 +1,20 @@
+import { forwardRef } from "react";
 import { cn } from "../cn";
 
 /** Flat content stage — matches SuperAppContentSurface.swift */
-export function SuperAppContentSurface({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+export const SuperAppContentSurface = forwardRef<
+  HTMLDivElement,
+  { children: React.ReactNode; className?: string }
+>(function SuperAppContentSurface({ children, className }, ref) {
   return (
     <div
+      ref={ref}
       className={cn(
-        "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-content-surface)]",
+        "content-stage flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-shell-canvas)]",
         className,
       )}
-      style={{
-        boxShadow: "inset 1px 0 0 color-mix(in srgb, white 30%, transparent)",
-      }}
     >
       {children}
     </div>
   );
-}
+});

@@ -62,7 +62,7 @@ export function DiscoveryCompareTable({ institutionIds }: Props) {
   return (
     <AppCard title="CDS comparison">
       <div className="overflow-x-auto p-1">
-        <table className="w-full min-w-[480px] border-collapse text-[12px]">
+        <table className="w-full min-w-[480px] border-collapse text-meta">
           <thead>
             <tr className="border-b border-[var(--color-chrome-stroke)] text-left">
               <th className="px-2 py-2 font-semibold text-[var(--color-text-light)]">Name</th>
@@ -100,7 +100,7 @@ export function DiscoveryCompareTable({ institutionIds }: Props) {
           </tbody>
         </table>
       </div>
-      <p className="px-1 pb-1 text-[11px] text-[var(--color-text-light)]">
+      <p className="px-1 pb-1 text-caption">
         Loaded via Common Data Set profile for each school.
       </p>
     </AppCard>

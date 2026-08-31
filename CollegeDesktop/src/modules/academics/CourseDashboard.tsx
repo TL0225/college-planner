@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { Button, EmptyState, ModalSheet, fieldControlClass } from "@/design-system";
 import { ipc, type PlannerCourse, type Semester } from "@/lib/ipc";
+import { navigate, type NavigateTarget } from "@/lib/shellNavigate";
 import { showToast } from "@/lib/toast";
 import {
   CourseDashboardCard,
@@ -22,7 +23,6 @@ import {
   CourseDashboardSectionTitle,
   CourseDashboardTaskRow,
   CourseStatusPill,
-  courseProgressPercent,
 } from "./CourseDashboardKit";
 
 type DashboardTask = {
@@ -38,11 +38,15 @@ export function CourseDashboard({
   onOpenChange,
   course,
   semester,
+  onEditCourse,
+  onNavigate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   course: PlannerCourse | null;
   semester: Semester | null;
+  onEditCourse?: (course: PlannerCourse) => void;
+  onNavigate?: (target: NavigateTarget) => void;
 }) {
   const [notes, setNotes] = useState("");
   const [professor, setProfessor] = useState("");
@@ -61,6 +65,8 @@ export function CourseDashboard({
   const [taskFilter, setTaskFilter] = useState<"open" | "all">("open");
   const [search, setSearch] = useState("");
   const [searchActive, setSearchActive] = useState(false);
+
+  const go = onNavigate ?? navigate;
 
   const notesKey = course ? `course.notes.${course.id}` : "";
   const professorKey = course ? `course.professor.${course.code}` : "";
@@ -142,7 +148,6 @@ export function CourseDashboard({
   const semesterLabel =
     semester?.label || (semester ? `${semester.season} ${semester.year}` : "Unassigned");
   const headerSubtitle = [semesterLabel, course.code].filter(Boolean).join(" · ");
-  const progressText = courseProgressPercent(course.status);
   const syllabusSubtitle =
     vaultLinks.length > 0
       ? `${vaultLinks.length} linked file${vaultLinks.length === 1 ? "" : "s"}`
@@ -164,7 +169,7 @@ export function CourseDashboard({
 
           <div className="mt-2 flex flex-wrap items-center gap-3.5">
             {headerSubtitle ? (
-              <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text-light)]">
+              <p className="min-w-0 flex-1 truncate text-section-title text-[var(--color-text-light)]">
                 {headerSubtitle}
               </p>
             ) : (
@@ -175,12 +180,16 @@ export function CourseDashboard({
               label="Credits"
               value={course.credits.toFixed(course.credits % 1 === 0 ? 0 : 1)}
             />
-            <CourseDashboardInlineMetric label="Progress" value={progressText} />
             <button
               type="button"
               className="rounded-md p-1 text-[var(--color-primary)] hover:bg-black/5"
               aria-label="Edit course"
-              onClick={() => showToast("Course editing opens from Planner for now", "info")}
+              onClick={() => {
+                if (!onEditCourse) return;
+                onOpenChange(false);
+                onEditCourse(course);
+              }}
+              disabled={!onEditCourse}
             >
               <Pencil className="h-4 w-4" />
             </button>
@@ -207,7 +216,7 @@ export function CourseDashboard({
                   </span>
                   <div className="min-w-0">
                     <input
-                      className={`${fieldControlClass} !border-0 !bg-transparent !p-0 !shadow-none text-[13px] font-bold`}
+                      className={`${fieldControlClass} !border-0 !bg-transparent !p-0 !shadow-none text-body font-bold`}
                       value={professor}
                       onChange={(e) => setProfessor(e.target.value)}
                       placeholder="Not set"
@@ -217,7 +226,7 @@ export function CourseDashboard({
                         })
                       }
                     />
-                    <div className="mt-0.5 flex items-center gap-1 text-[12px] font-semibold text-[var(--color-text-light)]">
+                    <div className="mt-0.5 flex items-center gap-1 text-meta font-semibold">
                       <Mail className="h-3 w-3" />
                       Add email in course details
                     </div>
@@ -245,7 +254,7 @@ export function CourseDashboard({
               </div>
               <div className="relative">
                 {!notes ? (
-                  <p className="pointer-events-none absolute inset-x-1 top-1 text-[13px] text-[var(--color-text-light)] opacity-70">
+                  <p className="pointer-events-none absolute inset-x-1 top-1 text-body text-[var(--color-text-light)] opacity-70">
                     Jot down anything about this course — reminders, links, professor preferences,
                     study plans…
                   </p>
@@ -270,11 +279,19 @@ export function CourseDashboard({
                 title="Course Syllabus"
                 subtitle={syllabusSubtitle}
                 icon={<BookOpen className="h-4 w-4" />}
+                onClick={() => {
+                  onOpenChange(false);
+                  go({ hub: "library", page: `course-${course.id}`, title: course.code });
+                }}
               />
               <CourseDashboardResourceRow
                 title="Course Calendar"
                 subtitle="View course events"
                 icon={<Calendar className="h-4 w-4" />}
+                onClick={() => {
+                  onOpenChange(false);
+                  go({ hub: "life", page: "schedule", title: "Schedule" });
+                }}
               />
               <CourseDashboardResourceRow
                 title="Documents"
@@ -284,22 +301,33 @@ export function CourseDashboard({
                     : `${vaultLinks.length} linked file${vaultLinks.length === 1 ? "" : "s"}`
                 }
                 icon={<Folder className="h-4 w-4" />}
+                onClick={() => {
+                  onOpenChange(false);
+                  go({ hub: "library", page: `course-${course.id}`, title: course.code });
+                }}
               />
               <CourseDashboardResourceRow
                 title="View in Catalog"
                 subtitle={course.code}
                 icon={<Globe className="h-4 w-4" />}
+                onClick={() => {
+                  onOpenChange(false);
+                  go({ hub: "school", page: "catalog", title: "Catalog" });
+                  window.dispatchEvent(
+                    new CustomEvent("college:catalog-query", { detail: { query: course.code } }),
+                  );
+                }}
               />
               {vaultLinks.length > 0 ? (
                 <div className="space-y-2 pt-1">
-                  <div className="text-[13px] font-semibold text-[var(--color-text-light)]">
+                  <div className="text-section-title text-[var(--color-text-light)]">
                     Related documents
                   </div>
                   <ul className="space-y-1">
                     {vaultLinks.slice(0, 6).map((d) => (
                       <li
                         key={d.id}
-                        className="flex items-center gap-2 text-[13px] text-[var(--color-text-main)]"
+                        className="flex items-center gap-2 text-body"
                       >
                         <span className="text-[var(--color-text-light)]">📄</span>
                         <span className="truncate">{d.title}</span>
@@ -315,7 +343,7 @@ export function CourseDashboard({
                 <CourseDashboardSectionTitle>Grading weights</CourseDashboardSectionTitle>
                 <ul className="space-y-2">
                   {gradingCategories.slice(0, 8).map((c) => (
-                    <li key={c.id} className="flex items-center justify-between gap-3 text-[13px]">
+                    <li key={c.id} className="flex items-center justify-between gap-3 text-body">
                       <span className="truncate font-semibold text-[var(--color-text-main)]">
                         {c.name}
                       </span>
@@ -325,7 +353,7 @@ export function CourseDashboard({
                     </li>
                   ))}
                 </ul>
-                <p className="text-[12px] text-[var(--color-text-light)]">
+                <p className="text-meta">
                   Total weight {gradingWeightTotal.toFixed(1)}%
                 </p>
               </CourseDashboardCard>
@@ -336,7 +364,7 @@ export function CourseDashboard({
                 <CourseDashboardSectionTitle>Prerequisites</CourseDashboardSectionTitle>
                 <div className="flex flex-wrap gap-1.5">
                   <span
-                    className="inline-flex rounded-full px-2 py-1 text-[11px] font-semibold"
+                    className="inline-flex rounded-full px-2 py-1 text-caption font-semibold"
                     style={{
                       background: prerequisites.satisfied
                         ? "color-mix(in srgb, var(--color-success) 14%, transparent)"
@@ -351,7 +379,7 @@ export function CourseDashboard({
                   {prerequisites.missingCodes.map((code) => (
                     <span
                       key={code}
-                      className="inline-flex rounded-full px-2 py-1 text-[11px] font-semibold"
+                      className="inline-flex rounded-full px-2 py-1 text-caption font-semibold"
                       style={{
                         background: "color-mix(in srgb, var(--color-error) 14%, transparent)",
                         color: "var(--color-error)",
@@ -361,7 +389,7 @@ export function CourseDashboard({
                     </span>
                   ))}
                 </div>
-                <p className="text-[13px] text-[var(--color-text-light)]">{prerequisites.notes}</p>
+                <p className="text-body text-[var(--color-text-light)]">{prerequisites.notes}</p>
               </CourseDashboardCard>
             ) : null}
           </aside>
@@ -378,7 +406,7 @@ export function CourseDashboard({
                   <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-[color-mix(in_srgb,var(--color-text-light)_15%,transparent)] bg-[var(--color-surface)] px-3 py-2">
                     <Search className="h-4 w-4 text-[var(--color-text-light)]" />
                     <input
-                      className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+                      className="min-w-0 flex-1 bg-transparent text-body outline-none"
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search tasks & deadlines"

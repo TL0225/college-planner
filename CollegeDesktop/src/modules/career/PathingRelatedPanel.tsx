@@ -132,7 +132,7 @@ export function PathingRelatedPanel({ entryId, pathEntries, onMerged }: Props) {
   return (
     <div className="space-y-3">
       <AppCard title="Related entries">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+        <p className="mb-3 text-meta">
           Link promotions, transfers, or related roles. Merge duplicates into a canonical entry.
         </p>
         {relationships.length === 0 ? (

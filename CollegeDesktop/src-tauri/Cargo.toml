@@ -54,16 +54,48 @@ regex = "1"
 pdf-extract = "0.8"
 notify = "7"
 notify-debouncer-full = "0.4"
+zip = "2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
 core-foundation = "0.10"
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-local-authentication = "0.3"
+block2 = "0.6"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
+  "Foundation",
+  "Security_Credentials_UI",
+  "Graphics_Imaging",
+  "Media_Ocr",
+  "Storage",
+  "Storage_Streams",
+  "Data_Pdf",
   "Win32_Foundation",
   "Win32_Security_Cryptography",
+  "Win32_Graphics_Dwm",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Shell",
+  "Win32_UI_HiDpi",
+  "Win32_System_Com",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+  "Win32_System_Memory",
+  "Win32_System_Power",
+  "Win32_System_WinRT",
+  "Win32_System_DataExchange",
+  "Win32_System_Ole",
+  "Win32_Storage_FileSystem",
 ] }
+raw-window-handle = "0.6"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
 
 [features]
 default = ["custom-protocol"]

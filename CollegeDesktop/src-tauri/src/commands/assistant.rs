@@ -52,6 +52,8 @@ pub struct AssistantPendingAction {
     pub title: String,
     pub due_at: Option<String>,
     pub company: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role_title: Option<String>,
     pub start_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub semester_name: Option<String>,
@@ -97,6 +99,7 @@ pub(crate) fn pending_action(kind: &str, title: &str) -> AssistantPendingAction 
         title: title.into(),
         due_at: None,
         company: None,
+        role_title: None,
         start_at: None,
         semester_name: None,
         course_code: None,
@@ -241,6 +244,24 @@ async fn plan_tools(state: &AppState, user_msg: &str, role: &str, has_attachment
             }
             tools = merged;
         }
+    } else if state.ai.local_llm.is_installed() {
+        let top5: Vec<(String, f32)> = scored.iter().take(5).cloned().collect();
+        if let Some(refined) =
+            crate::commands::assistant_tool_registry::refine_tools_with_local_llm(
+                state, user_msg, role, &top5,
+            )
+        {
+            let mut merged = refined;
+            for (name, _) in scored.iter() {
+                if merged.len() >= 10 {
+                    break;
+                }
+                if !merged.contains(name) {
+                    merged.push(name.clone());
+                }
+            }
+            tools = merged;
+        }
     }
 
     if tools.is_empty() {
@@ -251,34 +272,11 @@ async fn plan_tools(state: &AppState, user_msg: &str, role: &str, has_attachment
 }
 
 fn exec_get_audit_summary(state: &AppState) -> CmdResult<String> {
-    let summary: AuditSummary = state.db.with_conn(|conn| {
-        let planned: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(credits), 0) FROM planner_course WHERE status != 'dropped'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap_or(0.0);
-        let completed: f64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(credits), 0) FROM planner_course WHERE status = 'completed'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap_or(0.0);
-        let semester_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM planner_semester", [], |r| r.get(0))
-            .unwrap_or(0);
-        let course_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM planner_course", [], |r| r.get(0))
-            .unwrap_or(0);
-        Ok(AuditSummary {
-            planned_credits: planned,
-            completed_credits: completed,
-            semester_count,
-            course_count,
-        })
-    })?;
+    let summary: AuditSummary = state
+        .db
+        .with_conn(|conn| {
+            crate::commands::academics::query_audit_summary(conn).map_err(Into::into)
+        })?;
     Ok(format!(
         "Audit: {} completed credits, {} planned, {} courses across {} semesters.",
         summary.completed_credits, summary.planned_credits, summary.course_count, summary.semester_count
@@ -850,21 +848,45 @@ fn detect_create_event(msg: &str) -> Option<AssistantPendingAction> {
     None
 }
 
-fn detect_create_application(msg: &str) -> Option<AssistantPendingAction> {
-    let patterns = [
+pub(crate) fn create_application_action(role_title: &str, company: &str) -> AssistantPendingAction {
+    let role = role_title.trim();
+    let company = company.trim();
+    let display_role = if role.is_empty() { "Open role" } else { role };
+    let mut action = pending_action("createApplication", display_role);
+    action.company = Some(company.to_string());
+    action.role_title = Some(display_role.to_string());
+    action
+}
+
+pub(crate) fn detect_create_application(msg: &str) -> Option<AssistantPendingAction> {
+    let role_company_patterns = [
+        r"(?i)^track (?:a )?job (.+?) at (.+)$",
+        r"(?i)^add job (.+?) at (.+)$",
+        r"(?i)^track application (?:for )?(.+?) at (.+)$",
+    ];
+    for pat in role_company_patterns {
+        if let Ok(re) = Regex::new(pat) {
+            if let Some(caps) = re.captures(msg.trim()) {
+                let role = caps.get(1)?.as_str().trim();
+                let company = caps.get(2)?.as_str().trim();
+                if !role.is_empty() && !company.is_empty() {
+                    return Some(create_application_action(role, company));
+                }
+            }
+        }
+    }
+    let company_only_patterns = [
         r"(?i)^track job at (.+)$",
         r"(?i)^track application at (.+)$",
         r"(?i)^add job at (.+)$",
         r"(?i)^track (?:a )?job (?:at|for) (.+)$",
     ];
-    for pat in patterns {
+    for pat in company_only_patterns {
         if let Ok(re) = Regex::new(pat) {
             if let Some(caps) = re.captures(msg.trim()) {
                 let company = caps.get(1)?.as_str().trim();
                 if !company.is_empty() {
-                    let mut action = pending_action("createApplication", &format!("Role at {company}"));
-                    action.company = Some(company.to_string());
-                    return Some(action);
+                    return Some(create_application_action("Open role", company));
                 }
             }
         }
@@ -986,11 +1008,12 @@ pub async fn assistant_turn(
         max_tokens: Some(768),
     };
 
+    let app_emit = app.clone();
     let chat_res = state
         .ai
-        .chat_stream_async(chat_req, |delta| {
+        .chat_stream_async(chat_req, move |delta| {
             if !check_cancelled() {
-                emit_chunk(&app, delta, false);
+                emit_chunk(&app_emit, delta, false);
             }
         })
         .await

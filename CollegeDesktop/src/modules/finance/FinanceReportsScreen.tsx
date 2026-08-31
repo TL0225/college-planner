@@ -10,9 +10,9 @@ import {
 } from "@/design-system";
 import { PathCScreenFrame } from "@/design-system";
 import {
-  CashFlowBarChart,
-  CategoryBarChart,
+  CashFlowMeter,
   CategoryDonutChart,
+  CategorySpendRows,
   NetWorthTrendChart,
   buildNetWorthTrend,
   totalsByCategory,
@@ -85,9 +85,9 @@ export function FinanceReportsScreen({
           value={reportKind}
           onChange={setReportKind}
         />
-        <input type="date" className="rounded-lg border border-[var(--color-chrome-stroke)] px-2 py-1 text-[12px]" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+        <input type="date" className="rounded-lg border border-[var(--color-chrome-stroke)] px-2 py-1 text-meta" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
         <span className="text-[var(--color-text-light)]">–</span>
-        <input type="date" className="rounded-lg border border-[var(--color-chrome-stroke)] px-2 py-1 text-[12px]" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+        <input type="date" className="rounded-lg border border-[var(--color-chrome-stroke)] px-2 py-1 text-meta" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
       </div>
 
       <AppCard title={reportTitle(reportKind)}>
@@ -96,22 +96,15 @@ export function FinanceReportsScreen({
             <EmptyState title="No spending data" body="Expense transactions in this period appear here." />
           ) : (
             <div className="space-y-3">
-              <CategoryBarChart rows={categoryRows} money={money} />
               <CategoryDonutChart rows={categoryRows} />
-              <ul className="divide-y divide-[var(--color-chrome-stroke)]">
-                {categoryRows.map(([category, spent]) => (
-                  <li key={category}>
-                    <ListRow title={category} trailing={<span className="font-semibold tabular-nums text-[var(--color-error)]">{money(spent)}</span>} />
-                  </li>
-                ))}
-              </ul>
+              <CategorySpendRows rows={categoryRows} money={money} />
             </div>
           )
         ) : null}
 
         {reportKind === "cashflow" ? (
           <div className="space-y-3">
-            <CashFlowBarChart income={totalIncome} spending={totalSpend} />
+            <CashFlowMeter income={totalIncome} spending={totalSpend} />
             <div className="grid grid-cols-3 gap-2">
               <MetricTile label="Inflow" value={money(totalIncome)} accent="var(--color-success)" />
               <MetricTile label="Outflow" value={money(totalSpend)} accent="var(--color-error)" />
@@ -153,7 +146,7 @@ export function FinanceReportsScreen({
 
       <button
         type="button"
-        className="mt-4 flex w-full items-center justify-between rounded-xl border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2 text-[13px] font-semibold text-[var(--color-text-main)]"
+        className="mt-4 flex w-full items-center justify-between rounded-xl border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2 text-section-title text-[var(--color-text-main)]"
         onClick={() => setMoreOpen((v) => !v)}
       >
         More reports

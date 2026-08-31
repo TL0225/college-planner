@@ -390,7 +390,18 @@ export function ResumeLiveBuilder({
     } catch (e) {
       const message = e instanceof Error ? e.message : formatIpcError(e);
       if (message.includes("typst not found")) {
-        showToast("Install Typst from https://typst.app if missing", "error");
+        try {
+          const install = await ipc.platformTypstEnsureDownload();
+          if (install.installed) {
+            showToast(install.message, "success");
+            const retry = await compileResumeTypstToPdf(typst);
+            if (retry === "ok") showToast("PDF compiled", "success");
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+        showToast("Install Typst from Settings or https://typst.app", "error");
       } else {
         showToast(message, "error");
       }
@@ -409,7 +420,18 @@ export function ResumeLiveBuilder({
     } catch (e) {
       const message = e instanceof Error ? e.message : formatIpcError(e);
       if (message.includes("typst not found")) {
-        showToast("Install Typst from https://typst.app if missing", "error");
+        try {
+          const install = await ipc.platformTypstEnsureDownload();
+          if (install.installed) {
+            showToast(install.message, "success");
+            const retry = await compileResumeTypstToPdf(typst);
+            if (retry === "ok") showToast("PDF compiled", "success");
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+        showToast("Install Typst from Settings or https://typst.app", "error");
       } else {
         showToast(message, "error");
       }
@@ -494,7 +516,7 @@ export function ResumeLiveBuilder({
         <Button size="sm" disabled={loadBusy} onClick={() => void loadFromProfile()}>
           {loadBusy ? "Loading…" : "Load from profile"}
         </Button>
-        <label className="flex items-center gap-2 text-[12px] text-[var(--color-text-main)]">
+        <label className="flex items-center gap-2 text-meta text-[var(--color-text-main)]">
           <input
             type="checkbox"
             checked={includeBragBook}
@@ -537,10 +559,10 @@ export function ResumeLiveBuilder({
             className="space-y-1 rounded-[10px] border border-[var(--color-chrome-stroke)] p-1.5"
             style={{ background: "var(--color-sidebar-section)" }}
           >
-            <p className="px-2 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--color-text-light)]">
+            <p className="px-2 pb-1 pt-0.5 text-label font-semibold uppercase tracking-[0.07em]">
               Sections
             </p>
-            <p className="px-2 pb-1 text-[10px] text-[var(--color-text-light)]">
+            <p className="px-2 pb-1 text-caption">
               Drag to reorder export sections
             </p>
             {sidebar.map((item) => {
@@ -576,8 +598,8 @@ export function ResumeLiveBuilder({
                   }}
                   className={
                     selected
-                      ? "flex w-full items-center justify-between rounded-[8px] px-2.5 py-2 text-left text-[12px] font-semibold text-[var(--color-text-main)]"
-                      : "flex w-full items-center justify-between rounded-[8px] px-2.5 py-2 text-left text-[12px] font-medium text-[var(--color-text-light)] hover:bg-[var(--color-row-hover)] hover:text-[var(--color-text-main)]"
+                      ? "flex w-full items-center justify-between rounded-[8px] px-2.5 py-2 text-left text-meta font-semibold text-[var(--color-text-main)]"
+                      : "flex w-full items-center justify-between rounded-[8px] px-2.5 py-2 text-left text-meta font-medium hover:bg-[var(--color-row-hover)] hover:text-[var(--color-text-main)]"
                   }
                   style={
                     selected
@@ -594,7 +616,7 @@ export function ResumeLiveBuilder({
                   }
                 >
                   <span>{item.label}</span>
-                  <span className="tabular-nums text-[10px] text-[var(--color-text-light)]">
+                  <span className="tabular-nums text-caption">
                     {count}
                   </span>
                 </button>
@@ -750,7 +772,7 @@ export function ResumeLiveBuilder({
                 {section === "experience" && (
                   <div className="space-y-3">
                     {draft.experiences.length === 0 ? (
-                      <p className="text-[12px] text-[var(--color-text-light)]">
+                      <p className="text-meta">
                         No experience entries — add some in Profile, or create one here.
                       </p>
                     ) : (
@@ -760,7 +782,7 @@ export function ResumeLiveBuilder({
                           className="space-y-2 rounded-[8px] border border-[var(--color-chrome-stroke)] p-2.5"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                            <span className="text-label font-semibold uppercase tracking-[0.05em]">
                               Entry {index + 1}
                             </span>
                             <Button
@@ -832,11 +854,11 @@ export function ResumeLiveBuilder({
                         placeholder="TypeScript, React, SQL, systems design"
                       />
                     </FormField>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                    <p className="text-label font-semibold uppercase tracking-[0.05em]">
                       Achievements
                     </p>
                     {draft.achievements.length === 0 ? (
-                      <p className="text-[12px] text-[var(--color-text-light)]">
+                      <p className="text-meta">
                         No achievements loaded from profile.
                       </p>
                     ) : (
@@ -890,7 +912,7 @@ export function ResumeLiveBuilder({
                 {section === "projects" && (
                   <div className="space-y-3">
                     {draft.projects.length === 0 ? (
-                      <p className="text-[12px] text-[var(--color-text-light)]">
+                      <p className="text-meta">
                         No projects yet — add one to include a Projects section in the export.
                       </p>
                     ) : (
@@ -900,7 +922,7 @@ export function ResumeLiveBuilder({
                           className="space-y-2 rounded-[8px] border border-[var(--color-chrome-stroke)] p-2.5"
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                            <span className="text-label font-semibold uppercase tracking-[0.05em]">
                               Project {index + 1}
                             </span>
                             <Button
@@ -960,7 +982,7 @@ export function ResumeLiveBuilder({
                 {section === "brag" && (
                   <div className="space-y-3">
                     {draft.bragEntries.length === 0 ? (
-                      <p className="text-[12px] text-[var(--color-text-light)]">
+                      <p className="text-meta">
                         No brag book entries — add wins under Career → Brag Book, then reload.
                       </p>
                     ) : (
@@ -1022,12 +1044,12 @@ export function ResumeLiveBuilder({
                 </Button>
               )}
             </div>
-            <div className="max-h-[440px] min-h-[280px] overflow-auto rounded-lg border border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] p-3 text-[13px]">
+            <div className="max-h-[440px] min-h-[280px] overflow-auto rounded-lg border border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] p-3 text-body">
               {previewMode === "markdown" ? (
                 markdown.trim() ? (
                   <SimpleMarkdown content={markdown} />
                 ) : (
-                  <p className="text-[12px] text-[var(--color-text-light)]">Nothing to preview yet.</p>
+                  <p className="text-meta">Nothing to preview yet.</p>
                 )
               ) : previewMode === "pdf" ? (
                 pdfPreviewUrl ? (
@@ -1037,21 +1059,21 @@ export function ResumeLiveBuilder({
                     className="h-[400px] w-full rounded border-0 bg-white"
                   />
                 ) : (
-                  <p className="text-[12px] text-[var(--color-text-light)]">
+                  <p className="text-meta">
                     Click Render PDF to compile Typst in-pane (requires local typst CLI).
                   </p>
                 )
               ) : typst.trim() ? (
                 <>
-                  <p className="mb-2 text-[11px] text-[var(--color-text-light)]">
+                  <p className="mb-2 text-caption">
                     Formatted Typst source — compile PDF for print layout.
                   </p>
-                  <pre className="font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[var(--color-text-main)]">
+                  <pre className="font-mono text-caption leading-relaxed whitespace-pre-wrap text-[var(--color-text-main)]">
                     {typst}
                   </pre>
                 </>
               ) : (
-                <p className="text-[12px] text-[var(--color-text-light)]">Nothing to preview yet.</p>
+                <p className="text-meta">Nothing to preview yet.</p>
               )}
             </div>
           </div>

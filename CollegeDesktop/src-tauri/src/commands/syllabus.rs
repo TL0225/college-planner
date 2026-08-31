@@ -75,6 +75,7 @@ pub struct SyllabusAnalyzeResult {
     pub raw_line_count: i64,
     pub content_hash: String,
     pub warnings: Vec<String>,
+    pub ocr_attempted: bool,
     pub extracted_text_preview: Option<String>,
     pub extracted_text: Option<String>,
     pub source_path: Option<String>,
@@ -289,6 +290,7 @@ fn analyze_lines(lines: &[&str]) -> SyllabusAnalyzeResult {
         raw_line_count: lines.len() as i64,
         content_hash: content_hash(&joined),
         warnings,
+        ocr_attempted: false,
         extracted_text_preview: if joined.len() > 2000 {
             Some(format!("{}…", &joined[..2000]))
         } else if joined.is_empty() {
@@ -321,17 +323,67 @@ pub fn syllabus_analyze_text(input: SyllabusExtractInput) -> CmdResult<SyllabusA
     Ok(analyze_text(&input.text))
 }
 
+fn try_platform_ocr(path: &str, bytes: &[u8]) -> (bool, String) {
+    #[cfg(target_os = "windows")]
+    {
+        match crate::platform::windows::ocr::ocr_pdf(path, bytes) {
+            Ok(text) => (true, text),
+            Err(e) => {
+                tracing::warn!(error = %e, "Windows PDF OCR failed");
+                (true, String::new())
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match crate::platform::macos::ocr::ocr_pdf(path) {
+            Ok(text) => (true, text),
+            Err(e) => {
+                tracing::warn!(error = %e, "macOS PDF OCR failed");
+                (true, String::new())
+            }
+        }
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = (path, bytes);
+        (false, String::new())
+    }
+}
+
 #[tauri::command]
 pub fn syllabus_analyze_pdf_path(input: SyllabusAnalyzePathInput) -> CmdResult<SyllabusAnalyzeResult> {
     let bytes = std::fs::read(&input.path)
         .map_err(|e| anyhow::anyhow!("Could not read PDF at {}: {e}", input.path))?;
-    let text = pdf_extract::extract_text_from_mem(&bytes).unwrap_or_default();
-    let mut result = analyze_text(&text);
+    let mut extracted = pdf_extract::extract_text_from_mem(&bytes).unwrap_or_default();
+    let mut ocr_attempted = false;
+
+    if extracted.trim().is_empty() {
+        let (attempted, ocr_text) = try_platform_ocr(&input.path, &bytes);
+        ocr_attempted = attempted;
+        if !ocr_text.trim().is_empty() {
+            extracted = ocr_text;
+        }
+    }
+
+    let mut result = analyze_text(&extracted);
     result.source_path = Some(input.path.clone());
-    if text.trim().is_empty() {
-        result.warnings.push(
-            "Scanned PDF — OCR not available; paste text manually.".into(),
-        );
+    result.ocr_attempted = ocr_attempted;
+
+    if ocr_attempted {
+        result.warnings.push("OCR was attempted on this scanned PDF.".into());
+    }
+
+    if extracted.trim().is_empty() {
+        if ocr_attempted {
+            result.warnings.push(
+                "Scanned PDF — OCR did not extract readable text; paste text manually.".into(),
+            );
+        } else {
+            result.warnings.push(
+                "Scanned PDF — OCR not available on this platform; paste text manually.".into(),
+            );
+        }
     } else if result.raw_line_count == 0 {
         result.warnings.push("PDF parsed but no text lines were found.".into());
     }

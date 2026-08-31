@@ -52,6 +52,7 @@ export type AuditSummary = {
   completedCredits: number;
   semesterCount: number;
   courseCount: number;
+  totalRequiredCredits?: number | null;
 };
 
 export type PipelineMetrics = {
@@ -126,6 +127,23 @@ export type AiRuntimeStatus = {
   ollamaEndpoint: boolean;
   pingOk: boolean | null;
   pingMessage: string;
+  llmInstalled: boolean;
+  llmLoaded: boolean;
+  llmDownloading: boolean;
+};
+
+export type LlmModelStatus = {
+  displayName: string;
+  fileName: string;
+  installed: boolean;
+  serverInstalled: boolean;
+  downloading: boolean;
+  downloadProgress: number;
+  bytesDownloaded: number;
+  bytesTotal: number | null;
+  modelPath: string;
+  ready: boolean;
+  message: string;
 };
 
 export type AiPingResult = {
@@ -199,15 +217,31 @@ export type SubscribeFeedResult = {
   writtenAt: string;
 };
 
+export type WebcalUrlResult = {
+  url: string;
+  httpUrl: string;
+  port: number;
+  bindMode: string;
+  localIp?: string | null;
+  lanHttpUrl?: string | null;
+  lanWebcalUrl?: string | null;
+};
+
 export const ipc = {
   getPlatformInfo: () => invoke<PlatformInfo>("get_platform_info"),
   getStoragePaths: () => invoke<StoragePaths>("get_storage_paths"),
   platformTypstAvailable: () => invoke<boolean>("platform_typst_available"),
+  platformTypstEnsureDownload: () =>
+    invoke<{ installed: boolean; path?: string | null; message: string }>(
+      "platform_typst_ensure_download",
+    ),
   platformFetchWeather: (lat: number, lon: number) =>
     invoke<{ temperatureF: number; summary: string; windMph?: number | null; source: string }>(
       "platform_fetch_weather",
       { lat, lon },
     ),
+  platformApproxLocation: () =>
+    invoke<{ lat: number; lon: number; label: string; source: string }>("platform_approx_location"),
   platformImportSwiftWorkspace: (input?: {
     swiftCollegeDb?: string;
     swiftFinanceDb?: string;
@@ -257,12 +291,14 @@ export const ipc = {
   academicsListCourses: (semesterId?: string) =>
     invoke<PlannerCourse[]>("academics_list_courses", { semesterId: semesterId ?? null }),
   academicsUpsertSemester: (input: {
+    id?: string;
     year: number;
     season: string;
     label?: string;
     isCurrent?: boolean;
   }) => invoke<string>("academics_upsert_semester", { input }),
   academicsUpsertCourse: (input: {
+    id?: string;
     semesterId: string;
     code: string;
     title: string;
@@ -376,10 +412,20 @@ export const ipc = {
     invoke<SubscribeFeedResult>("calendar_publish_subscribe_feed"),
   calendarOpenAppleCalendarFeed: () =>
     invoke<SubscribeFeedResult>("calendar_open_apple_calendar_feed"),
+  calendarGetWebcalUrl: () => invoke<WebcalUrlResult>("calendar_get_webcal_url"),
+  calendarStartFeedServer: () => invoke<number>("calendar_start_feed_server"),
+  calendarSetFeedBindMode: (mode: "localhost" | "lan") =>
+    invoke<void>("calendar_set_feed_bind_mode", { input: { mode } }),
+  calendarGetFeedBindMode: () => invoke<string>("calendar_get_feed_bind_mode"),
   calendarGeocodeLocation: (query: string) =>
     invoke<{ lat: number; lon: number; displayName: string }>("calendar_geocode_location", {
       query,
     }),
+  calendarSearchLocations: (query: string) =>
+    invoke<Array<{ lat: number; lon: number; displayName: string }>>(
+      "calendar_search_locations",
+      { query },
+    ),
   calendarOauthBegin: (provider: "google" | "outlook") =>
     invoke<{ authUrl: string; state: string; redirectUri: string }>("calendar_oauth_begin", {
       provider,
@@ -452,6 +498,8 @@ export const ipc = {
     invoke<void>("career_update_application_status", { id, status }),
   careerMoveApplication: (id: string, status: string, sortOrder?: number) =>
     invoke<void>("career_move_application", { id, status, sortOrder }),
+  careerReorderApplications: (status: string, orderedIds: string[]) =>
+    invoke<void>("career_reorder_applications", { status, orderedIds }),
   careerApplyComplete: (id: string) => invoke<void>("career_apply_complete", { id }),
   careerApplyBuildPayload: () =>
     invoke<{
@@ -1342,6 +1390,7 @@ export const ipc = {
     balance?: number;
   }) => invoke<string>("finance_upsert_account", { input }),
   financeUpsertTransaction: (input: {
+    id?: string;
     accountId: string;
     amount: number;
     payee: string;
@@ -1350,6 +1399,7 @@ export const ipc = {
     postedAt?: string;
   }) => invoke<string>("finance_upsert_transaction", { input }),
   financeUpsertBudget: (input: {
+    id?: string;
     name: string;
     category?: string;
     amount: number;
@@ -1395,6 +1445,7 @@ export const ipc = {
   financeDeleteInventoryItem: (id: string) =>
     invoke<void>("finance_delete_inventory_item", { id }),
   financeDeleteReceipt: (id: string) => invoke<void>("finance_delete_receipt", { id }),
+  financeDeleteRecurring: (id: string) => invoke<void>("finance_delete_recurring", { id }),
   financeExportTransactionsCsv: (accountId?: string) =>
     invoke<string>("finance_export_transactions_csv", { accountId: accountId ?? null }),
   financeExportTransactionsCsvPath: (path: string, accountId?: string) =>
@@ -1426,6 +1477,7 @@ export const ipc = {
     graduationYear?: number;
   }) => invoke<string>("profile_upsert_identity", { input }),
   profileUpsertExperience: (input: {
+    id?: string;
     title: string;
     organization: string;
     summary?: string;
@@ -1436,12 +1488,12 @@ export const ipc = {
     invoke<Array<{ id: string; title: string; issuer: string; notes: string }>>(
       "profile_list_achievements",
     ),
-  profileUpsertAchievement: (input: { title: string; issuer?: string; notes?: string }) =>
-    invoke<string>("profile_upsert_achievement", {
-      title: input.title,
-      issuer: input.issuer ?? null,
-      notes: input.notes ?? null,
-    }),
+  profileUpsertAchievement: (input: {
+    id?: string;
+    title: string;
+    issuer?: string;
+    notes?: string;
+  }) => invoke<string>("profile_upsert_achievement", { input }),
   profileDeleteExperience: (id: string) => invoke<void>("profile_delete_experience", { id }),
   profileDeleteAchievement: (id: string) => invoke<void>("profile_delete_achievement", { id }),
   syllabusExtractAssignments: (text: string) =>
@@ -1473,6 +1525,8 @@ export const ipc = {
     }),
   securityBiometricAvailable: () => invoke<boolean>("security_biometric_available"),
   aiRuntimeStatus: () => invoke<AiRuntimeStatus>("ai_runtime_status"),
+  aiLlmStatus: () => invoke<LlmModelStatus>("ai_llm_status"),
+  aiLlmDownload: () => invoke<LlmModelStatus>("ai_llm_download"),
   aiPing: () => invoke<AiPingResult>("ai_ping"),
   aiEmbedTexts: (texts: string[]) => invoke<number[][]>("ai_embed_texts", { texts }),
   aiChatCompletion: (messages: Array<{ role: string; content: string }>, maxTokens?: number) =>
@@ -1547,11 +1601,23 @@ export const ipc = {
       }>
     >("ai_semantic_search_vault", { query, limit: limit ?? null }),
   backupCreate: () =>
-    invoke<{ name: string; path: string; sizeBytes: number; modifiedAt: string }>("backup_create"),
+    invoke<{
+      name: string;
+      path: string;
+      sizeBytes: number;
+      modifiedAt: string;
+      includesVault: boolean;
+    }>("backup_create"),
   backupList: () =>
-    invoke<Array<{ name: string; path: string; sizeBytes: number; modifiedAt: string }>>(
-      "backup_list",
-    ),
+    invoke<
+      Array<{
+        name: string;
+        path: string;
+        sizeBytes: number;
+        modifiedAt: string;
+        includesVault: boolean;
+      }>
+    >("backup_list"),
   backupRestore: (path: string) =>
     invoke<{ pendingPath: string; safetyBackup?: string | null; needsRestart: boolean }>(
       "backup_restore",
@@ -1611,6 +1677,30 @@ export const ipc = {
     invoke<{ filledUsername: boolean; filledPassword: boolean }>("lms_portal_autofill_login", {
       portalId,
     }),
+  lmsCanvasGetConfig: () =>
+    invoke<{ baseUrl: string; connected: boolean; authMethod?: string | null }>(
+      "lms_canvas_get_config",
+    ),
+  lmsCanvasSetConfig: (input: { baseUrl: string; accessToken: string }) =>
+    invoke<void>("lms_canvas_set_config", { input }),
+  lmsCanvasOAuthSetCredentials: (input: { clientId: string; clientSecret: string }) =>
+    invoke<void>("lms_canvas_oauth_set_credentials", { input }),
+  lmsCanvasOAuthBegin: (baseUrl: string) =>
+    invoke<{ authUrl: string; state: string; redirectUri: string }>("lms_canvas_oauth_begin", {
+      baseUrl,
+    }),
+  lmsCanvasOAuthComplete: (oauthState: string) =>
+    invoke<{ baseUrl: string; connected: boolean; authMethod?: string | null }>(
+      "lms_canvas_oauth_complete",
+      { oauthState },
+    ),
+  lmsCanvasSync: () =>
+    invoke<{
+      tasksCreated: number;
+      eventsCreated: number;
+      skipped: number;
+      coursesFetched: number;
+    }>("lms_canvas_sync"),
   discoveryListInstitutions: (query?: string, limit?: number) =>
     invoke<
       Array<{
@@ -1661,6 +1751,8 @@ export const ipc = {
         hsGpaDistribution: Record<string, number>;
         earlyDecisionApplicants?: number | null;
         earlyDecisionAdmits?: number | null;
+        inStateTuition?: number | null;
+        outOfStateTuition?: number | null;
       } | null;
     }>("discovery_get_profile", { institutionId }),
   discoveryGetCds: (unitId: string) =>
@@ -1747,7 +1839,7 @@ export const ipc = {
   transferImportAssist: (input: {
     sourceSchoolId: string;
     targetSchoolId: string;
-    mode?: "fixture" | "live";
+    mode?: "fixture" | "live" | "scrape";
   }) =>
     invoke<{ imported: number; skipped: number }>("transfer_import_assist", { input }),
   calendarListFocusBlocks: () =>
@@ -1761,4 +1853,90 @@ export const ipc = {
     sortOrder?: number;
   }) => invoke<string>("calendar_upsert_focus_block", { input }),
   calendarDeleteFocusBlock: (id: string) => invoke<void>("calendar_delete_focus_block", { id }),
+
+  // Windows 11 native integrations
+  windowsGetCapabilities: () =>
+    invoke<{
+      os: string;
+      dwmMica: boolean;
+      taskbarProgress: boolean;
+      uriProtocol: boolean;
+      widgetsBoard: boolean;
+      focusSessions: boolean;
+      directml: boolean;
+      copilotNpu: boolean;
+      xamlIslands: boolean;
+      dpapi: boolean;
+      ecoQos: boolean;
+    }>("windows_get_capabilities"),
+  windowsSyncTheme: (dark: boolean) => invoke<void>("windows_sync_theme", { dark }),
+  windowsSetTaskbarProgress: (input: {
+    completed: number;
+    total: number;
+    state: string;
+  }) => invoke<void>("windows_set_taskbar_progress", { input }),
+  windowsClearTaskbarProgress: () => invoke<void>("windows_clear_taskbar_progress"),
+  windowsGetPersonalization: () =>
+    invoke<{
+      accentColor?: string | null;
+      textScalePercent: number;
+      highContrast: boolean;
+    }>("windows_get_personalization"),
+  windowsGetAiProfile: () =>
+    invoke<{
+      backend: string;
+      directmlAvailable: boolean;
+      copilotNpuAvailable: boolean;
+      npuModel?: string | null;
+    }>("windows_get_ai_profile"),
+  windowsStartFocusSession: (durationMinutes: number) =>
+    invoke<{ supported: boolean; active: boolean; message: string }>(
+      "windows_start_focus_session",
+      { durationMinutes },
+    ),
+  windowsEndFocusSession: () =>
+    invoke<{ supported: boolean; active: boolean; message: string }>("windows_end_focus_session"),
+  windowsGetFocusStatus: () =>
+    invoke<{ supported: boolean; active: boolean; message: string }>("windows_get_focus_status"),
+  windowsBuildWidgetFeeds: (input: {
+    agenda?: unknown;
+    gpa?: unknown;
+    pipeline?: unknown;
+  }) =>
+    invoke<{
+      providerRegistered: boolean;
+      feeds: Array<{
+        id: string;
+        title: string;
+        template: string;
+        data: unknown;
+      }>;
+    }>("windows_build_widget_feeds", { input }),
+  windowsSyncSearchIndex: (
+    entries: Array<{
+      id: string;
+      title: string;
+      path: string;
+      category?: string;
+      updatedAt?: string;
+    }>,
+  ) =>
+    invoke<{ indexedPaths: number; catalogFile: string }>("windows_sync_search_index", {
+      entries,
+    }),
+  windowsShareFile: (path: string) => invoke<void>("windows_share_file", { path }),
+  windowsCopyRichText: (input: { plain: string; html?: string | null }) =>
+    invoke<void>("windows_copy_rich_text", { input }),
+  windowsGetInkingCapability: () =>
+    invoke<{
+      xamlIslandsAvailable: boolean;
+      inkCanvasSupported: boolean;
+      mediaPlayerSupported: boolean;
+      message: string;
+    }>("windows_get_inking_capability"),
+  windowsSetEfficiencyMode: (enabled: boolean) =>
+    invoke<void>("windows_set_efficiency_mode", { enabled }),
+  windowsBatterySaverActive: () => invoke<boolean>("windows_battery_saver_active"),
+  windowsRefreshShellIntegration: () => invoke<void>("windows_refresh_shell_integration"),
+  windowsMmapFileSize: (path: string) => invoke<number>("windows_mmap_file_size", { path }),
 };

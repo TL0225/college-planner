@@ -1,9 +1,9 @@
 import type { DragEvent, ReactNode } from "react";
 import {
-  EmptyState,
+  GuidedEmptyState,
+  HumanStatusChip,
   MetricTile,
   ProgressBar,
-  StatusChip,
 } from "@/design-system";
 import { FlatSectionTitle, PathCScreenFrame } from "@/design-system";
 import type { AuditSummary, GpaSummary } from "@/lib/ipc";
@@ -32,6 +32,7 @@ export function DegreeRequirementsScreen({
   onCreditsClick,
   onGpaClick,
   onProgramChanged,
+  courseCreditsByCode,
   requirementDragChip,
 }: {
   audit: {
@@ -50,6 +51,7 @@ export function DegreeRequirementsScreen({
   onCreditsClick: () => void;
   onGpaClick: () => void;
   onProgramChanged: () => void;
+  courseCreditsByCode?: Map<string, number>;
   requirementDragChip: (payload: PlannerDragPayload) => ReactNode;
 }) {
   return (
@@ -78,7 +80,7 @@ export function DegreeRequirementsScreen({
             boxShadow: "inset 0 1px 0 color-mix(in srgb, white 35%, transparent)",
           }}
         >
-          <div className="mb-2 flex items-center justify-between text-[11px] text-[var(--color-text-light)]">
+          <div className="mb-2 flex items-center justify-between text-caption">
             <FlatSectionTitle accent="var(--color-text-light)">Degree progress</FlatSectionTitle>
             <span className="tabular-nums">
               {audit.satisfiedCount}/{audit.totalCount} sections
@@ -92,9 +94,10 @@ export function DegreeRequirementsScreen({
         <FlatSectionTitle>Requirements breakdown</FlatSectionTitle>
         {!audit || audit.items.length === 0 ? (
           <div className="mt-3">
-            <EmptyState
+            <GuidedEmptyState
               title="No requirements loaded"
-              body="Load sample data from Settings to seed a CS major audit, or ingest catalog requirements."
+              subtitle="Try demo data to see a sample degree audit, or add your program from the catalog."
+              showDemoSeed
             />
           </div>
         ) : (
@@ -147,10 +150,10 @@ export function DegreeRequirementsScreen({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-text-main)]">
+                      <div className="text-section-title tracking-[-0.01em]">
                         {item.sectionTitle}
                       </div>
-                      <div className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                      <div className="mt-0.5 text-caption">
                         {item.matchedCodes.length > 0 && <span>Matched {item.matchedCodes.join(", ")}. </span>}
                         {item.missingCodes.length > 0 && <span>Missing {item.missingCodes.join(", ")}. </span>}
                         {item.creditsRequired != null && (
@@ -160,18 +163,29 @@ export function DegreeRequirementsScreen({
                         )}
                       </div>
                     </div>
-                    <StatusChip title={item.status.replace("_", " ")} tint={tint} filled />
+                    <HumanStatusChip value={item.status} tint={tint} filled />
                   </div>
                   <ProgressBar value={ratio} tint={tint} className="mt-2.5" />
                   {acceptsFulfillment ? (
-                    <p className="mt-2 text-[10px] text-[var(--color-text-light)]">
+                    <p className="mt-2 text-label">
                       Drop a course code here to manually fulfill this section.
                     </p>
                   ) : null}
                   {item.missingCodes.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {item.missingCodes.map((code) =>
-                        requirementDragChip({ code, title: code, credits: 3, source: "requirement" }),
+                        requirementDragChip({
+                          code,
+                          title: code,
+                          credits:
+                            courseCreditsByCode?.get(code.trim().toUpperCase()) ??
+                            (item.creditsRequired != null &&
+                            item.creditsRequired > 0 &&
+                            item.missingCodes.length > 0
+                              ? item.creditsRequired / item.missingCodes.length
+                              : 3),
+                          source: "requirement",
+                        }),
                       )}
                     </div>
                   ) : null}
@@ -192,7 +206,7 @@ export function DegreeRequirementsScreen({
               <button
                 key={item.id}
                 type="button"
-                className="rounded-full border border-[var(--color-chrome-stroke)] px-2.5 py-1 text-[11px] font-medium"
+                className="rounded-full border border-[var(--color-chrome-stroke)] px-2.5 py-1 text-caption font-medium"
                 onClick={() => document.getElementById(`req-section-${item.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
               >
                 {item.sectionTitle}

@@ -28,6 +28,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Require signing secrets on release tags
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: |
+          missing=0
+          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then echo "Missing TAURI_SIGNING_PRIVATE_KEY"; missing=1; fi
+          if [ "${{ matrix.os_name }}" = "macos" ]; then
+            if [ -z "${{ secrets.APPLE_CERTIFICATE }}" ]; then echo "Missing APPLE_CERTIFICATE"; missing=1; fi
+            if [ -z "${{ secrets.APPLE_ID }}" ]; then echo "Missing APPLE_ID"; missing=1; fi
+            if [ -z "${{ secrets.APPLE_TEAM_ID }}" ]; then echo "Missing APPLE_TEAM_ID"; missing=1; fi
+          fi
+          if [ "${{ matrix.os_name }}" = "windows" ]; then
+            if [ -z "${{ secrets.WINDOWS_CERTIFICATE }}" ]; then echo "Missing WINDOWS_CERTIFICATE"; missing=1; fi
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo "Production desktop-v* releases require signing secrets. Refusing unsigned ship."
+            exit 1
+          fi
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -43,9 +62,14 @@ jobs:
         with:
           workspaces: CollegeDesktop/src-tauri -> target
 
-      - name: Install Linux deps (noop on mac/win)
-        if: false
-        run: echo skip
+      - name: Verify bundled AI models
+        working-directory: CollegeDesktop/src-tauri
+        shell: bash
+        run: |
+          test -f resources/models/embed-384.clm || cargo build -q
+          test -f resources/models/embed-384.clm
+          test -f resources/models/parse-instruct.clm
+          test -f resources/models/MANIFEST.sha256
 
       - name: Install frontend dependencies
         working-directory: CollegeDesktop
@@ -55,7 +79,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Signing/notarization — set repo secrets to enable; unset = unsigned draft artifacts.
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -71,7 +94,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: College ${{ github.ref_name }}
           releaseBody: |
-            Single-codebase College desktop release (macOS + Windows).
+            Production College desktop (Windows 11 + macOS Tahoe).
+            Bundled on-device AI models included. Single portable College.sqlite.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

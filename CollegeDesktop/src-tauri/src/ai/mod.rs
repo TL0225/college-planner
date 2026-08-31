@@ -1,19 +1,27 @@
-//! Unified AI runtime — OpenAI-compatible remote endpoint with hash-stub fallback.
+//! Unified AI runtime — on-device Gemma 4 E4B LLM + bundled embedding models.
 
+mod bundled;
+mod local_llm;
 mod onnx_stub;
 pub mod openai_compat;
 mod traits;
 
+pub use bundled::{ensure_models, resource_models_dir, EMBED_DIMS, EMBED_NAME, INSTRUCT_NAME};
+pub use local_llm::{LocalLlm, LlmModelStatus, LLM_DISPLAY_NAME, LLM_FILE_NAME};
+
 use crate::db::AppDb;
 use crate::paths::AppPaths;
+use crate::platform;
 use anyhow::Result;
-use onnx_stub::{local_model_ready, onnx_local_embed, onnx_path_configured, resolve_local_model_file};
-use openai_compat::{hash_stub_chat, AiSettings, PingResult, DEFAULT_BASE_URL, DEFAULT_MODEL};
+use bundled::ClmModel;
+use openai_compat::{AiSettings, PingResult};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tauri::AppHandle;
 use traits::{LocalInferenceEngine, TextEmbeddingEngine};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,14 +36,13 @@ pub struct AiRuntimeStatus {
     pub onnx_path_configured: bool,
     pub model_dir: String,
     pub device: String,
-    /// Configured OpenAI-compatible base URL (Ollama default: http://127.0.0.1:11434/v1).
     pub endpoint_url: String,
-    /// True when the endpoint looks like a local Ollama server.
     pub ollama_endpoint: bool,
-    /// Result of the most recent ping (Settings → Test connection or status refresh).
     pub ping_ok: Option<bool>,
-    /// Human-readable connection detail for Settings / cutover checklist.
     pub ping_message: String,
+    pub llm_installed: bool,
+    pub llm_loaded: bool,
+    pub llm_downloading: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,24 +93,46 @@ impl HealthCache {
 
 pub struct AiRuntime {
     db: Arc<AppDb>,
-    fallback: PortableFallbackRuntime,
+    embed_model: ClmModel,
     model_dir: std::path::PathBuf,
+    device: String,
     health: Mutex<HealthCache>,
+    fallback: PortableFallbackRuntime,
+    pub local_llm: Arc<LocalLlm>,
 }
 
 impl AiRuntime {
     pub fn new(paths: Arc<AppPaths>, db: Arc<AppDb>) -> Result<Self> {
         std::fs::create_dir_all(&paths.models_dir)?;
+        let resource = resource_models_dir();
+        ensure_models(paths.models_dir.as_path(), resource.as_deref())?;
+        let embed_model = ClmModel::load(&paths.models_dir.join(EMBED_NAME))?;
+        let local_llm = Arc::new(LocalLlm::new(&paths.models_dir));
+        local_llm.ensure_from_resources(resource.as_deref())?;
+        let device = platform::ai_device_backend().to_string();
         tracing::info!(
             path = %paths.models_dir.display(),
-            "AI runtime initialized (OpenAI-compatible primary, hash-stub fallback)"
+            device = %device,
+            llm_installed = local_llm.is_installed(),
+            "AI runtime initialized (Gemma 4 E4B + bundled embeddings)"
         );
         Ok(Self {
             db,
-            fallback: PortableFallbackRuntime::new(),
+            embed_model,
             model_dir: paths.models_dir.clone(),
+            device,
             health: Mutex::new(HealthCache::new()),
+            fallback: PortableFallbackRuntime::new(),
+            local_llm,
         })
+    }
+
+    pub fn llm_status(&self) -> LlmModelStatus {
+        self.local_llm.status()
+    }
+
+    pub async fn ensure_llm_download(&self, app: AppHandle) -> Result<()> {
+        self.local_llm.download_if_needed(app).await
     }
 
     fn load_settings_map(&self) -> Result<HashMap<String, String>> {
@@ -121,121 +150,127 @@ impl AiRuntime {
     }
 
     pub fn status(&self) -> AiRuntimeStatus {
-        let settings = self.settings().unwrap_or_else(|_| AiSettings {
-            base_url: DEFAULT_BASE_URL.into(),
-            api_key: None,
-            model: DEFAULT_MODEL.into(),
-            onnx_model_path: None,
-        });
-        let endpoint_url = settings.base_url.trim().to_string();
-        let endpoint_configured = settings.endpoint_configured();
-        let ollama_endpoint = endpoint_url.contains("11434")
-            || endpoint_url.contains("ollama")
-            || endpoint_url.eq_ignore_ascii_case(DEFAULT_BASE_URL);
+        let llm_installed = self.local_llm.is_installed();
+        let llm_loaded = self.local_llm.is_loaded();
+        let llm_downloading = self.local_llm.is_downloading();
+        let backend = format!("local-{}", self.device);
         let health = self.health.lock();
         let health_fresh = health.is_fresh();
-        let health_ok = health_fresh && health.ok;
-        let ping_ok = if health_fresh {
-            Some(health.ok)
+        let llm_ready = llm_loaded || llm_installed;
+
+        let ping_message = if llm_loaded {
+            format!("{LLM_DISPLAY_NAME} loaded on {} (offline)", self.device)
+        } else if llm_downloading {
+            format!("Downloading {LLM_DISPLAY_NAME}…")
+        } else if llm_installed {
+            format!("{LLM_DISPLAY_NAME} installed — loads on first chat")
         } else {
-            None
+            format!("{LLM_DISPLAY_NAME} not installed — download from Settings → Assistant")
         };
-        let ping_message = if !endpoint_configured {
-            "No AI base URL configured — using hash-stub fallback.".into()
-        } else if health_fresh {
-            if health.ok {
-                if ollama_endpoint {
-                    format!("Ollama reachable at {endpoint_url}")
-                } else {
-                    format!("OpenAI-compatible endpoint reachable at {endpoint_url}")
-                }
-            } else if ollama_endpoint {
-                format!(
-                    "Ollama not responding at {endpoint_url} — start with `ollama serve` or check Settings → Test connection"
-                )
-            } else {
-                format!(
-                    "Cannot reach {endpoint_url} — assistant falls back to hash-stub until ping succeeds"
-                )
-            }
-        } else if ollama_endpoint {
-            format!(
-                "Ollama configured at {endpoint_url} — use Settings → Test connection to verify"
-            )
-        } else {
-            format!(
-                "Endpoint configured at {endpoint_url} — use Settings → Test connection to verify"
-            )
-        };
-        let local_ready = local_model_ready(settings.onnx_model_path.as_deref(), &self.model_dir);
-        let llm_ready = health_ok || endpoint_configured || local_ready;
-        let embeddings_ready = llm_ready;
-        let backend = if endpoint_configured {
-            "openai-compat".into()
-        } else if local_ready {
-            "onnx-local".into()
-        } else {
-            "hash-stub".into()
-        };
-        let embeddings_backend = if endpoint_configured {
-            "openai-compat".into()
-        } else if local_ready {
-            "onnx-local".into()
-        } else {
-            "hash".into()
-        };
+
         AiRuntimeStatus {
-            backend,
-            embeddings_backend,
-            embeddings_ready,
+            backend: backend.clone(),
+            embeddings_backend: format!("bundled-{}", EMBED_NAME),
+            embeddings_ready: true,
             llm_ready,
-            model: settings.model,
-            endpoint_configured,
-            onnx_path_configured: onnx_path_configured(settings.onnx_model_path.as_deref())
-                || local_ready,
-            model_dir: self.model_dir.display().to_string(),
-            device: if endpoint_configured {
-                "Remote".into()
+            model: if llm_installed {
+                LLM_DISPLAY_NAME.into()
             } else {
-                "CPU".into()
+                LLM_DISPLAY_NAME.into()
             },
-            endpoint_url,
-            ollama_endpoint,
-            ping_ok,
+            endpoint_configured: false,
+            onnx_path_configured: llm_installed,
+            model_dir: self.model_dir.display().to_string(),
+            device: self.device.clone(),
+            endpoint_url: String::new(),
+            ollama_endpoint: false,
+            ping_ok: if health_fresh {
+                Some(health.ok)
+            } else {
+                Some(llm_installed)
+            },
             ping_message,
+            llm_installed,
+            llm_loaded,
+            llm_downloading,
         }
     }
 
     pub async fn ping(&self) -> Result<PingResult> {
-        let settings = self.settings()?;
-        let result = openai_compat::ping(&settings).await;
-        self.health.lock().record(result.ok);
-        Ok(result)
+        let llm_installed = self.local_llm.is_installed();
+        let embed_ok = self.model_dir.join(EMBED_NAME).is_file();
+        let ok = embed_ok && llm_installed;
+        self.health.lock().record(ok);
+        Ok(PingResult {
+            ok,
+            message: if llm_installed {
+                format!("{LLM_DISPLAY_NAME} ready ({})", self.device)
+            } else if embed_ok {
+                format!("Embeddings ready — {LLM_DISPLAY_NAME} needs download (~4.3 GB)")
+            } else {
+                "AI models missing — reinstall the app".into()
+            },
+            model: Some(LLM_DISPLAY_NAME.into()),
+        })
+    }
+
+    fn cached_embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        let mut out = Vec::with_capacity(texts.len());
+        for text in texts {
+            let mut hasher = Sha256::new();
+            hasher.update(EMBED_NAME.as_bytes());
+            hasher.update(text.as_bytes());
+            let hash = hex::encode(hasher.finalize());
+            let cached: Option<String> = self.db.with_conn(|conn| {
+                use rusqlite::OptionalExtension;
+                conn.query_row(
+                    "SELECT vector_json FROM ai_embed_cache WHERE content_hash = ?1 AND model_tag = ?2",
+                    rusqlite::params![hash, EMBED_NAME],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(Into::into)
+            })?;
+            if let Some(json) = cached {
+                if let Ok(v) = serde_json::from_str::<Vec<f32>>(&json) {
+                    out.push(v);
+                    continue;
+                }
+            }
+            let vec = self
+                .embed_model
+                .embed_texts(std::slice::from_ref(text))
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| PortableFallbackRuntime::hash_embed(text, EMBED_DIMS));
+            let json = serde_json::to_string(&vec)?;
+            let now = chrono::Utc::now().to_rfc3339();
+            let _ = self.db.with_conn(|conn| {
+                conn.execute(
+                    "INSERT INTO ai_embed_cache (content_hash, model_tag, dims, vector_json, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)
+                     ON CONFLICT(content_hash) DO UPDATE SET
+                       vector_json = excluded.vector_json,
+                       updated_at = excluded.updated_at,
+                       dims = excluded.dims,
+                       model_tag = excluded.model_tag",
+                    rusqlite::params![hash, EMBED_NAME, EMBED_DIMS as i64, json, now],
+                )?;
+                Ok(())
+            });
+            out.push(vec);
+        }
+        Ok(out)
     }
 
     pub fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        let settings = self.settings()?;
-        if settings.endpoint_configured() {
-            match tauri::async_runtime::block_on(openai_compat::embeddings(&settings, texts)) {
-                Ok(vecs) => {
-                    self.health.lock().record(true);
-                    return Ok(vecs);
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "OpenAI-compatible embeddings failed; trying local ONNX path");
-                    self.health.lock().record(false);
-                }
+        match self.cached_embed(texts) {
+            Ok(v) => Ok(v),
+            Err(e) => {
+                tracing::warn!(error = %e, "embed cache path failed; using model directly");
+                Ok(self.embed_model.embed_texts(texts))
             }
         }
-        if let Some(path) =
-            resolve_local_model_file(settings.onnx_model_path.as_deref(), &self.model_dir)
-        {
-            if let Some(vecs) = onnx_local_embed(&path, texts, 384) {
-                tracing::debug!(path = %path.display(), "Using onnx-local embeddings");
-                return Ok(vecs);
-            }
-        }
-        self.fallback.embed(texts)
     }
 
     pub async fn chat_async(&self, req: ChatCompletionRequest) -> Result<ChatCompletionResponse> {
@@ -248,66 +283,86 @@ impl AiRuntime {
         mut on_chunk: F,
     ) -> Result<ChatCompletionResponse>
     where
-        F: FnMut(&str),
+        F: FnMut(&str) + Send + 'static,
     {
-        let settings = self.settings()?;
-        let max_tokens = req.max_tokens.unwrap_or(512);
+        let max_tokens = req.max_tokens.unwrap_or(768);
+        let fallback = self.fallback.clone();
+        let device = self.device.clone();
+        let on_chunk = Arc::new(Mutex::new(on_chunk));
 
-        if settings.endpoint_configured() {
-            match openai_compat::chat_completion_stream(
-                &settings,
-                &req.messages,
-                max_tokens,
-                &mut on_chunk,
-            )
-            .await
-            {
-                Ok(content) => {
+        if self.local_llm.is_installed() && self.local_llm.is_server_installed() {
+            let on_chunk_cb = Arc::clone(&on_chunk);
+            let result = self
+                .local_llm
+                .chat_stream(
+                    &req.messages,
+                    max_tokens,
+                    move |piece| {
+                        on_chunk_cb.lock()(piece);
+                    },
+                )
+                .await;
+
+            match result {
+                Ok(content) if !content.trim().is_empty() => {
                     self.health.lock().record(true);
                     return Ok(ChatCompletionResponse {
                         content,
-                        backend: "openai-compat-stream".into(),
+                        backend: format!("local-llm-{device}"),
+                    });
+                }
+                Ok(content) => {
+                    tracing::warn!("LLM returned empty response; using fallback");
+                    let fb = fallback.complete(&req.messages, max_tokens)?;
+                    self.health.lock().record(true);
+                    return Ok(ChatCompletionResponse {
+                        content: if content.is_empty() { fb } else { content },
+                        backend: format!("local-llm-fallback-{device}"),
                     });
                 }
                 Err(e) => {
-                    tracing::warn!(error = %e, "OpenAI-compatible stream failed; trying non-stream");
-                    match openai_compat::chat_completion(&settings, &req.messages, max_tokens).await
-                    {
-                        Ok(content) => {
-                            self.health.lock().record(true);
-                            for chunk in openai_compat::chunk_text(&content, 48) {
-                                on_chunk(&chunk);
-                            }
-                            return Ok(ChatCompletionResponse {
-                                content,
-                                backend: "openai-compat".into(),
-                            });
-                        }
-                        Err(e2) => {
-                            tracing::warn!(error = %e2, "OpenAI-compatible chat failed; using hash-stub fallback");
-                            self.health.lock().record(false);
-                        }
-                    }
+                    tracing::warn!(error = %e, "LLM inference failed; using fallback");
                 }
             }
         }
 
-        let content = hash_stub_chat(&req.messages, max_tokens)?;
+        // No LLM installed or inference failed.
+        let content = if !self.local_llm.is_installed() || !self.local_llm.is_server_installed() {
+            format!(
+                "I'd love to help with that, but {LLM_DISPLAY_NAME} isn't installed yet.\n\n\
+                 Open **Settings → Assistant** to download the on-device model (~4.3 GB), then ask again."
+            )
+        } else {
+            fallback.complete(&req.messages, max_tokens)?
+        };
         for chunk in openai_compat::chunk_text(&content, 48) {
-            on_chunk(&chunk);
+            on_chunk.lock()(&chunk);
         }
+        self.health.lock().record(true);
         Ok(ChatCompletionResponse {
             content,
-            backend: "hash-stub".into(),
+            backend: format!("local-fallback-{device}"),
         })
     }
 
     pub fn chat(&self, req: ChatCompletionRequest) -> Result<ChatCompletionResponse> {
         tauri::async_runtime::block_on(self.chat_async(req))
     }
+
+    /// Synchronous completion for tool planning (no streaming).
+    pub fn complete_sync(&self, messages: &[ChatMessage], max_tokens: u32) -> Result<String> {
+        if self.local_llm.is_installed() && self.local_llm.is_server_installed() {
+            match tauri::async_runtime::block_on(self.local_llm.chat(messages, max_tokens)) {
+                Ok(content) if !content.trim().is_empty() => return Ok(content),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "sync LLM complete failed"),
+            }
+        }
+        self.fallback.complete(messages, max_tokens)
+    }
 }
 
-/// Deterministic portable embeddings used when the remote endpoint is unreachable.
+/// Deterministic portable embeddings / chat used as secondary fallback.
 #[derive(Clone)]
 pub struct PortableFallbackRuntime;
 
@@ -317,7 +372,6 @@ impl PortableFallbackRuntime {
     }
 
     pub fn hash_embed(text: &str, dims: usize) -> Vec<f32> {
-        use sha2::{Digest, Sha256};
         let mut out = vec![0f32; dims];
         let digest = Sha256::digest(text.as_bytes());
         for (i, slot) in out.iter_mut().enumerate() {
@@ -338,7 +392,10 @@ impl TextEmbeddingEngine for PortableFallbackRuntime {
     }
 
     fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
-        Ok(texts.iter().map(|t| Self::hash_embed(t, 384)).collect())
+        Ok(texts
+            .iter()
+            .map(|t| Self::hash_embed(t, EMBED_DIMS))
+            .collect())
     }
 }
 

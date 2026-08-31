@@ -31,6 +31,8 @@ export type DiscoveryCdsSnapshot = {
   hsGpaDistribution: Record<string, number>;
   earlyDecisionApplicants?: number | null;
   earlyDecisionAdmits?: number | null;
+  inStateTuition?: number | null;
+  outOfStateTuition?: number | null;
 };
 
 export type DiscoveryProfile = {
@@ -88,6 +90,18 @@ export function outcomesCoverage(cds?: DiscoveryCdsSnapshot | null): CoverageSta
 
 export function satEbrwMid50(cds?: DiscoveryCdsSnapshot | null): string {
   return formatRange(cds?.satEbrw25, cds?.satEbrw75);
+}
+
+/** Prefer in-state tuition when CDS cost fields are present. */
+export function schoolTuitionUsd(cds?: DiscoveryCdsSnapshot | null): number | null {
+  if (!cds) return null;
+  if (cds.inStateTuition != null && !Number.isNaN(cds.inStateTuition)) {
+    return cds.inStateTuition;
+  }
+  if (cds.outOfStateTuition != null && !Number.isNaN(cds.outOfStateTuition)) {
+    return cds.outOfStateTuition;
+  }
+  return null;
 }
 
 export function buildCompareMarkdown(profiles: DiscoveryProfile[]): string {

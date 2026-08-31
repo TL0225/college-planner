@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { sheetMetrics, radius } from "../tokens";
 import { sheetTransition, withReduceMotion } from "../motion/springPresets";
+import { useReduceMotion } from "../motion/useReduceMotion";
 import { cn } from "../cn";
 
 export function ModalSheet({
@@ -11,7 +12,7 @@ export function ModalSheet({
   title,
   children,
   width = sheetMetrics.widthDefault,
-  reduceMotion = false,
+  reduceMotion,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -20,6 +21,7 @@ export function ModalSheet({
   width?: number;
   reduceMotion?: boolean;
 }) {
+  const motionOff = useReduceMotion(reduceMotion);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -32,7 +34,7 @@ export function ModalSheet({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                transition={withReduceMotion(reduceMotion, sheetTransition)}
+                transition={withReduceMotion(motionOff, sheetTransition)}
               />
             </Dialog.Overlay>
             <Dialog.Content asChild>
@@ -50,10 +52,13 @@ export function ModalSheet({
                 initial={{ opacity: 0, scale: 0.97, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.98, y: 6 }}
-                transition={withReduceMotion(reduceMotion, sheetTransition)}
+                transition={withReduceMotion(motionOff, sheetTransition)}
               >
                 <div className="flex items-center justify-between border-b border-[var(--color-chrome-stroke)] px-5 py-3">
-                  <Dialog.Title className="text-[15px] font-semibold text-[var(--color-text-main)]">
+                  <Dialog.Title
+                    className="text-section-title font-semibold text-[var(--color-text-main)]"
+                    style={{ fontSize: 15 }}
+                  >
                     {title}
                   </Dialog.Title>
                   <Dialog.Close

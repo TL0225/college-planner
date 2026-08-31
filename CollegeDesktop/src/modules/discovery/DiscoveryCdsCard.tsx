@@ -13,8 +13,8 @@ import {
 function FactRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1">
-      <span className="text-[12px] text-[var(--color-text-light)]">{label}</span>
-      <span className="text-[12px] font-medium tabular-nums text-[var(--color-text-main)]">
+      <span className="text-meta">{label}</span>
+      <span className="text-meta font-medium tabular-nums text-[var(--color-text-main)]">
         {value}
       </span>
     </div>
@@ -27,7 +27,7 @@ export function DiscoveryCdsCard({ cds }: { cds: DiscoveryCdsSnapshot }) {
   return (
     <AppCard title="CDS class profile">
       <div className="space-y-3 p-1">
-        <p className="text-[11px] leading-relaxed text-[var(--color-text-light)]">
+        <p className="text-caption leading-relaxed text-[var(--color-text-light)]">
           Common Data Set [{academicYearLabel(cds.academicYear)}] — official institution
           publication.
         </p>
@@ -81,7 +81,7 @@ export function DiscoveryCdsCard({ cds }: { cds: DiscoveryCdsSnapshot }) {
 
         {factors.length > 0 && (
           <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+            <p className="mb-2 text-label font-medium uppercase tracking-[0.05em]">
               Factor highlights
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -93,14 +93,14 @@ export function DiscoveryCdsCard({ cds }: { cds: DiscoveryCdsSnapshot }) {
         )}
 
         {cds.testPolicyNote ? (
-          <p className="text-[11px] leading-relaxed text-[var(--color-text-light)]">
+          <p className="text-caption leading-relaxed text-[var(--color-text-light)]">
             {cds.testPolicyNote}
           </p>
         ) : null}
 
         {(cds.earlyDecisionApplicants != null || cds.earlyDecisionAdmits != null) && (
           <div className="rounded-lg border border-[var(--color-chrome-stroke)] px-3 py-2">
-            <p className="mb-1 text-[11px] font-medium text-[var(--color-text-main)]">
+            <p className="mb-1 text-caption font-medium text-[var(--color-text-main)]">
               Early decision
             </p>
             {cds.earlyDecisionApplicants != null && (

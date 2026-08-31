@@ -83,7 +83,7 @@ export function PathingRoleExpectationsPanel({ entryId }: Props) {
   if (!loaded) {
     return (
       <AppCard title="Expectations">
-        <p className="text-[12px] text-[var(--color-text-light)]">Loading…</p>
+        <p className="text-meta">Loading…</p>
       </AppCard>
     );
   }
@@ -91,7 +91,7 @@ export function PathingRoleExpectationsPanel({ entryId }: Props) {
   return (
     <div className="space-y-3">
       <AppCard title="Expectations">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+        <p className="mb-3 text-meta">
           Capture what you expect from this role — responsibilities, support, and check-in notes.
         </p>
         <FormField label="Summary">
@@ -105,7 +105,7 @@ export function PathingRoleExpectationsPanel({ entryId }: Props) {
         </FormField>
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] font-medium text-[var(--color-text-main)]">
+            <span className="text-meta font-medium text-[var(--color-text-main)]">
               Expectation boxes
             </span>
             <Button size="sm" variant="secondary" onClick={() => setBoxes((prev) => [...prev, newBox()])}>

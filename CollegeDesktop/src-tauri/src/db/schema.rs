@@ -948,6 +948,33 @@ const MIGRATIONS: &[(&str, &str)] = &[
         );
         "#,
     ),
+    (
+        "036_portable_ai_cache",
+        r#"
+        CREATE TABLE IF NOT EXISTS ai_embed_cache (
+            content_hash TEXT PRIMARY KEY NOT NULL,
+            model_tag TEXT NOT NULL,
+            dims INTEGER NOT NULL,
+            vector_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_embed_cache_model
+            ON ai_embed_cache(model_tag, updated_at);
+
+        CREATE TABLE IF NOT EXISTS app_ui_prefs (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL DEFAULT ''
+        );
+        "#,
+    ),
+    (
+        "037_career_brag_path_entry",
+        r#"
+        ALTER TABLE career_brag_entry ADD COLUMN path_entry_id TEXT;
+        CREATE INDEX IF NOT EXISTS idx_career_brag_path_entry
+            ON career_brag_entry(path_entry_id);
+        "#,
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<()> {

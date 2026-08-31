@@ -165,63 +165,59 @@ async fn discovery_federal_sync_stub() {
 }
 
 fn link_calendar_events(app: &AppHandle, state: &AppState) {
-    let events: Vec<(String, String)> = match state.db.with_conn(|conn| {
+    use std::collections::HashMap;
+
+    let result = state.db.with_conn(|conn| {
+        let mut course_by_code: HashMap<String, (String, String)> = HashMap::new();
+        {
+            let mut stmt =
+                conn.prepare("SELECT id, semester_id, UPPER(code) FROM planner_course")?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(2)?,
+                    (r.get::<_, String>(0)?, r.get::<_, String>(1)?),
+                ))
+            })?;
+            for row in rows {
+                let (code, pair) = row?;
+                course_by_code.entry(code).or_insert(pair);
+            }
+        }
+
         let mut stmt = conn.prepare(
             "SELECT id, title FROM calendar_event
              WHERE (course_id IS NULL OR course_id = '') AND title != ''",
         )?;
-        let rows = stmt
+        let events: Vec<(String, String)> = stmt
             .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
-    }) {
-        Ok(r) => r,
+
+        let now = Utc::now().to_rfc3339();
+        let mut linked = 0usize;
+        for (event_id, title) in events {
+            let Some(code) = extract_course_code(&title) else {
+                continue;
+            };
+            let Some((course_id, semester_id)) = course_by_code.get(&code) else {
+                continue;
+            };
+            conn.execute(
+                "UPDATE calendar_event SET course_id = ?1, semester_id = ?2, updated_at = ?3
+                 WHERE id = ?4",
+                rusqlite::params![course_id, semester_id, now, event_id],
+            )?;
+            linked += 1;
+        }
+        Ok(linked)
+    });
+
+    let linked = match result {
+        Ok(n) => n,
         Err(e) => {
             tracing::warn!(error = %e, "calendar course linker query failed");
             return;
         }
     };
-
-    let mut linked = 0usize;
-    for (event_id, title) in events {
-        let Some(code) = extract_course_code(&title) else {
-            continue;
-        };
-
-        let course_match: Option<(String, String)> = match state.db.with_conn(|conn| {
-            use rusqlite::OptionalExtension;
-            conn.query_row(
-                "SELECT id, semester_id FROM planner_course WHERE UPPER(code) = ?1 LIMIT 1",
-                rusqlite::params![code],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()
-            .map_err(Into::into)
-        }) {
-            Ok(r) => r,
-            Err(_) => None,
-        };
-
-        let Some((course_id, semester_id)) = course_match else {
-            continue;
-        };
-
-        let now = Utc::now().to_rfc3339();
-        if state
-            .db
-            .with_conn(|conn| {
-                conn.execute(
-                    "UPDATE calendar_event SET course_id = ?1, semester_id = ?2, updated_at = ?3
-                     WHERE id = ?4",
-                    rusqlite::params![course_id, semester_id, now, event_id],
-                )?;
-                Ok(())
-            })
-            .is_ok()
-        {
-            linked += 1;
-        }
-    }
 
     if linked > 0 {
         tracing::info!(linked, "calendar course linker updated events");

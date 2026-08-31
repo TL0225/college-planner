@@ -180,13 +180,13 @@ export function LmsModule() {
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
       <div className="min-h-0 flex-1 overflow-hidden p-3 pt-1">
         <TrailingInspector
           open={Boolean(selectedPortal)}
           main={
             <AppCard title={`Course portals · ${portals.length}`} className="h-full overflow-auto">
-              <p className="mb-3 text-[12px] leading-relaxed text-[var(--color-text-light)]">
+              <p className="mb-3 text-meta leading-relaxed">
                 Save Canvas, Blackboard, or school portal links. Open in your browser for SSO, in a
                 dedicated College window, or try an optional embedded preview when a portal is
                 selected.
@@ -207,7 +207,7 @@ export function LmsModule() {
                           onClick={() => setSelected(p.id)}
                           leading={
                             <span
-                              className="flex h-8 w-8 shrink-0 items-center justify-center text-[11px] font-bold tracking-wide"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center text-label font-bold tracking-wide"
                               style={{
                                 borderRadius: 8,
                                 border: "1px solid var(--color-chrome-stroke)",
@@ -252,7 +252,7 @@ export function LmsModule() {
                       >
                         {selectedPortal.name}
                       </h3>
-                      <p className="mt-0.5 break-all text-[12px] text-[var(--color-text-light)]">
+                      <p className="mt-0.5 break-all text-meta">
                         {selectedPortal.url}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -262,10 +262,10 @@ export function LmsModule() {
                       </div>
                     </div>
                     <div className="min-h-0 flex-1 overflow-auto p-4">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                      <p className="text-label font-semibold uppercase tracking-[0.05em]">
                         Notes
                       </p>
-                      <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-text-main)]">
+                      <p className="mt-1.5 text-meta leading-relaxed text-[var(--color-text-main)]">
                         {selectedPortal.notes || "No notes — SSO tips or course codes can go here."}
                       </p>
                       {embedPreview && (
@@ -356,7 +356,7 @@ export function LmsModule() {
                       </Button>
                       <div className="flex min-w-[200px] flex-1 items-center gap-1.5">
                         <input
-                          className={`${fieldControlClass} min-w-0 flex-1 py-1.5 text-[12px]`}
+                          className={`${fieldControlClass} min-w-0 flex-1 py-1.5 text-meta`}
                           placeholder="Find in page…"
                           value={findQuery}
                           onChange={(e) => setFindQuery(e.target.value)}
@@ -543,7 +543,7 @@ export function LmsModule() {
         title="Import from LMS page"
       >
         <div className="space-y-3">
-          <p className="text-[12px] text-[var(--color-text-light)]">
+          <p className="text-meta">
             Assignments become planner tasks; announcements become calendar events.
           </p>
           {importItems.length === 0 ? (
@@ -567,10 +567,10 @@ export function LmsModule() {
                       className="mt-1"
                     />
                     <span>
-                      <span className="block text-[13px] font-medium text-[var(--color-text-main)]">
+                      <span className="block text-section-title font-medium">
                         {item.title}
                       </span>
-                      <span className="text-[11px] text-[var(--color-text-light)]">
+                      <span className="text-caption">
                         {item.kind}
                         {item.courseCode ? ` · ${item.courseCode}` : ""}
                         {item.dueAt ? ` · due ${new Date(item.dueAt).toLocaleDateString()}` : ""}

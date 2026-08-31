@@ -27,13 +27,16 @@ export function PathingStoriesPanel({ bragEntries, onOpenBragBook }: Props) {
   return (
     <div className="space-y-3">
       <AppCard title="Stories from Brag Book">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+        <p className="mb-3 text-meta">
           Accomplishment stories live in Brag Book — link wins here when building interview-ready
           narratives.
         </p>
         <div className="mb-3 flex items-center justify-between gap-2 rounded-[10px] border border-[var(--color-chrome-stroke)] px-3 py-2">
-          <span className="text-[12px] text-[var(--color-text-light)]">Total brag entries</span>
-          <span className="text-[18px] font-semibold tabular-nums text-[var(--color-primary)]">
+          <span className="text-meta">Total brag entries</span>
+          <span
+            className="text-section-title font-semibold tabular-nums text-[var(--color-primary)]"
+            style={{ fontSize: 18 }}
+          >
             {bragEntries.length}
           </span>
         </div>
@@ -49,16 +52,16 @@ export function PathingStoriesPanel({ bragEntries, onOpenBragBook }: Props) {
                 key={entry.id}
                 className="rounded-[10px] border border-[var(--color-chrome-stroke)] px-3 py-2"
               >
-                <div className="text-[13px] font-medium text-[var(--color-text-main)]">
+                <div className="text-body font-medium">
                   {entry.title}
                 </div>
                 {entry.occurredAt ? (
-                  <p className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                  <p className="mt-0.5 text-caption">
                     {new Date(entry.occurredAt).toLocaleDateString()}
                   </p>
                 ) : null}
                 {entry.summary.trim() ? (
-                  <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-text-light)]">
+                  <p className="mt-1 text-meta leading-relaxed">
                     {entry.summary}
                   </p>
                 ) : null}

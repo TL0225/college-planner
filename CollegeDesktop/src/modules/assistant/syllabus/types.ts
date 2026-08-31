@@ -42,6 +42,7 @@ export type SyllabusAnalyzeResult = {
   rawLineCount: number;
   contentHash: string;
   warnings: string[];
+  ocrAttempted?: boolean;
   extractedTextPreview?: string | null;
   extractedText?: string | null;
   sourcePath?: string | null;

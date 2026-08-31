@@ -9,6 +9,7 @@ import {
   FileText,
   FolderOpen,
   GraduationCap,
+  MapPin,
   Send,
   Sparkles,
   Wallet,
@@ -18,7 +19,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   Button,
   CreditRing,
-  EmptyState,
+  GuidedEmptyState,
+  FormField,
   ModalSheet,
   OverviewWidgetBadge,
   OverviewWidgetCard,
@@ -27,6 +29,7 @@ import {
   OverviewWidgetHeader,
   OverviewWidgetRow,
   ProgressBar,
+  fieldControlClass,
   overviewCategoryAccent,
 } from "@/design-system";
 import { ipc, formatIpcError } from "@/lib/ipc";
@@ -36,7 +39,7 @@ import type {
   GpaSummary,
   PipelineMetrics,
 } from "@/lib/ipc";
-import { shellNavigate } from "@/lib/shellNavigate";
+import { navigate } from "@/lib/shellNavigate";
 
 function WidgetShell({
   widgetId,
@@ -100,6 +103,32 @@ export type OverviewWidgetsData = {
 };
 
 const DASHBOARD_WIDGETS_KEY = "dashboard.widgets.v1";
+const WEATHER_LOCATION_KEY = "weather.location.v1";
+
+type WeatherLocationPref = {
+  lat: number;
+  lon: number;
+  label: string;
+  mode: "approx" | "city" | "denied";
+};
+
+function parseWeatherLocation(raw: string | undefined): WeatherLocationPref | null {
+  if (!raw?.trim()) return null;
+  try {
+    const v = JSON.parse(raw) as Partial<WeatherLocationPref>;
+    if (
+      typeof v.lat !== "number" ||
+      typeof v.lon !== "number" ||
+      typeof v.label !== "string" ||
+      (v.mode !== "approx" && v.mode !== "city" && v.mode !== "denied")
+    ) {
+      return null;
+    }
+    return { lat: v.lat, lon: v.lon, label: v.label, mode: v.mode };
+  } catch {
+    return null;
+  }
+}
 
 export type OverviewWidgetId =
   | "quickLaunch"
@@ -174,12 +203,12 @@ function parseWidgetVisibility(raw?: string): Record<OverviewWidgetId, boolean> 
 }
 
 const QUICK_LAUNCH_TILES = [
-  { label: "Calendar", icon: CalendarDays, module: "calendar", page: "month" },
-  { label: "Career", icon: Briefcase, module: "career", page: "applications" },
-  { label: "Documents", icon: FolderOpen, module: "documents", page: "all" },
-  { label: "Discovery", icon: Compass, module: "college", page: "discovery" },
-  { label: "Assistant", icon: Sparkles, module: "assistant", page: "chat" },
-  { label: "Finance", icon: Wallet, module: "finance", page: "dashboard" },
+  { label: "Schedule", icon: CalendarDays, hub: "life" as const, page: "schedule" },
+  { label: "Career", icon: Briefcase, hub: "career" as const, page: "pipeline" },
+  { label: "Library", icon: FolderOpen, hub: "library" as const, page: "all" },
+  { label: "Discover", icon: Compass, hub: "school" as const, page: "discover" },
+  { label: "Assistant", icon: Sparkles, hub: "home" as const, page: "today", openAi: true },
+  { label: "Money", icon: Wallet, hub: "life" as const, page: "money" },
 ] as const;
 
 function WidgetLink({
@@ -193,7 +222,7 @@ function WidgetLink({
     <button
       type="button"
       onClick={onClick}
-      className="mt-2 text-[12px] font-medium text-[var(--color-primary)] hover:underline"
+      className="mt-2 text-link text-meta hover:underline"
     >
       {children}
     </button>
@@ -204,8 +233,10 @@ function AcademicsWidget({ summary, gpa }: { summary: AuditSummary | null; gpa: 
   const accent = overviewCategoryAccent.academic;
   const completed = summary?.completedCredits ?? 0;
   const planned = summary?.plannedCredits ?? 0;
-  const total = completed + planned;
-  const required = total > 0 ? total : 120;
+  const required =
+    summary?.totalRequiredCredits != null && summary.totalRequiredCredits > 0
+      ? summary.totalRequiredCredits
+      : completed + planned;
   const fraction = required > 0 ? completed / required : 0;
 
   return (
@@ -217,8 +248,8 @@ function AcademicsWidget({ summary, gpa }: { summary: AuditSummary | null; gpa: 
       trailing={
         <button
           type="button"
-          onClick={() => shellNavigate("college", "planner")}
-          className="text-[12px] font-medium text-[var(--color-primary)] hover:underline"
+          onClick={() => navigate({ hub: "school", page: "plan" })}
+          className="text-meta font-medium text-[var(--color-primary)] hover:underline"
         >
           View Full Planner
         </button>
@@ -235,20 +266,23 @@ function AcademicsWidget({ summary, gpa }: { summary: AuditSummary | null; gpa: 
         <div className="flex flex-col items-center gap-3">
           <CreditRing fraction={fraction} color={accent} />
           <div className="text-center">
-            <p className="text-[13px] font-bold text-[var(--color-text-main)]">Degree Progress</p>
-            <p className="text-[11px] text-[var(--color-text-light)]">
-              {completed.toFixed(0)}/{required.toFixed(0)} Credits
+            <p className="text-section-title">Degree Progress</p>
+            <p className="text-caption">
+              {required > 0
+                ? `${completed.toFixed(0)}/${required.toFixed(0)} Credits`
+                : `${completed.toFixed(0)} Credits completed`}
             </p>
           </div>
           {gpa?.gpa != null && (
             <div className="flex w-full items-center justify-between border-t border-[var(--color-chrome-stroke)] pt-3">
               <div>
-                <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--color-text-light)]">
+                <p className="text-label font-medium uppercase tracking-wide text-[var(--color-text-light)]">
                   Cumulative GPA
                 </p>
                 <p
-                  className="text-[18px] font-bold tabular-nums"
+                  className="text-section-title font-bold tabular-nums"
                   style={{
+                    fontSize: 18,
                     color:
                       gpa.gpa >= 3.5
                         ? "var(--color-success)"
@@ -261,10 +295,13 @@ function AcademicsWidget({ summary, gpa }: { summary: AuditSummary | null; gpa: 
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--color-text-light)]">
+                <p className="text-label font-medium uppercase tracking-wide text-[var(--color-text-light)]">
                   Courses
                 </p>
-                <p className="text-[18px] font-bold tabular-nums text-[var(--color-text-main)]">
+                <p
+                  className="text-section-title font-bold tabular-nums text-[var(--color-text-main)]"
+                  style={{ fontSize: 18 }}
+                >
                   {summary.courseCount}
                 </p>
               </div>
@@ -295,16 +332,19 @@ function GpaWidget({ gpa }: { gpa: GpaSummary | null }) {
       ) : (
         <OverviewWidgetRow accent={accent}>
           <div className="text-center">
-            <p className="text-[30px] font-extrabold tabular-nums text-[var(--color-text-main)]">
+            <p
+              className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]"
+              style={{ fontSize: 30 }}
+            >
               {gpa.gpa.toFixed(2)}
             </p>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
+            <p className="text-label font-bold uppercase tracking-wide">
               Cumulative · {gpa.gradedCourses} courses
             </p>
           </div>
         </OverviewWidgetRow>
       )}
-      <WidgetLink onClick={() => shellNavigate("college", "degree")}>View requirements →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "school", page: "degree" })}>View requirements →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -348,23 +388,23 @@ function AcademicCalendarWidget({
     >
       <div className="grid grid-cols-2 gap-2.5">
         <OverviewWidgetRow accent={accent}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
+          <p className="text-label font-bold uppercase tracking-wide">
             Credits completed
           </p>
-          <p className="text-[22px] font-extrabold tabular-nums text-[var(--color-text-main)]">
+          <p className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]">
             {summary ? summary.completedCredits.toFixed(1) : "—"}
           </p>
         </OverviewWidgetRow>
         <OverviewWidgetRow accent={accent}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
+          <p className="text-label font-bold uppercase tracking-wide">
             Cumulative GPA
           </p>
-          <p className="text-[22px] font-extrabold tabular-nums text-[var(--color-text-main)]">
+          <p className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]">
             {gpa?.gpa != null ? gpa.gpa.toFixed(2) : "—"}
           </p>
         </OverviewWidgetRow>
       </div>
-      <WidgetLink onClick={() => shellNavigate("college", "planner")}>Open planner →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "school", page: "plan" })}>Open planner →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -391,14 +431,14 @@ function WeekAheadWidget({ events }: { events: OverviewEventRow[] }) {
             <OverviewWidgetRow key={e.id} accent={accent}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                  <p className="truncate text-section-title">
                     {e.title}
                   </p>
-                  <p className="text-[11px] font-medium text-[var(--color-text-light)]">
+                  <p className="text-label">
                     {formatEventDay(e.startAt)}
                   </p>
                 </div>
-                <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-light)]">
+                <span className="shrink-0 text-caption tabular-nums">
                   {new Date(e.startAt).toLocaleTimeString(undefined, {
                     hour: "numeric",
                     minute: "2-digit",
@@ -409,7 +449,7 @@ function WeekAheadWidget({ events }: { events: OverviewEventRow[] }) {
           ))}
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("calendar", "week")}>Open week view →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "life", page: "week" })}>Open week view →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -459,7 +499,7 @@ function DeadlinesWidget({ tasks }: { tasks: OverviewTaskRow[] }) {
                     className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
                     style={{ background: urgency.color }}
                   />
-                  <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                  <p className="min-w-0 flex-1 truncate text-section-title">
                     {t.title}
                   </p>
                   <OverviewWidgetBadge text={urgency.label} color={urgency.color} />
@@ -469,7 +509,7 @@ function DeadlinesWidget({ tasks }: { tasks: OverviewTaskRow[] }) {
           })}
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("calendar", "tasks")}>View all tasks →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "life", page: "tasks" })}>View all tasks →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -491,7 +531,13 @@ function QuickLaunchRow() {
             <button
               key={tile.label}
               type="button"
-              onClick={() => shellNavigate(tile.module, tile.page)}
+              onClick={() =>
+                navigate({
+                  hub: tile.hub,
+                  page: tile.page,
+                  ...("openAi" in tile && tile.openAi ? { openAi: true } : {}),
+                })
+              }
               className="flex flex-col items-center gap-1.5 rounded-[14px] border border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] px-2 py-3 transition hover:bg-[var(--color-row-hover)]"
             >
               <span
@@ -503,7 +549,7 @@ function QuickLaunchRow() {
               >
                 <Icon size={16} strokeWidth={2} />
               </span>
-              <span className="text-[11px] font-semibold text-[var(--color-text-main)]">
+              <span className="text-label font-semibold text-[var(--color-text-main)]">
                 {tile.label}
               </span>
             </button>
@@ -515,7 +561,7 @@ function QuickLaunchRow() {
 }
 
 function navigateDiscoverySaved() {
-  shellNavigate("college", "discovery");
+  navigate({ hub: "school", page: "discover" });
   window.dispatchEvent(
     new CustomEvent("college:discovery-mode", { detail: { mode: "saved" } }),
   );
@@ -531,8 +577,13 @@ function DiscoverySavedWidget({ count }: { count: number }) {
       icon={<Compass size={14} strokeWidth={2.25} />}
     >
       <OverviewWidgetRow accent={accent}>
-        <p className="text-[30px] font-extrabold tabular-nums text-[var(--color-text-main)]">{count}</p>
-        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
+        <p
+          className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]"
+          style={{ fontSize: 30 }}
+        >
+          {count}
+        </p>
+        <p className="text-label font-bold uppercase tracking-wide">
           Saved schools
         </p>
       </OverviewWidgetRow>
@@ -558,10 +609,10 @@ function AdvisorPrepWidget({ prep }: { prep: AdvisorPrepSummary }) {
       }
     >
       <ProgressBar value={ratio} tint="var(--color-success)" height={6} />
-      <p className="mt-2 text-[12px] text-[var(--color-text-light)]">
+      <p className="mt-2 text-meta">
         Checklist progress for your next advisor meeting.
       </p>
-      <WidgetLink onClick={() => shellNavigate("profile", "advisor")}>Open checklist →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "library", page: "identity" })}>Open checklist →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -587,10 +638,10 @@ function TodayScheduleWidget({ events }: { events: OverviewEventRow[] }) {
           {events.map((e) => (
             <OverviewWidgetRow key={e.id} accent={accent}>
               <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                <p className="min-w-0 truncate text-section-title">
                   {e.title}
                 </p>
-                <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-light)]">
+                <span className="shrink-0 text-caption tabular-nums">
                   {new Date(e.startAt).toLocaleTimeString(undefined, {
                     hour: "numeric",
                     minute: "2-digit",
@@ -601,7 +652,7 @@ function TodayScheduleWidget({ events }: { events: OverviewEventRow[] }) {
           ))}
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("calendar", "day")}>Open calendar →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "life", page: "day" })}>Open calendar →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -630,7 +681,7 @@ function OpenTasksWidget({ tasks, count }: { tasks: OverviewTaskRow[]; count: nu
             return (
               <OverviewWidgetRow key={t.id} accent={urgency.color}>
                 <div className="flex items-start justify-between gap-2">
-                  <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                  <p className="min-w-0 flex-1 truncate text-section-title">
                     {t.title}
                   </p>
                   {t.dueAt ? (
@@ -642,7 +693,7 @@ function OpenTasksWidget({ tasks, count }: { tasks: OverviewTaskRow[]; count: nu
           })}
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("calendar", "tasks")}>View all tasks →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "life", page: "tasks" })}>View all tasks →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -663,10 +714,13 @@ function CareerSummaryWidget({
   const metric = (label: string, value: number, color: string) => (
     <OverviewWidgetRow accent={color}>
       <div className="text-center">
-        <p className="text-[30px] font-extrabold tabular-nums" style={{ color }}>
+        <p
+          className="text-page-title font-extrabold tabular-nums"
+          style={{ color, fontSize: 30 }}
+        >
           {value}
         </p>
-        <p className="text-[9px] font-extrabold uppercase tracking-wide text-[var(--color-text-light)]">
+        <p className="text-label font-extrabold uppercase tracking-wide text-[var(--color-text-light)]">
           {label}
         </p>
       </div>
@@ -683,8 +737,8 @@ function CareerSummaryWidget({
         hasActivity ? (
           <button
             type="button"
-            onClick={() => shellNavigate("career", "applications")}
-            className="text-[12px] font-medium text-[var(--color-primary)] hover:underline"
+            onClick={() => navigate({ hub: "career", page: "pipeline" })}
+            className="text-meta font-medium text-[var(--color-primary)] hover:underline"
           >
             Open
           </button>
@@ -692,7 +746,7 @@ function CareerSummaryWidget({
       }
     >
       {!hasActivity ? (
-        <button type="button" onClick={() => shellNavigate("career", "applications")} className="w-full">
+        <button type="button" onClick={() => navigate({ hub: "career", page: "pipeline" })} className="w-full">
           <OverviewWidgetEmpty
             title="Track your first application"
             message="Applications, interviews, and follow-ups show up here."
@@ -709,7 +763,7 @@ function CareerSummaryWidget({
           </div>
           {followUps.length > 0 && (
             <div className="mt-3">
-              <p className="mb-2 text-[9px] font-extrabold uppercase tracking-wide text-[var(--color-text-light)]">
+              <p className="mb-2 text-label font-extrabold uppercase tracking-wide text-[var(--color-text-light)]">
                 Follow-ups
               </p>
               <div className="flex flex-col gap-2">
@@ -726,10 +780,10 @@ function CareerSummaryWidget({
                         <Send size={14} />
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                        <p className="truncate text-section-title">
                           {row.company}
                         </p>
-                        <p className="truncate text-[11px] text-[var(--color-text-light)]">
+                        <p className="truncate text-caption">
                           {row.roleTitle}
                         </p>
                       </div>
@@ -766,7 +820,7 @@ function RecentDocumentsWidget({ docs }: { docs: RecentDocumentRow[] }) {
           {docs.map((d) => (
             <OverviewWidgetRow key={d.id} accent={accent}>
               <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                <p className="min-w-0 truncate text-section-title">
                   {d.title}
                 </p>
                 <OverviewWidgetBadge
@@ -781,7 +835,7 @@ function RecentDocumentsWidget({ docs }: { docs: RecentDocumentRow[] }) {
           ))}
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("documents", "all")}>Open documents →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "library", page: "all" })}>Open documents →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -808,10 +862,10 @@ function CareerFollowUpsWidget({ rows }: { rows: CareerFollowUpRow[] }) {
             <OverviewWidgetRow key={row.id} accent={accent}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-semibold text-[var(--color-text-main)]">
+                  <p className="truncate text-section-title">
                     {row.company}
                   </p>
-                  <p className="truncate text-[11px] text-[var(--color-text-light)]">{row.roleTitle}</p>
+                  <p className="truncate text-caption">{row.roleTitle}</p>
                 </div>
                 {row.appliedAt ? (
                   <OverviewWidgetBadge
@@ -827,7 +881,7 @@ function CareerFollowUpsWidget({ rows }: { rows: CareerFollowUpRow[] }) {
           ))}
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("career", "applications")}>Open applications →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "career", page: "pipeline" })}>Open applications →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -852,20 +906,20 @@ function CareerPipelineWidget({ career }: { career: PipelineMetrics | null }) {
         {stages.map((stage) => (
           <OverviewWidgetRow key={stage.key} accent={stage.tint}>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[13px] font-semibold text-[var(--color-text-main)]">
+              <span className="text-section-title">
                 {stage.label}
               </span>
-              <span className="tabular-nums text-[13px] font-bold text-[var(--color-text-main)]">
+              <span className="tabular-nums text-section-title">
                 {career?.[stage.key] ?? 0}
               </span>
             </div>
           </OverviewWidgetRow>
         ))}
       </div>
-      <p className="mt-2.5 text-[12px] text-[var(--color-text-light)]">
+      <p className="mt-2.5 text-meta">
         {career?.total ?? 0} total applications tracked
       </p>
-      <WidgetLink onClick={() => shellNavigate("career", "applications")}>
+      <WidgetLink onClick={() => navigate({ hub: "career", page: "pipeline" })}>
         Open applications →
       </WidgetLink>
     </WidgetShell>
@@ -886,10 +940,15 @@ function NetWorthWidget({ finance }: { finance: FinanceDashboardSummary | null }
       icon={<Wallet size={14} strokeWidth={2.25} />}
     >
       <OverviewWidgetRow accent={accent}>
-        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
+        <p className="text-label font-bold uppercase tracking-wide">
           Total
         </p>
-        <p className="text-[28px] font-extrabold tabular-nums text-[var(--color-text-main)]">{formatted}</p>
+        <p
+          className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]"
+          style={{ fontSize: 28 }}
+        >
+          {formatted}
+        </p>
       </OverviewWidgetRow>
       {finance && (
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -897,7 +956,7 @@ function NetWorthWidget({ finance }: { finance: FinanceDashboardSummary | null }
           <OverviewWidgetBadge text={`${finance.transactionCount} TX`} color={accent} />
         </div>
       )}
-      <WidgetLink onClick={() => shellNavigate("finance", "dashboard")}>Open finance →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "life", page: "money" })}>Open finance →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -912,12 +971,17 @@ function DocumentsWidget({ count }: { count: number }) {
       icon={<FolderOpen size={14} strokeWidth={2.25} />}
     >
       <OverviewWidgetRow accent={accent}>
-        <p className="text-[30px] font-extrabold tabular-nums text-[var(--color-text-main)]">{count}</p>
-        <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
+        <p
+          className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]"
+          style={{ fontSize: 30 }}
+        >
+          {count}
+        </p>
+        <p className="text-label font-bold uppercase tracking-wide">
           Vault files
         </p>
       </OverviewWidgetRow>
-      <WidgetLink onClick={() => shellNavigate("documents", "all")}>Open documents →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "library", page: "all" })}>Open documents →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -939,12 +1003,17 @@ function NeedsAttentionWidget({
       icon={<Zap size={14} strokeWidth={2.25} />}
     >
       <OverviewWidgetRow accent={accent}>
-        <p className="text-[30px] font-extrabold tabular-nums text-[var(--color-text-main)]">{total}</p>
-        <p className="text-[11px] text-[var(--color-text-light)]">
+        <p
+          className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]"
+          style={{ fontSize: 30 }}
+        >
+          {total}
+        </p>
+        <p className="text-caption">
           {openTaskCount} open task{openTaskCount === 1 ? "" : "s"} · {deadlineCount} due within 14 days
         </p>
       </OverviewWidgetRow>
-      <WidgetLink onClick={() => shellNavigate("calendar", "tasks")}>Open tasks →</WidgetLink>
+      <WidgetLink onClick={() => navigate({ hub: "life", page: "tasks" })}>Open tasks →</WidgetLink>
     </WidgetShell>
   );
 }
@@ -956,57 +1025,238 @@ function WeatherWidget() {
     summary: string;
     windMph?: number | null;
   } | null>(null);
+  const [locationLabel, setLocationLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    const load = (lat: number, lon: number) => {
-      void ipc
-        .platformFetchWeather(lat, lon)
-        .then(setWeather)
-        .catch((e) => setError(formatIpcError(e)));
-    };
-    if (typeof navigator !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => load(pos.coords.latitude, pos.coords.longitude),
-        () => load(40.7128, -74.006),
-        { timeout: 4000, maximumAge: 600_000 },
-      );
-    } else {
-      load(40.7128, -74.006);
+  const loadWeather = useCallback(async (pref: WeatherLocationPref) => {
+    setLocationLabel(pref.label);
+    setError(null);
+    setWeather(null);
+    if (pref.mode === "denied") return;
+    try {
+      const snap = await ipc.platformFetchWeather(pref.lat, pref.lon);
+      setWeather(snap);
+    } catch (e) {
+      setError(formatIpcError(e));
     }
   }, []);
 
+  const persistAndLoad = useCallback(
+    async (pref: WeatherLocationPref) => {
+      await ipc.settingsSet(WEATHER_LOCATION_KEY, JSON.stringify(pref));
+      setPromptOpen(false);
+      await loadWeather(pref);
+    },
+    [loadWeather],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settings = await ipc.settingsGet();
+        if (cancelled) return;
+        const pref = parseWeatherLocation(settings.values[WEATHER_LOCATION_KEY]);
+        if (!pref) {
+          setPromptOpen(true);
+          return;
+        }
+        await loadWeather(pref);
+      } catch (e) {
+        if (!cancelled) setError(formatIpcError(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadWeather]);
+
+  const useApprox = async () => {
+    setBusy(true);
+    try {
+      const approx = await ipc.platformApproxLocation();
+      await persistAndLoad({
+        lat: approx.lat,
+        lon: approx.lon,
+        label: approx.label,
+        mode: "approx",
+      });
+    } catch (e) {
+      setError(formatIpcError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const useCity = async () => {
+    const q = cityQuery.trim();
+    if (!q) return;
+    setBusy(true);
+    try {
+      const geo = await ipc.calendarGeocodeLocation(q);
+      await persistAndLoad({
+        lat: geo.lat,
+        lon: geo.lon,
+        label: geo.displayName,
+        mode: "city",
+      });
+    } catch (e) {
+      setError(formatIpcError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const skipLocation = async () => {
+    setBusy(true);
+    try {
+      await persistAndLoad({
+        lat: 40.7128,
+        lon: -74.006,
+        label: "Location off",
+        mode: "denied",
+      });
+    } catch (e) {
+      setError(formatIpcError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <WidgetShell
-      widgetId="weather"
-      title="Weather"
-      accent={accent}
-      icon={<CloudSun size={14} strokeWidth={2.25} />}
-    >
-      {error ? (
-        <p className="text-[12px] text-[var(--color-text-light)]">{error}</p>
-      ) : weather ? (
-        <OverviewWidgetRow accent={accent}>
-          <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--color-text-light)]">
-            {weather.summary}
-          </p>
-          <p className="text-[30px] font-extrabold tabular-nums text-[var(--color-text-main)]">
-            {Math.round(weather.temperatureF)}°F
-          </p>
-          {weather.windMph != null && (
-            <p className="text-[11px] text-[var(--color-text-light)]">
-              Wind {Math.round(weather.windMph)} mph
+    <>
+      <WidgetShell
+        widgetId="weather"
+        title="Weather"
+        accent={accent}
+        icon={<CloudSun size={14} strokeWidth={2.25} />}
+        trailing={
+          <button
+            type="button"
+            className="text-label font-semibold text-[var(--color-primary)] hover:underline"
+            onClick={() => setPromptOpen(true)}
+          >
+            Location
+          </button>
+        }
+      >
+        {error ? (
+          <p className="text-meta">{error}</p>
+        ) : weather ? (
+          <OverviewWidgetRow accent={accent}>
+            {locationLabel && (
+              <p className="flex items-center gap-1 text-label font-bold uppercase tracking-wide">
+                <MapPin size={10} strokeWidth={2.5} />
+                {locationLabel}
+              </p>
+            )}
+            <p className="text-label font-bold uppercase tracking-wide">
+              {weather.summary}
             </p>
-          )}
-        </OverviewWidgetRow>
-      ) : (
-        <OverviewWidgetEmpty
-          title="Loading conditions…"
-          accent={accent}
-          icon={<CloudSun size={18} />}
-        />
-      )}
-    </WidgetShell>
+            <p
+              className="text-page-title font-extrabold tabular-nums text-[var(--color-text-main)]"
+              style={{ fontSize: 30 }}
+            >
+              {Math.round(weather.temperatureF)}°F
+            </p>
+            {weather.windMph != null && (
+              <p className="text-caption">
+                Wind {Math.round(weather.windMph)} mph
+              </p>
+            )}
+          </OverviewWidgetRow>
+        ) : promptOpen ? (
+          <OverviewWidgetEmpty
+            title="Choose a location"
+            accent={accent}
+            icon={<MapPin size={18} />}
+          />
+        ) : locationLabel === "Location off" ? (
+          <OverviewWidgetEmpty
+            title="Weather needs a location"
+            accent={accent}
+            icon={<CloudSun size={18} />}
+          />
+        ) : (
+          <OverviewWidgetEmpty
+            title="Loading conditions…"
+            accent={accent}
+            icon={<CloudSun size={18} />}
+          />
+        )}
+      </WidgetShell>
+
+      <ModalSheet
+        open={promptOpen}
+        onOpenChange={(open) => {
+          if (!busy) setPromptOpen(open);
+        }}
+        title="Weather location"
+        width={440}
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center text-[var(--color-primary)]"
+              style={{
+                borderRadius: 12,
+                background: "color-mix(in srgb, var(--color-primary) 16%, transparent)",
+              }}
+            >
+              <MapPin size={18} strokeWidth={2.25} />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <p className="text-section-title font-semibold text-[var(--color-text-main)]">
+                Where should we show weather?
+              </p>
+              <p className="text-meta leading-relaxed">
+                College never uses the browser location prompt. Pick an approximate area from your
+                network, or search for a city. You can change this anytime from the weather widget.
+              </p>
+            </div>
+          </div>
+
+          <Button className="w-full" disabled={busy} onClick={() => void useApprox()}>
+            {busy ? "Working…" : "Use approximate location"}
+          </Button>
+
+          <div className="space-y-2">
+            <FormField label="Or search a city">
+              <input
+                className={fieldControlClass}
+                placeholder="e.g. Austin, TX"
+                value={cityQuery}
+                onChange={(e) => setCityQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void useCity();
+                }}
+                disabled={busy}
+              />
+            </FormField>
+            <Button
+              variant="secondary"
+              className="w-full"
+              disabled={busy || !cityQuery.trim()}
+              onClick={() => void useCity()}
+            >
+              Use this city
+            </Button>
+          </div>
+
+          <button
+            type="button"
+            className="w-full text-center text-meta font-medium hover:text-[var(--color-text-main)]"
+            disabled={busy}
+            onClick={() => void skipLocation()}
+          >
+            Not now
+          </button>
+        </div>
+      </ModalSheet>
+    </>
   );
 }
 
@@ -1020,25 +1270,16 @@ function GettingStartedWidget({ onLoadSample }: { onLoadSample: () => void }) {
       icon={<Sparkles size={14} strokeWidth={2.25} />}
       className="min-[700px]:col-span-2"
     >
-      <EmptyState
+      <GuidedEmptyState
         title="Your workspace is empty"
-        body="Load demo content or start building your academic plan."
-        action={
-          <div className="space-y-3">
-            <ul className="list-inside list-disc space-y-1 text-[12px] text-[var(--color-text-light)]">
-              <li>Settings → Load sample data to explore with demo semesters, events, and career rows</li>
-              <li>College → Planner to add your first semester and courses</li>
-            </ul>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={onLoadSample}>
-                Load sample data
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => shellNavigate("college", "planner")}>
-                Open planner
-              </Button>
-            </div>
-          </div>
-        }
+        subtitle="Try demo data or start building your academic plan."
+        showDemoSeed
+        onDemoSeeded={onLoadSample}
+        primaryAction={{
+          label: "Open academic plan",
+          onClick: () => navigate({ hub: "school", page: "plan" }),
+          variant: "secondary",
+        }}
       />
     </WidgetShell>
   );
@@ -1109,8 +1350,8 @@ export function OverviewWidgetGrid({ data }: { data: OverviewWidgetsData }) {
       </OverviewWidgetGridLayout>
 
       <ModalSheet open={customizeOpen} onOpenChange={setCustomizeOpen} title="Overview widgets">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
-          Toggle which widgets appear on College Overview (Swift dashboard.widgets.v1 parity).
+        <p className="mb-3 text-meta">
+          Toggle which widgets appear on the School Overview dashboard.
         </p>
         <ul className="space-y-2">
           {(Object.keys(WIDGET_LABELS) as OverviewWidgetId[]).map((id) => (
@@ -1118,7 +1359,7 @@ export function OverviewWidgetGrid({ data }: { data: OverviewWidgetsData }) {
               key={id}
               className="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-chrome-stroke)] px-3 py-2"
             >
-              <span className="text-[13px] text-[var(--color-text-main)]">{WIDGET_LABELS[id]}</span>
+              <span className="text-body">{WIDGET_LABELS[id]}</span>
               <input
                 type="checkbox"
                 checked={visibility[id] !== false}

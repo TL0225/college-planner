@@ -6,7 +6,7 @@ use crate::scrapers::{
 };
 use crate::AppState;
 use chrono::Utc;
-use rusqlite::OptionalExtension;
+use rusqlite::{Connection, OptionalExtension, Transaction};
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
@@ -77,7 +77,9 @@ pub fn career_list_applications(state: State<'_, AppState>) -> CmdResult<Vec<Job
         .with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, company, role_title, status, location, url, applied_at
-                 FROM job_application ORDER BY sort_order ASC, updated_at DESC LIMIT 300",
+                 FROM job_application
+                 ORDER BY status ASC, sort_order ASC, updated_at DESC
+                 LIMIT 300",
             )?;
             let rows = stmt
                 .query_map([], |r| {
@@ -3365,6 +3367,69 @@ pub struct AchievementPipelineDto {
     pub compensation_items: i64,
 }
 
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let sql = format!("PRAGMA table_info({table})");
+    let Ok(mut stmt) = conn.prepare(&sql) else {
+        return false;
+    };
+    let Ok(mut rows) = stmt.query([]) else {
+        return false;
+    };
+    while let Ok(Some(row)) = rows.next() {
+        if row
+            .get::<_, String>(1)
+            .map(|name| name == column)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn rehome_sorted_path_rows(
+    tx: &Transaction<'_>,
+    table: &str,
+    to_id: &str,
+    from_id: &str,
+) -> rusqlite::Result<()> {
+    let base: i64 = tx.query_row(
+        &format!("SELECT COALESCE(MAX(sort_order), 0) FROM {table} WHERE path_entry_id = ?1"),
+        rusqlite::params![to_id],
+        |r| r.get(0),
+    )?;
+    tx.execute(
+        &format!(
+            "UPDATE {table}
+             SET path_entry_id = ?1, sort_order = sort_order + ?2
+             WHERE path_entry_id = ?3"
+        ),
+        rusqlite::params![to_id, base, from_id],
+    )?;
+    Ok(())
+}
+
+fn rehome_singleton_path_row(
+    tx: &Transaction<'_>,
+    table: &str,
+    to_id: &str,
+    from_id: &str,
+) -> rusqlite::Result<()> {
+    tx.execute(
+        &format!(
+            "DELETE FROM {table}
+             WHERE path_entry_id = ?1
+               AND EXISTS (SELECT 1 FROM {table} WHERE path_entry_id = ?2)"
+        ),
+        rusqlite::params![from_id, to_id],
+    )?;
+    tx.execute(
+        &format!("UPDATE {table} SET path_entry_id = ?1 WHERE path_entry_id = ?2"),
+        rusqlite::params![to_id, from_id],
+    )?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn career_path_achievement_pipeline(
     state: State<'_, AppState>,
@@ -3385,9 +3450,15 @@ pub fn career_path_achievement_pipeline(
                 rusqlite::params![path_entry_id],
                 |r| r.get(0),
             )?;
-            let brag_wins: i64 = conn
-                .query_row("SELECT COUNT(*) FROM career_brag_entry", [], |r| r.get(0))
-                .unwrap_or(0);
+            let brag_wins: i64 = if table_has_column(conn, "career_brag_entry", "path_entry_id") {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM career_brag_entry WHERE path_entry_id = ?1",
+                    rusqlite::params![path_entry_id],
+                    |r| r.get(0),
+                )?
+            } else {
+                0
+            };
             let active_benefits: i64 = conn.query_row(
                 "SELECT COUNT(*) FROM career_path_benefit
                  WHERE path_entry_id = ?1 AND is_active = 1",
@@ -3737,6 +3808,68 @@ pub fn career_merge_path_entries(
              WHERE path_entry_id = ?3",
             rusqlite::params![to_id, journal_base, from_id],
         )?;
+
+        for table in [
+            "career_path_promotion",
+            "career_path_person",
+            "career_path_benefit",
+            "career_path_compensation",
+            "career_path_goal",
+        ] {
+            rehome_sorted_path_rows(&tx, table, &to_id, &from_id)?;
+        }
+
+        tx.execute(
+            "DELETE FROM career_path_document
+             WHERE path_entry_id = ?1
+               AND vault_doc_id IN (
+                 SELECT vault_doc_id FROM career_path_document WHERE path_entry_id = ?2
+               )",
+            rusqlite::params![from_id, to_id],
+        )?;
+        tx.execute(
+            "UPDATE career_path_document SET path_entry_id = ?1 WHERE path_entry_id = ?2",
+            rusqlite::params![to_id, from_id],
+        )?;
+
+        for table in [
+            "career_path_decision_journal",
+            "career_path_employment_terms",
+            "career_path_role_expectation",
+            "career_path_scenario",
+            "career_path_disclosure",
+        ] {
+            rehome_singleton_path_row(&tx, table, &to_id, &from_id)?;
+        }
+
+        tx.execute(
+            "UPDATE career_skill_evidence SET path_entry_id = ?1 WHERE path_entry_id = ?2",
+            rusqlite::params![to_id, from_id],
+        )?;
+
+        if table_has_column(&tx, "career_brag_entry", "path_entry_id") {
+            tx.execute(
+                "UPDATE career_brag_entry SET path_entry_id = ?1 WHERE path_entry_id = ?2",
+                rusqlite::params![to_id, from_id],
+            )?;
+        }
+
+        let source_resume: Option<String> = tx
+            .query_row(
+                "SELECT resume_document_id FROM career_path_entry WHERE id = ?1",
+                rusqlite::params![from_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(resume_id) = source_resume.filter(|id| !id.is_empty()) {
+            tx.execute(
+                "UPDATE career_path_entry
+                 SET resume_document_id = ?1
+                 WHERE id = ?2
+                   AND (resume_document_id IS NULL OR resume_document_id = '')",
+                rusqlite::params![resume_id, to_id],
+            )?;
+        }
 
         // Rewire relationships involving the source; drop rows that would violate uniqueness.
         tx.execute(
@@ -4240,9 +4373,10 @@ pub fn career_migrate_pathing_settings(state: State<'_, AppState>) -> CmdResult<
     Ok(migrated)
 }
 
-/// Write Typst source to a sibling `.typ` file and compile to PDF via the `typst` CLI on PATH.
+/// Write Typst source to a sibling `.typ` file and compile to PDF via the Typst CLI.
 #[tauri::command]
 pub fn career_compile_typst_pdf(source: String, pdf_path: String) -> CmdResult<()> {
+    use crate::commands::platform::resolve_typst_binary;
     use std::fs;
     use std::io::ErrorKind;
     use std::path::Path;
@@ -4269,13 +4403,20 @@ pub fn career_compile_typst_pdf(source: String, pdf_path: String) -> CmdResult<(
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Typst source path is not valid UTF-8"))?;
 
-    let output = Command::new("typst")
+    let typst_bin = resolve_typst_binary().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Typst not found. Set TYPST_PATH, place typst in resources/typst/, or install from https://typst.app"
+        )
+    })?;
+
+    let output = Command::new(&typst_bin)
         .args(["compile", typ_arg, pdf_path])
         .output();
 
     match output {
         Err(e) if e.kind() == ErrorKind::NotFound => Err(anyhow::anyhow!(
-            "typst not found on PATH. Install Typst from https://typst.app"
+            "Typst binary not found at {}. Install Typst from https://typst.app",
+            typst_bin.display()
         )
         .into()),
         Err(e) => Err(anyhow::anyhow!("Failed to run typst: {e}").into()),

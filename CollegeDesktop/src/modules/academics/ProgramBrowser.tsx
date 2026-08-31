@@ -59,7 +59,7 @@ export function ProgramBrowser({ onActiveChanged }: { onActiveChanged?: () => vo
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <AppCard title="Programs">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+        <p className="mb-3 text-meta">
           {activeProgram
             ? `${activeProgram.name} (${activeProgram.degreeType}) is active`
             : "Pick a major or minor to scope the audit"}
@@ -101,7 +101,7 @@ export function ProgramBrowser({ onActiveChanged }: { onActiveChanged?: () => vo
 
       <AppCard title={detail ? `${detail.name} requirements` : "Program detail"}>
         {detail ? (
-          <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+          <p className="mb-3 text-meta">
             {detail.universityName} · {detail.degreeType}
           </p>
         ) : null}
@@ -122,7 +122,7 @@ export function ProgramBrowser({ onActiveChanged }: { onActiveChanged?: () => vo
                   href={detail.programUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-[12px] text-[var(--color-primary)] underline-offset-2 hover:underline"
+                  className="text-meta text-[var(--color-primary)] underline-offset-2 hover:underline"
                 >
                   Catalog page
                 </a>
@@ -139,17 +139,17 @@ export function ProgramBrowser({ onActiveChanged }: { onActiveChanged?: () => vo
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-[13px] font-semibold text-[var(--color-text-main)]">
+                        <div className="text-section-title">
                           {req.sectionTitle}
                         </div>
                         {req.ruleCodes.length > 0 ? (
-                          <div className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                          <div className="mt-0.5 text-caption">
                             {req.ruleCodes.join(", ")}
                           </div>
                         ) : null}
                       </div>
                       {req.creditsRequired != null ? (
-                        <span className="shrink-0 text-[11px] tabular-nums text-[var(--color-text-light)]">
+                        <span className="shrink-0 text-caption tabular-nums">
                           {req.creditsRequired} cr
                         </span>
                       ) : null}

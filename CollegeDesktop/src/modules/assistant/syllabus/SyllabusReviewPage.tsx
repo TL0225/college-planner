@@ -188,10 +188,10 @@ export function SyllabusReviewPage() {
     };
   }, [tab, showPdfTab, result?.sourcePath, sourcePdfPath, sourceVaultDocId]);
 
-  const refineWithAi = async () => {
+  const rerunAnalysis = async () => {
     const text = result?.extractedText?.trim();
     if (!text) {
-      showToast("No extracted text to refine — try pasted text", "error");
+      showToast("No extracted text to re-parse — try pasted text", "error");
       return;
     }
     await analyzeText(text, 2);
@@ -300,6 +300,10 @@ export function SyllabusReviewPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden px-3 pb-3 pt-1">
       <AppCard title="Analyze syllabus">
+        <p className="mb-3 text-meta leading-relaxed">
+          Parsing uses on-device rules and heuristics — not an LLM. Re-run only applies the same
+          parser again.
+        </p>
         <div className="grid gap-3 lg:grid-cols-2">
           <FormField label="Planner course">
             <select
@@ -377,7 +381,7 @@ export function SyllabusReviewPage() {
 
       {phase === "extracting" ? (
         <AppCard title="Analyzing">
-          <p className="text-[13px] text-[var(--color-text-light)]">
+          <p className="text-body text-[var(--color-text-light)]">
             Extracting syllabus structure…
           </p>
         </AppCard>
@@ -422,7 +426,7 @@ export function SyllabusReviewPage() {
                       PDF
                     </Button>
                   ) : null}
-                  <span className="ml-auto text-[11px] text-[var(--color-text-light)]">
+                  <span className="ml-auto text-caption">
                     {analysisPass > 1 ? "Pass 2 · " : ""}
                     {selectedCount} selected · {result.rawLineCount} lines scanned
                   </span>
@@ -528,7 +532,7 @@ export function SyllabusReviewPage() {
                                   />
                                 ) : null}
                               </div>
-                              <div className="mt-1 text-[13px] font-medium">{e.title}</div>
+                              <div className="mt-1 text-body font-medium">{e.title}</div>
                               {conflictCount > 0 ? (
                                 <Button
                                   size="sm"
@@ -552,13 +556,13 @@ export function SyllabusReviewPage() {
           >
             <div className="flex h-full flex-col gap-3 p-1">
               <AppCard title={result.courseHint ?? result.courseTitle ?? "Course"}>
-                <p className="text-[12px] text-[var(--color-text-light)]">
+                <p className="text-meta">
                   {selectedCourse
                     ? `${selectedCourse.code} · ${selectedCourse.title}`
                     : "Select a course to import events"}
                 </p>
                 {result.warnings.map((w) => (
-                  <p key={w} className="mt-2 text-[11px] text-[var(--color-warning)]">
+                  <p key={w} className="mt-2 text-caption text-[var(--color-warning)]">
                     {w}
                   </p>
                 ))}
@@ -566,13 +570,13 @@ export function SyllabusReviewPage() {
 
               <AppCard title="Grading">
                 {result.grading.length === 0 ? (
-                  <p className="text-[12px] text-[var(--color-text-light)]">No weights detected.</p>
+                  <p className="text-meta">No weights detected.</p>
                 ) : (
                   <ul className="divide-y divide-[var(--color-chrome-stroke)]">
                     {result.grading.map((g) => (
                       <li
                         key={g.name}
-                        className="flex items-center justify-between py-1.5 text-[13px]"
+                        className="flex items-center justify-between py-1.5 text-body"
                       >
                         <span>{g.name}</span>
                         <span className="tabular-nums text-[var(--color-text-light)]">
@@ -586,7 +590,7 @@ export function SyllabusReviewPage() {
 
               <AppCard title="Sections">
                 {result.sections.length === 0 ? (
-                  <p className="text-[12px] text-[var(--color-text-light)]">No meeting times found.</p>
+                  <p className="text-meta">No meeting times found.</p>
                 ) : (
                   <div className="space-y-2">
                     <FormField label="Your section">
@@ -604,7 +608,7 @@ export function SyllabusReviewPage() {
                     </FormField>
                     {selectedSection ? (
                       <>
-                        <div className="text-[12px] text-[var(--color-text-light)]">
+                        <div className="text-meta">
                           {[selectedSection.meetingDays, selectedSection.meetingTime, selectedSection.location]
                             .filter(Boolean)
                             .join(" · ") || "—"}
@@ -620,7 +624,7 @@ export function SyllabusReviewPage() {
                     ) : null}
                     <ul className="space-y-2 border-t border-[var(--color-chrome-stroke)] pt-2">
                       {result.sections.map((s) => (
-                        <li key={s.id} className="text-[12px]">
+                        <li key={s.id} className="text-meta">
                           <div className="font-medium">{s.label}</div>
                           <div className="text-[var(--color-text-light)]">
                             {[s.meetingDays, s.meetingTime, s.location].filter(Boolean).join(" · ") ||
@@ -638,10 +642,13 @@ export function SyllabusReviewPage() {
                   <div className="space-y-3">
                     <div className="flex items-end justify-between gap-2">
                       <div>
-                        <div className="text-[10px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                        <div className="text-label font-semibold uppercase tracking-[0.05em]">
                           Peak stress
                         </div>
-                        <div className="text-[18px] font-bold tracking-[-0.02em]">
+                        <div
+                          className="text-section-title font-bold tracking-[-0.02em]"
+                          style={{ fontSize: 18 }}
+                        >
                           {workloadProfile.peakText}
                         </div>
                       </div>
@@ -652,14 +659,14 @@ export function SyllabusReviewPage() {
                       />
                     </div>
                     <WorkloadBarChart values={workloadProfile.weeklyCounts} />
-                    <div className="flex justify-between text-[10px] text-[var(--color-text-light)]">
+                    <div className="flex justify-between text-label">
                       <span>Week 1</span>
                       <span>Peak</span>
                       <span>Finals</span>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[12px] text-[var(--color-text-light)]">
+                  <p className="text-meta">
                     {phase === "ready"
                       ? "Not enough dated items to estimate workload."
                       : "Waiting for analysis…"}
@@ -674,20 +681,20 @@ export function SyllabusReviewPage() {
                       size="sm"
                       variant="secondary"
                       disabled={busy || !result.extractedText?.trim()}
-                      onClick={() => void refineWithAi()}
+                      onClick={() => void rerunAnalysis()}
                     >
-                      Refine with AI{analysisPass > 1 ? " (pass 2)" : ""}
+                      Re-run parser{analysisPass > 1 ? " (pass 2)" : ""}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setShowRawText((v) => !v)}>
                       {showRawText ? "Hide" : "Show"}
                     </Button>
                   </div>
                   {showRawText ? (
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-[var(--color-text-light)]">
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-caption">
                       {result.extractedTextPreview}
                     </pre>
                   ) : (
-                    <p className="text-[12px] text-[var(--color-text-light)]">
+                    <p className="text-meta">
                       Preview available ({result.extractedTextPreview.length} chars)
                     </p>
                   )}

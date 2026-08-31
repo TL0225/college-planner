@@ -5,8 +5,8 @@ export function ResumePopOutView() {
   return (
     <div className="flex h-screen flex-col bg-[var(--color-content-bg)]">
       <header className="border-b border-[var(--color-chrome-stroke)] px-4 py-2.5">
-        <h1 className="text-[14px] font-semibold text-[var(--color-text-main)]">Resume builder</h1>
-        <p className="text-[11px] text-[var(--color-text-light)]">
+        <h1 className="text-section-title font-semibold text-[var(--color-text-main)]">Resume builder</h1>
+        <p className="text-caption">
           Pop-out window — edits sync with the main College app via shared profile data.
         </p>
       </header>

@@ -20,7 +20,7 @@ import { showToast } from "@/lib/toast";
 import { useLiveQuery } from "@/lib/useLiveQuery";
 import { DiscoverySchoolProfile } from "./DiscoverySchoolProfile";
 import { DiscoveryCompareTable, useCompareProfiles } from "./DiscoveryCompareTable";
-import { buildCompareMarkdown } from "./discoveryTypes";
+import { buildCompareMarkdown, schoolTuitionUsd } from "./discoveryTypes";
 
 type School = {
   id: string;
@@ -32,9 +32,6 @@ type School = {
   isSaved: boolean;
   admitRate?: number | null;
 };
-
-/** Stub in-state tuition used when CDS cost data is unavailable (Swift profile parity). */
-const STUB_IN_STATE_TUITION = 12_200;
 
 type WorkspaceMode = "discover" | "profile" | "compare" | "saved";
 
@@ -67,7 +64,7 @@ function openSchoolWebsite(website: string) {
 function SchoolAvatar({ name }: { name: string }) {
   return (
     <span
-      className="flex h-8 w-8 shrink-0 items-center justify-center text-[12px] font-semibold text-[var(--color-primary)]"
+      className="flex h-8 w-8 shrink-0 items-center justify-center text-meta font-semibold text-[var(--color-primary)]"
       style={{
         borderRadius: 8,
         border: "1px solid var(--color-chrome-stroke)",
@@ -101,7 +98,7 @@ function SchoolHero({ school }: { school: School }) {
           >
             {school.name}
           </h3>
-          <p className="mt-0.5 text-[12px] text-[var(--color-text-light)]">
+          <p className="mt-0.5 text-meta">
             {locationLabel(school) === "—" ? "Location unknown" : locationLabel(school)}
           </p>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -141,6 +138,7 @@ export function DiscoveryModule() {
     minAcceptanceRate: "",
     maxTuition: "",
   });
+  const [tuitionBySchoolId, setTuitionBySchoolId] = useState<Record<string, number | null>>({});
 
   const load = useCallback(async () => {
     const [rows, settings] = await Promise.all([
@@ -160,6 +158,33 @@ export function DiscoveryModule() {
   }, [query]);
 
   const { refresh, error } = useLiveQuery(load, ["discovery"]);
+
+  useEffect(() => {
+    const maxTuitionRaw = fitPrefs.maxTuition.trim();
+    if (!maxTuitionRaw) {
+      setTuitionBySchoolId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        schools.map(async (school) => {
+          try {
+            const profile = await ipc.discoveryGetProfile(school.id);
+            return [school.id, schoolTuitionUsd(profile.cds)] as const;
+          } catch {
+            return [school.id, null] as const;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setTuitionBySchoolId(Object.fromEntries(entries));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [schools, fitPrefs.maxTuition]);
 
   useEffect(() => {
     const onMode = (ev: Event) => {
@@ -195,11 +220,22 @@ export function DiscoveryModule() {
     if (mode === "discover" && fitPrefs.maxTuition.trim()) {
       const maxTuition = Number(fitPrefs.maxTuition.replace(/[$,]/g, ""));
       if (!Number.isNaN(maxTuition)) {
-        list = list.filter(() => STUB_IN_STATE_TUITION <= maxTuition);
+        list = list.filter((s) => {
+          const tuition = tuitionBySchoolId[s.id];
+          if (tuition == null) return true;
+          return tuition <= maxTuition;
+        });
       }
     }
     return list;
-  }, [mode, schools, fitPrefs.preferredStates, fitPrefs.minAcceptanceRate, fitPrefs.maxTuition]);
+  }, [
+    mode,
+    schools,
+    fitPrefs.preferredStates,
+    fitPrefs.minAcceptanceRate,
+    fitPrefs.maxTuition,
+    tuitionBySchoolId,
+  ]);
 
   const compareSchools = useMemo(
     () =>
@@ -298,7 +334,7 @@ export function DiscoveryModule() {
     <div className="flex h-full flex-col">
       <SchoolHero school={selectedSchool} />
       <div className="min-h-0 flex-1 p-4">
-        <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+        <p className="text-meta leading-relaxed">
           {selectedSchool.website
             ? "Open the school website in your browser, save it for later, or remove it from Discovery."
             : "No website on file for this school."}
@@ -347,9 +383,8 @@ export function DiscoveryModule() {
   const discoverContent = (
     <div className="space-y-3">
       <AppCard title="Fit preferences">
-        <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
-          Filter the Discover list by preferred states. Saved to{" "}
-          <code className="text-[11px]">discovery.fitPrefs.v1</code> (Swift parity).
+        <p className="mb-3 text-meta">
+          Filter the Discover list by preferred states.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           <FormField label="Preferred states (e.g. CA, NY)">
@@ -476,10 +511,10 @@ export function DiscoveryModule() {
                 <div className="flex items-center gap-2">
                   <SchoolAvatar name={school.name} />
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium text-[var(--color-text-main)]">
+                    <p className="truncate text-section-title font-medium">
                       {school.name}
                     </p>
-                    <p className="text-[11px] text-[var(--color-text-light)]">
+                    <p className="text-caption">
                       {locationLabel(school)}
                     </p>
                   </div>
@@ -603,7 +638,7 @@ export function DiscoveryModule() {
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
       <div className="min-h-0 flex-1 overflow-auto p-3 pt-1">
         {mode === "discover" && discoverContent}
         {mode === "profile" && profileContent}

@@ -1,19 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SlidersHorizontal, SquarePen, ArrowUp, Square } from "lucide-react";
 import {
   AppCard,
-  AppPageHeader,
   Button,
-  EmptyState,
+  GuidedEmptyState,
   FormField,
   MetricTile,
-  SegmentedPills,
   StatusChip,
   fieldControlClass,
+  cn,
 } from "@/design-system";
 import { ipc, formatIpcError, type AiRuntimeStatus, type AuditSummary } from "@/lib/ipc";
 import { onAssistantChunk, onAssistantNavigate, onAssistantTool, type AssistantToolEvent } from "@/lib/events";
 import { showToast } from "@/lib/toast";
-import { shellNavigate } from "@/lib/shellNavigate";
+import { navigate } from "@/lib/shellNavigate";
+import { migrateShellState } from "@/lib/shell/migration";
+import { IA_VERSION } from "@/lib/shell/types";
 import { SimpleMarkdown } from "./simpleMarkdown";
 import { SyllabusReviewPage } from "./syllabus/SyllabusReviewPage";
 
@@ -24,6 +26,7 @@ type PendingAction = {
   title: string;
   dueAt?: string | null;
   company?: string | null;
+  roleTitle?: string | null;
   startAt?: string | null;
   semesterName?: string | null;
   courseCode?: string | null;
@@ -96,12 +99,44 @@ function toolChipLabel(entry: AssistantToolEvent): string {
   return TOOL_LABELS[entry.name] ?? entry.name;
 }
 
-const AGENT_ROLE_OPTIONS: Array<{ id: AgentRole; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "academics", label: "Academics" },
-  { id: "career", label: "Career" },
-  { id: "finance", label: "Finance" },
-];
+/** Auto-detects which hub a question is about, replacing the old manual persona picker. */
+function detectRole(question: string): AgentRole {
+  const q = question.toLowerCase();
+  if (
+    q.includes("net worth") ||
+    q.includes("budget") ||
+    q.includes("finance") ||
+    q.includes("spending") ||
+    q.includes("transaction") ||
+    q.includes("money") ||
+    q.includes("balance") ||
+    (q.includes("account") && !q.includes("application"))
+  ) {
+    return "finance";
+  }
+  if (
+    q.includes("job") ||
+    q.includes("career") ||
+    q.includes("application") ||
+    q.includes("interview") ||
+    q.includes("pipeline") ||
+    q.includes("resume") ||
+    q.includes("role")
+  ) {
+    return "career";
+  }
+  if (
+    q.includes("gpa") ||
+    q.includes("grade") ||
+    q.includes("credit") ||
+    q.includes("course") ||
+    q.includes("semester") ||
+    q.includes("degree")
+  ) {
+    return "academics";
+  }
+  return "general";
+}
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -263,6 +298,26 @@ async function loadSnapshot(): Promise<AppSnapshot> {
 }
 
 /** Structured local/model rows that should render as tool-style result cards. */
+function resolveApplicationRole(action: PendingAction): string {
+  const roleTitle = action.roleTitle?.trim();
+  if (roleTitle) return roleTitle;
+  const title = action.title.trim();
+  const company = action.company?.trim();
+  if (company && /^role at\s+/i.test(title)) {
+    return "Open role";
+  }
+  return title || "Open role";
+}
+
+function resolveApplicationCompany(action: PendingAction): string {
+  const company = action.company?.trim();
+  if (company) return company;
+  const title = action.title.trim();
+  const match = title.match(/^role at\s+(.+)$/i);
+  if (match?.[1]?.trim()) return match[1].trim();
+  return title;
+}
+
 function looksLikeToolResult(content: string): boolean {
   const t = content.trimStart();
   return (
@@ -329,7 +384,7 @@ function localAnswer(question: string, snap: AppSnapshot, role: AgentRole): stri
       return (
         "Your College workspace is empty right now — no semesters, courses, career apps, or finance rows yet.\n\n" +
         "To explore with demo data: open Settings → Load sample data, then ask again.\n" +
-        "Or add a semester/course in College → Planner and I’ll report live totals."
+        "Or add a semester/course in School → Plan and I’ll report live totals."
       );
     }
   }
@@ -387,7 +442,7 @@ function localAnswer(question: string, snap: AppSnapshot, role: AgentRole): stri
     }
     if (q.includes("gpa") || q.includes("grade point") || q.includes("grades")) {
       if (!snap.gpaLine) {
-        return "No graded completed courses yet. Set grades under College → Planner (completed courses), then ask again.";
+        return "No graded completed courses yet. Set grades under School → Plan (completed courses), then ask again.";
       }
       return snap.gpaLine;
     }
@@ -485,7 +540,7 @@ function AssistantResultCard({
         <StatusChip title={chipTitle} tint={chipTint} filled />
         <StatusChip title="Tool result" />
       </div>
-      <div className="px-3.5 py-2.5 text-[13px] leading-relaxed text-[var(--color-text-main)]">
+      <div className="px-3.5 py-2.5 text-body leading-relaxed text-[var(--color-text-main)]">
         <SimpleMarkdown content={content} />
       </div>
     </div>
@@ -496,12 +551,8 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
   const view = page === "syllabus" ? "syllabus" : "chat";
   const [status, setStatus] = useState<AiRuntimeStatus | null>(null);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    createMessage(
-      "assistant",
-      "Ask about credits, deadlines, or career prep. I read your live College data. If everything looks empty, load sample data from Settings first.",
-    ),
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [emptyWorkspace, setEmptyWorkspace] = useState(true);
   const [workspaceStats, setWorkspaceStats] = useState({
@@ -512,7 +563,6 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
     completedCredits: 0,
   });
   const listRef = useRef<HTMLUListElement>(null);
-  const [agentRole, setAgentRole] = useState<AgentRole>("general");
   const [attachments, setAttachments] = useState<Array<{ id: string; title: string }>>([]);
   const [webMemory, setWebMemory] = useState("");
   const [webMemoryDraft, setWebMemoryDraft] = useState("");
@@ -543,7 +593,12 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
     });
     let unlistenNavigate: (() => void) | undefined;
     void onAssistantNavigate((payload) => {
-      shellNavigate(payload.module, payload.page);
+      const migrated = migrateShellState({
+        "shell.module": payload.module,
+        "shell.page": payload.page,
+        "shell.iaVersion": String(IA_VERSION),
+      });
+      navigate({ hub: migrated.module, page: migrated.page });
       showToast(`Opened ${payload.module}`, "success");
     }).then((fn) => {
       unlistenNavigate = fn;
@@ -613,7 +668,8 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
       try {
         const snap = await loadSnapshot();
         setEmptyWorkspace(snap.isEmpty);
-        const direct = localAnswer(trimmed, snap, agentRole);
+        const role = detectRole(trimmed);
+        const direct = localAnswer(trimmed, snap, role);
         if (direct) {
           setMessages([
             ...next,
@@ -623,7 +679,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
         }
         const res = await ipc.assistantTurn({
           messages: next.map((m) => ({ role: m.role, content: m.content })),
-          agentRole,
+          agentRole: role,
           attachmentIds: attachments.map((a) => a.id),
           webMemory: webMemory.trim() || undefined,
         });
@@ -649,7 +705,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
         turnAbortRef.current = null;
       }
     },
-    [busy, messages, agentRole, attachments, webMemory],
+    [busy, messages, attachments, webMemory],
   );
 
   const confirmCreateTask = async () => {
@@ -692,19 +748,20 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
 
   const confirmCreateApplication = async () => {
     if (!pendingAction || pendingAction.kind !== "createApplication") return;
-    const company = pendingAction.company?.trim() || pendingAction.title;
+    const company = resolveApplicationCompany(pendingAction);
+    const roleTitle = resolveApplicationRole(pendingAction);
     try {
       await ipc.careerUpsertApplication({
         company,
-        roleTitle: pendingAction.title,
+        roleTitle,
         status: "interested",
       });
       setPendingAction(null);
       await refreshEmpty();
-      showToast(`Tracking job at ${company}`, "success");
+      showToast(`Tracking ${roleTitle} at ${company}`, "success");
       setMessages((prev) => [
         ...prev,
-        createMessage("assistant", `Added **${pendingAction.title}** at **${company}** to your career pipeline.`),
+        createMessage("assistant", `Added **${roleTitle}** at **${company}** to your career pipeline.`),
       ]);
     } catch (e) {
       showToast(formatIpcError(e), "error");
@@ -801,7 +858,10 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
   const confirmUpdateTask = async () => {
     if (!pendingAction || pendingAction.kind !== "updateTask") return;
     const existing = pendingAction.existingTitle?.trim();
-    if (!existing) return;
+    if (!existing) {
+      showToast("Could not identify which task to update", "error");
+      return;
+    }
     try {
       const tasks = await ipc.calendarListTasks();
       const match = tasks.find((t) => t.title.toLowerCase().includes(existing.toLowerCase()));
@@ -899,7 +959,10 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
   const confirmUpdateEvent = async () => {
     if (!pendingAction || pendingAction.kind !== "updateCalendarEvent") return;
     const existing = pendingAction.existingTitle?.trim();
-    if (!existing) return;
+    if (!existing) {
+      showToast("Could not identify which event to update", "error");
+      return;
+    }
     try {
       const events = await ipc.calendarListEvents();
       const match = events.find((e) => e.title.toLowerCase().includes(existing.toLowerCase()));
@@ -932,9 +995,9 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
     if (!key || value === undefined) return;
     try {
       await ipc.settingsSet(key, value);
-      if (key === "ui.theme") {
-        document.documentElement.dataset.theme = value;
-      }
+      window.dispatchEvent(
+        new CustomEvent("college:settings", { detail: { key, value } }),
+      );
       setPendingAction(null);
       showToast(`Updated ${pendingAction.title}`, "success");
       setMessages((prev) => [
@@ -1037,77 +1100,37 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
     }
   };
 
-  const aiStatusChips = status ? (
-    <>
-      <StatusChip title={status.backend} tint="var(--color-primary)" filled />
-      <StatusChip title={status.model} tint="var(--color-primary)" />
-      <StatusChip
-        title={status.llmReady ? "LLM ready" : "LLM fallback"}
-        tint={status.llmReady ? "var(--color-success)" : "var(--color-warning)"}
-        filled
-      />
-      <StatusChip
-        title={`Embeddings: ${status.embeddingsBackend}`}
-        tint={status.embeddingsReady ? "var(--color-success)" : "var(--color-text-light)"}
-        filled={status.embeddingsReady}
-      />
-      {status.onnxPathConfigured && (
-        <StatusChip title="ONNX path set" tint="var(--color-primary)" />
-      )}
-      <StatusChip
-        title={emptyWorkspace ? "Empty workspace" : "Live data"}
-        tint={emptyWorkspace ? "var(--color-warning)" : "var(--color-success)"}
-        filled
-      />
-    </>
-  ) : (
-    <StatusChip title="Loading runtime…" />
-  );
+  const assistantStatusLabel = busy
+    ? "Thinking…"
+    : status?.llmReady || status?.embeddingsReady
+      ? "Ready"
+      : status
+        ? "Offline"
+        : "Checking…";
+
+  const assistantStatusTint = busy
+    ? "var(--color-primary)"
+    : status?.llmReady || status?.embeddingsReady
+      ? "var(--color-success)"
+      : "var(--color-warning)";
 
   return (
     <div className="flex h-full flex-col">
-      <AppPageHeader
-        title={view === "syllabus" ? "Syllabus AI" : "Chat"}
-        subtitle={
-          view === "syllabus"
-            ? "PDF review — extract events, grading, and professor details"
-            : "Answers grounded in your live College workspace"
-        }
-        actions={
-          view === "chat" ? (
-            <div className="flex gap-2">
-              {emptyWorkspace && (
-                <Button size="sm" onClick={() => void loadSample()}>
-                  Load sample data
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  setMessages([
-                    createMessage(
-                      "assistant",
-                      "Ask about credits, deadlines, or career prep. I read your live College data. If everything looks empty, load sample data from Settings first.",
-                    ),
-                  ]);
-                  void refreshEmpty();
-                }}
-              >
-                Clear
-              </Button>
-            </div>
-          ) : undefined
-        }
-      />
+      {view === "syllabus" && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-[var(--color-chrome-stroke)] px-3 py-2">
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: assistantStatusTint }}
+            aria-hidden
+          />
+          <span className="text-meta font-medium text-[var(--color-text-main)]">Syllabus AI</span>
+          <span className="text-caption text-[var(--color-text-light)]">{assistantStatusLabel}</span>
+        </div>
+      )}
 
-      <div className="flex flex-wrap gap-1.5 px-3 pb-1">{aiStatusChips}</div>
-
-      {view === "syllabus" && <SyllabusReviewPage />}
-
-      {view === "chat" && (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3 pt-1">
-          <div className="grid shrink-0 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+      {view === "chat" && toolsOpen && (
+        <div className="shrink-0 space-y-2.5 border-b border-[var(--color-chrome-stroke)] bg-[var(--color-shell-chrome)] p-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <MetricTile
               label="Courses"
               value={workspaceStats.courses}
@@ -1124,21 +1147,18 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
 
           {emptyWorkspace && (
             <AppCard className="shrink-0">
-              <EmptyState
-                title="Workspace is empty"
-                body="Load sample data or add planner rows so credit, calendar, and career answers aren’t zeros."
-                action={
-                  <Button size="sm" onClick={() => void loadSample()}>
-                    Load sample data
-                  </Button>
-                }
+              <GuidedEmptyState
+                title="Nothing here yet"
+                subtitle="Try demo data or add courses and tasks so I can answer with your real schedule."
+                showDemoSeed
+                onDemoSeeded={() => void refreshEmpty()}
               />
             </AppCard>
           )}
 
-          <div className="grid shrink-0 gap-2.5 lg:grid-cols-2">
+          <div className="grid gap-2.5 lg:grid-cols-2">
             <AppCard title="Attachments">
-              <p className="mb-2 text-[12px] text-[var(--color-text-light)]">
+              <p className="mb-2 text-meta">
                 Pin vault documents — sent with each turn and included in vault semantic search.
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -1172,13 +1192,13 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               </div>
             </AppCard>
             <AppCard title="Web memory">
-              <p className="mb-2 text-[12px] text-[var(--color-text-light)]">
+              <p className="mb-2 text-meta">
                 Persistent notes the assistant can reference (stored in Settings).
               </p>
               <FormField label="Memory snippet">
                 <textarea
                   className={fieldControlClass}
-                  rows={4}
+                  rows={3}
                   value={webMemoryDraft}
                   onChange={(e) => setWebMemoryDraft(e.target.value)}
                   placeholder="Course preferences, internship targets, writing style…"
@@ -1196,7 +1216,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                 Save memory
               </Button>
               {webMemory.trim() && (
-                <p className="mt-2 text-[11px] text-[var(--color-text-light)]">
+                <p className="mt-2 text-caption">
                   Active: {webMemory.slice(0, 120)}
                   {webMemory.length > 120 ? "…" : ""}
                 </p>
@@ -1204,46 +1224,30 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
             </AppCard>
           </div>
 
-          <AppCard className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-            <div
-              className="shrink-0 border-b border-[var(--color-chrome-stroke)] px-4 py-3"
-              style={{
-                background:
-                  "linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent)",
-              }}
-            >
-              <h3
-                className="text-[var(--color-text-main)]"
-                style={{
-                  font: "var(--type-section-title)",
-                  fontSize: 16,
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                Conversation
-              </h3>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <SegmentedPills
-                  value={agentRole}
-                  onChange={setAgentRole}
-                  options={AGENT_ROLE_OPTIONS}
-                />
-                {busy && (
-                  <StatusChip title="Thinking…" tint="var(--color-primary)" filled />
-                )}
-                {busy &&
-                  toolTrace.map((t) => (
-                    <StatusChip
-                      key={t.name}
-                      title={toolChipLabel(t)}
-                      tint="var(--color-primary)"
-                    />
-                  ))}
-                <StatusChip title={`${messages.length} messages`} />
-              </div>
+          {status && (
+            <div className="flex flex-wrap gap-1.5">
+              <StatusChip title={status.backend} tint="var(--color-primary)" filled />
+              <StatusChip title={status.model} tint="var(--color-primary)" />
+              {emptyWorkspace && (
+                <button type="button" onClick={() => void loadSample()}>
+                  <StatusChip title="Load sample data" tint="var(--color-success)" />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "syllabus" && <SyllabusReviewPage />}
+
+      {view === "chat" && (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="shrink-0 empty:hidden">
               {pendingAction?.kind === "createTask" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Create task: <strong>{pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" onClick={() => void confirmCreateTask()}>
@@ -1256,7 +1260,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "createEvent" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Schedule event: <strong>{pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" onClick={() => void confirmCreateEvent()}>
@@ -1269,8 +1273,9 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "createApplication" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
-                    Track job at <strong>{pendingAction.company ?? pendingAction.title}</strong>?
+                  <span className="text-meta text-[var(--color-text-main)]">
+                    Track <strong>{resolveApplicationRole(pendingAction)}</strong> at{" "}
+                    <strong>{resolveApplicationCompany(pendingAction)}</strong>?
                   </span>
                   <Button size="sm" onClick={() => void confirmCreateApplication()}>
                     Confirm
@@ -1282,7 +1287,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "addCourseToPlan" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Add <strong>{pendingAction.courseCode ?? pendingAction.title}</strong>
                     {pendingAction.semesterName ? ` to ${pendingAction.semesterName}` : " to plan"}?
                   </span>
@@ -1296,7 +1301,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "addSemester" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Add semester <strong>{pendingAction.semesterName ?? pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" onClick={() => void confirmAddSemester()}>
@@ -1309,7 +1314,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "removeCourseFromPlan" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Remove <strong>{pendingAction.courseCode ?? pendingAction.title}</strong> from plan?
                   </span>
                   <Button size="sm" onClick={() => void confirmRemoveCourseFromPlan()}>
@@ -1322,7 +1327,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "updateTask" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Rename task <strong>{pendingAction.existingTitle}</strong> →{" "}
                     <strong>{pendingAction.title}</strong>?
                   </span>
@@ -1336,7 +1341,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "updateApplicationStatus" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Mark <strong>{pendingAction.company ?? pendingAction.title}</strong> as{" "}
                     <strong>{pendingAction.status}</strong>?
                   </span>
@@ -1350,7 +1355,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "deleteTask" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Delete task <strong>{pendingAction.existingTitle ?? pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" variant="danger" onClick={() => void confirmDeleteTask()}>
@@ -1363,7 +1368,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "deleteCalendarEvent" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Delete event <strong>{pendingAction.existingTitle ?? pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" variant="danger" onClick={() => void confirmDeleteEvent()}>
@@ -1376,7 +1381,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "updateCalendarEvent" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Rename event <strong>{pendingAction.existingTitle}</strong> →{" "}
                     <strong>{pendingAction.title}</strong>?
                   </span>
@@ -1390,7 +1395,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "updateAppSetting" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Set <strong>{pendingAction.title}</strong> to{" "}
                     <strong>{pendingAction.settingValue}</strong>?
                   </span>
@@ -1404,7 +1409,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "saveWebLearning" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Save to web memory: <strong>{pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" onClick={() => void confirmSaveWebLearning()}>
@@ -1417,7 +1422,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "updateProfile" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Update profile: <strong>{pendingAction.title}</strong>?
                   </span>
                   <Button size="sm" onClick={() => void confirmUpdateProfile()}>
@@ -1430,7 +1435,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
               )}
               {pendingAction?.kind === "syncSyllabusDeadlines" && (
                 <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3 py-2">
-                  <span className="text-[12px] text-[var(--color-text-main)]">
+                  <span className="text-meta text-[var(--color-text-main)]">
                     Create <strong>{pendingAction.title}</strong> from syllabi?
                   </span>
                   <Button size="sm" onClick={() => void confirmSyncSyllabusDeadlines()}>
@@ -1442,8 +1447,42 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                 </div>
               )}
             </div>
-            <ul ref={listRef} className="min-h-0 flex-1 overflow-auto p-3">
-              <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
+            <ul ref={listRef} className="min-h-0 flex-1 overflow-auto px-4 py-3">
+              <div className="mx-auto flex w-full max-w-[760px] flex-col gap-4">
+                {messages.length === 0 && !busy && (
+                  <li className="flex flex-1 flex-col items-center justify-center gap-5 py-10 text-center">
+                    <span
+                      className="flex h-11 w-11 items-center justify-center rounded-full"
+                      style={{
+                        background:
+                          "linear-gradient(145deg, color-mix(in srgb, white 22%, var(--color-primary)), var(--color-primary))",
+                      }}
+                      aria-hidden
+                    >
+                      <SquarePen size={18} className="text-white" />
+                    </span>
+                    <div>
+                      <h2 className="text-section-title font-semibold tracking-tight text-[var(--color-text-main)]">
+                        Ask me anything about College
+                      </h2>
+                      <p className="mt-1 max-w-sm text-meta text-[var(--color-text-light)]">
+                        Your schedule, courses, tasks, and applications — grounded in your live data.
+                      </p>
+                    </div>
+                    <div className="grid w-full max-w-[560px] gap-2 sm:grid-cols-2">
+                      {ROLE_QUICK_PROMPTS.general.map((prompt) => (
+                        <button
+                          key={prompt}
+                          type="button"
+                          onClick={() => void sendText(prompt)}
+                          className="rounded-[12px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] px-3.5 py-3 text-left text-meta text-[var(--color-text-main)] shadow-[var(--shadow-elevated)] transition-colors hover:bg-[var(--color-row-hover)]"
+                        >
+                          {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                )}
                 {buildTranscriptItems(messages).map((item) => {
                   if (item.kind === "day") {
                     return (
@@ -1454,7 +1493,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                       >
                         <span className="h-px flex-1 bg-[var(--color-chrome-stroke)]" />
                         <span
-                          className="shrink-0 text-[11px] font-medium tracking-wide text-[var(--color-text-light)]"
+                          className="shrink-0 text-caption font-medium tracking-wide text-[var(--color-text-light)]"
                           style={{ fontVariant: "small-caps" }}
                         >
                           {item.label}
@@ -1487,7 +1526,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                         </div>
                       ) : (
                         <div
-                          className={`max-w-[min(100%,640px)] rounded-[16px] px-3.5 py-2.5 text-[13px] leading-relaxed ${
+                          className={`max-w-[min(100%,640px)] rounded-[16px] px-3.5 py-2.5 text-body leading-relaxed ${
                             isUser
                               ? "bg-[var(--color-primary-soft)] text-[var(--color-text-main)] shadow-[0_1px_2px_color-mix(in_srgb,var(--color-primary)_18%,transparent)] ring-1 ring-inset ring-[var(--color-primary)]/12"
                               : "bg-[var(--color-surface)] text-[var(--color-text-main)] shadow-[var(--shadow-elevated)] ring-1 ring-[var(--color-chrome-stroke)]"
@@ -1505,7 +1544,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                 })}
                 {busy && (
                   <li className="flex flex-col justify-start gap-2">
-                    {toolTrace.length > 0 && (
+                    {toolsOpen && toolTrace.length > 0 && (
                       <div className="flex flex-wrap gap-1.5">
                         {toolTrace.map((t) => (
                           <StatusChip
@@ -1518,7 +1557,7 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                       </div>
                     )}
                     <div
-                      className={`max-w-[min(100%,640px)] rounded-[16px] bg-[var(--color-surface)] px-3.5 py-2.5 text-[13px] text-[var(--color-text-main)] shadow-[var(--shadow-elevated)] ring-1 ring-[var(--color-chrome-stroke)] ${
+                      className={`max-w-[min(100%,640px)] rounded-[16px] bg-[var(--color-surface)] px-3.5 py-2.5 text-body shadow-[var(--shadow-elevated)] ring-1 ring-[var(--color-chrome-stroke)] ${
                         streamingContent ? "" : "animate-pulse text-[var(--color-text-light)]"
                       }`}
                       aria-live="polite"
@@ -1537,39 +1576,74 @@ export function AssistantModule({ page = "chat" }: { page?: string }) {
                 )}
               </div>
             </ul>
-          </AppCard>
-
-          <div className="flex shrink-0 flex-wrap gap-1.5">
-            {ROLE_QUICK_PROMPTS[agentRole].map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                disabled={busy}
-                onClick={() => void sendText(prompt)}
-              >
-                <StatusChip title={prompt} />
-              </button>
-            ))}
           </div>
 
-          <div className="flex shrink-0 gap-2">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about credits, deadlines, applications…"
-              className={fieldControlClass}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void sendText(input);
-              }}
-            />
-            <Button onClick={() => void sendText(input)} disabled={busy}>
-              Send
-            </Button>
-            {busy && (
-              <Button variant="secondary" onClick={() => void cancelTurn()}>
-                Stop
-              </Button>
-            )}
+          <div className="shrink-0 px-4 pb-4 pt-1">
+            <div className="mx-auto flex w-full max-w-[760px] items-center justify-end gap-1 pb-1.5">
+              <button
+                type="button"
+                className={cn(
+                  "rounded-[8px] p-1.5 text-[var(--color-text-light)] hover:bg-[var(--color-row-hover)]",
+                  toolsOpen && "bg-[var(--color-row-hover)] text-[var(--color-text-main)]",
+                )}
+                aria-label="Toggle tools"
+                title="Tools & context"
+                onClick={() => setToolsOpen((v) => !v)}
+              >
+                <SlidersHorizontal size={15} />
+              </button>
+              <button
+                type="button"
+                className="rounded-[8px] p-1.5 text-[var(--color-text-light)] hover:bg-[var(--color-row-hover)]"
+                aria-label="New chat"
+                title="New chat"
+                onClick={() => {
+                  setMessages([]);
+                  void refreshEmpty();
+                }}
+              >
+                <SquarePen size={15} />
+              </button>
+            </div>
+            <div className="mx-auto flex w-full max-w-[760px] items-end gap-2 rounded-[26px] border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] p-2 pl-4 shadow-[var(--shadow-elevated)] focus-within:border-[color-mix(in_srgb,var(--color-primary)_45%,var(--color-chrome-stroke))]">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Message the assistant…"
+                className="min-w-0 flex-1 border-0 bg-transparent py-2 text-body outline-none placeholder:text-[var(--color-text-light)]"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void sendText(input);
+                }}
+              />
+              {busy ? (
+                <button
+                  type="button"
+                  onClick={() => void cancelTurn()}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-text-main)] text-white hover:brightness-110"
+                  aria-label="Stop"
+                  title="Stop"
+                >
+                  <Square size={13} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void sendText(input)}
+                  disabled={!input.trim()}
+                  className={cn(
+                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-opacity",
+                    input.trim() ? "bg-[var(--color-primary)] hover:brightness-110" : "bg-[var(--color-primary)] opacity-40",
+                  )}
+                  aria-label="Send"
+                  title="Send"
+                >
+                  <ArrowUp size={16} />
+                </button>
+              )}
+            </div>
+            <p className="mt-1.5 text-center text-caption text-[var(--color-text-light)]">
+              Answers are grounded in your live College data.
+            </p>
           </div>
         </div>
       )}

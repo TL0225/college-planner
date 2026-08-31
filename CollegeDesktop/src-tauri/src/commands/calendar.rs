@@ -489,7 +489,7 @@ pub struct ExportIcsPathResult {
     pub path: String,
 }
 
-fn build_ics_export(state: &AppState) -> CmdResult<(String, i64)> {
+pub(crate) fn build_ics_export(state: &AppState) -> CmdResult<(String, i64)> {
     let events: Vec<(String, String, String, String)> = state.db.with_conn(|conn| {
         let mut stmt = conn.prepare(
             "SELECT id, title, start_at, location FROM calendar_event
@@ -563,20 +563,14 @@ pub(crate) fn publish_subscribe_feed_inner(state: &AppState) -> CmdResult<Subscr
 
 #[tauri::command]
 pub fn calendar_publish_subscribe_feed(state: State<'_, AppState>) -> CmdResult<SubscribeFeedResult> {
-    publish_subscribe_feed_inner(&state)
+    let result = publish_subscribe_feed_inner(&state)?;
+    let _ = super::calendar_feed_server::refresh_ics_cache(&state);
+    Ok(result)
 }
 
 /// macOS: publish feed then open Calendar.app with the ICS file for subscribe/import.
 #[tauri::command]
 pub fn calendar_open_apple_calendar_feed(state: State<'_, AppState>) -> CmdResult<SubscribeFeedResult> {
-    let result = publish_subscribe_feed_inner(&state)?;
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .args(["-a", "Calendar", result.path.as_str()])
-            .spawn()
-            .map_err(anyhow::Error::from)?;
-    }
     #[cfg(not(target_os = "macos"))]
     {
         return Err(anyhow::anyhow!(
@@ -584,7 +578,15 @@ pub fn calendar_open_apple_calendar_feed(state: State<'_, AppState>) -> CmdResul
         )
         .into());
     }
-    Ok(result)
+    #[cfg(target_os = "macos")]
+    {
+        let result = publish_subscribe_feed_inner(&state)?;
+        std::process::Command::new("open")
+            .args(["-a", "Calendar", result.path.as_str()])
+            .spawn()
+            .map_err(anyhow::Error::from)?;
+        Ok(result)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -653,4 +655,55 @@ pub async fn calendar_geocode_location(query: String) -> CmdResult<GeocodeLocati
         lon,
         display_name: hit.display_name,
     })
+}
+
+/// Search locations — returns up to 6 Nominatim matches for autocomplete.
+#[tauri::command]
+pub async fn calendar_search_locations(query: String) -> CmdResult<Vec<GeocodeLocationResult>> {
+    let trimmed = query.trim();
+    if trimmed.len() < 2 {
+        return Ok(vec![]);
+    }
+
+    let url = reqwest::Url::parse_with_params(
+        "https://nominatim.openstreetmap.org/search",
+        &[("q", trimmed), ("format", "json"), ("limit", "6"), ("addressdetails", "0")],
+    )
+    .map_err(anyhow::Error::from)?;
+
+    let client = reqwest::Client::builder()
+        .user_agent("CollegeDesktop/0.1 (+https://college.app)")
+        .timeout(std::time::Duration::from_secs(12))
+        .build()
+        .map_err(anyhow::Error::from)?;
+
+    let response = client
+        .get(url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(anyhow::Error::from)?;
+
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!("Nominatim returned HTTP {}", response.status()).into());
+    }
+
+    let hits: Vec<NominatimHit> = response.json().await.map_err(anyhow::Error::from)?;
+    let mut out = Vec::with_capacity(hits.len());
+    for hit in hits {
+        let lat: f64 = hit
+            .lat
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid latitude from Nominatim"))?;
+        let lon: f64 = hit
+            .lon
+            .parse()
+            .map_err(|_| anyhow::anyhow!("Invalid longitude from Nominatim"))?;
+        out.push(GeocodeLocationResult {
+            lat,
+            lon,
+            display_name: hit.display_name,
+        });
+    }
+    Ok(out)
 }

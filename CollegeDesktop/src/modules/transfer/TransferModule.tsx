@@ -20,6 +20,8 @@ import { confirmDelete } from "@/lib/confirm";
 import { showToast } from "@/lib/toast";
 import { useLiveQuery } from "@/lib/useLiveQuery";
 
+const SAMPLE_TRANSFER_SOURCE = "Community College";
+
 type Eq = {
   id: string;
   sourceSchool: string;
@@ -103,7 +105,7 @@ export function TransferModule() {
   const [assistForm, setAssistForm] = useState({
     sourceSchoolId: "de_anza_college",
     targetSchoolId: "uc_berkeley",
-    mode: "fixture" as "fixture" | "live",
+    mode: "fixture" as "fixture" | "live" | "scrape",
   });
 
   const load = useCallback(async () => {
@@ -123,12 +125,22 @@ export function TransferModule() {
   const { refresh, error } = useLiveQuery(load, ["transfer"]);
   const selectedRow = rows.find((r) => r.id === selected) ?? null;
 
+  const displayRows = useMemo(() => {
+    if (dataMode === "sample") {
+      return rows.filter((r) => r.sourceSchool === SAMPLE_TRANSFER_SOURCE);
+    }
+    return rows;
+  }, [rows, dataMode]);
+
   const transferCredits = useMemo(
-    () => rows.reduce((sum, r) => sum + (r.credits ?? 0), 0),
-    [rows],
+    () => displayRows.reduce((sum, r) => sum + (r.credits ?? 0), 0),
+    [displayRows],
   );
 
-  const uniqueSchools = useMemo(() => new Set(rows.map((r) => r.sourceSchool)).size, [rows]);
+  const uniqueSchools = useMemo(
+    () => new Set(displayRows.map((r) => r.sourceSchool)).size,
+    [displayRows],
+  );
 
   return (
     <div className="flex h-full flex-col">
@@ -165,31 +177,33 @@ export function TransferModule() {
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
-      {dataMode === "sample" && rows.length === 0 && (
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
+      {dataMode === "sample" && (
         <AppCard className="mx-3 mb-2" title="Sample transfer data">
-          <p className="mb-2 text-[12px] text-[var(--color-text-light)]">
-            Load demo equivalencies (Community College → CS/Math/ENG mappings) to explore degree
-            impact without entering your own rows.
+          <p className="mb-2 text-meta">
+            Showing demo equivalencies from {SAMPLE_TRANSFER_SOURCE}. Load sample rows to explore
+            degree impact, or switch to Live for your own mappings.
           </p>
-          <Button
-            size="sm"
-            onClick={() =>
-              void ipc
-                .demoSeedSampleData()
-                .then(() => {
-                  showToast("Sample transfer rows loaded", "success");
-                  return refresh();
-                })
-                .catch((e) => showToast(formatIpcError(e), "error"))
-            }
-          >
-            Load sample equivalencies
-          </Button>
+          {rows.filter((r) => r.sourceSchool === SAMPLE_TRANSFER_SOURCE).length === 0 && (
+            <Button
+              size="sm"
+              onClick={() =>
+                void ipc
+                  .demoSeedSampleData()
+                  .then(() => {
+                    showToast("Sample transfer rows loaded", "success");
+                    return refresh();
+                  })
+                  .catch((e) => showToast(formatIpcError(e), "error"))
+              }
+            >
+              Load sample equivalencies
+            </Button>
+          )}
         </AppCard>
       )}
       <div className="grid shrink-0 gap-2.5 px-3 pb-1 sm:grid-cols-4">
-        <MetricTile label="Equivalencies" value={rows.length} accent="var(--color-primary)" />
+        <MetricTile label="Equivalencies" value={displayRows.length} accent="var(--color-primary)" />
         <MetricTile label="Transfer credits" value={transferCredits.toFixed(1)} accent="var(--color-warning)" />
         <MetricTile label="Source schools" value={uniqueSchools} />
         <MetricTile
@@ -199,7 +213,7 @@ export function TransferModule() {
         />
       </div>
       <AppCard className="mx-3 mb-2" title="Degree impact">
-        <p className="mb-2 text-[12px] text-[var(--color-text-light)]">
+        <p className="mb-2 text-meta">
           Mapped transfer credits ({transferCredits.toFixed(1)} cr) apply toward your local degree
           audit alongside {completedCredits?.toFixed(1) ?? "0"} completed planner credits.
         </p>
@@ -209,15 +223,19 @@ export function TransferModule() {
         <TrailingInspector
           open={!!selectedRow}
           main={
-            <AppCard title={`Equivalencies · ${rows.length}`}>
-              {rows.length === 0 ? (
+            <AppCard title={`Equivalencies · ${displayRows.length}`}>
+              {displayRows.length === 0 ? (
                 <EmptyState
-                  title="No equivalencies"
-                  body="Map transfer courses to local catalog codes, or load sample data from Settings."
+                  title={dataMode === "sample" ? "No sample equivalencies" : "No equivalencies"}
+                  body={
+                    dataMode === "sample"
+                      ? "Load sample data from Settings or switch to Live to see your own rows."
+                      : "Map transfer courses to local catalog codes, or load sample data from Settings."
+                  }
                 />
               ) : (
                 <ul className="divide-y divide-[var(--color-chrome-stroke)]">
-                  {rows.map((r) => (
+                  {displayRows.map((r) => (
                     <li key={r.id}>
                       <ListRow
                         selected={selected === r.id}
@@ -226,7 +244,7 @@ export function TransferModule() {
                         subtitle={
                           <span className="inline-flex flex-wrap items-center gap-1.5">
                             <StatusChip title={r.sourceCode} tint="var(--color-warning)" filled />
-                            <span className="text-[10px] text-[var(--color-text-light)]">→</span>
+                            <span className="text-label">→</span>
                             <StatusChip title={r.targetCode} tint="var(--color-primary)" filled />
                           </span>
                         }
@@ -252,7 +270,7 @@ export function TransferModule() {
                     "linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 8%, transparent), transparent)",
                 }}
               >
-                <p className="text-[12px] text-[var(--color-text-light)]">
+                <p className="text-meta">
                   {selectedRow.sourceSchool}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -261,7 +279,7 @@ export function TransferModule() {
                     tint="var(--color-warning)"
                     filled
                   />
-                  <span className="text-[11px] text-[var(--color-text-light)]">maps to</span>
+                  <span className="text-caption">maps to</span>
                   <StatusChip
                     title={selectedRow.targetCode}
                     tint="var(--color-primary)"
@@ -275,14 +293,14 @@ export function TransferModule() {
                 )}
               </div>
               <div className="min-h-0 flex-1 overflow-auto p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                <p className="text-label font-semibold uppercase tracking-[0.05em]">
                   Notes
                 </p>
-                <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-text-main)]">
+                <p className="mt-1.5 text-meta leading-relaxed text-[var(--color-text-main)]">
                   {selectedRow.notes || "No notes for this equivalency."}
                 </p>
                 <div className="mt-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-[var(--color-text-light)]">
+                  <p className="text-label font-semibold uppercase tracking-[0.05em]">
                     Proof document
                   </p>
                   <select
@@ -433,9 +451,9 @@ export function TransferModule() {
           />
           {importMode === "csv" ? (
             <>
-              <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+              <p className="text-meta leading-relaxed">
                 Paste one row per line:{" "}
-                <code className="text-[11px]">source school, source code, target code, credits, notes</code>
+                <code className="text-caption">source school, source code, target code, credits, notes</code>
                 . Comma or tab separated. Lines starting with # are ignored.
               </p>
               <FormField label="CSV rows">
@@ -478,10 +496,9 @@ export function TransferModule() {
             </>
           ) : (
             <>
-              <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
+              <p className="text-meta leading-relaxed">
                 Paste community equivalency JSON — an array of rows or{" "}
-                <code className="text-[11px]">{`{ "equivalencies": [...] }`}</code> (Swift community
-                bundle parity).
+                <code className="text-caption">{`{ "equivalencies": [...] }`}</code>.
               </p>
               <FormField label="Community JSON">
                 <textarea
@@ -519,9 +536,11 @@ export function TransferModule() {
 
       <ModalSheet open={assistOpen} onOpenChange={setAssistOpen} title="Import from ASSIST">
         <div className="space-y-3">
-          <p className="text-[12px] leading-relaxed text-[var(--color-text-light)]">
-            Swift parity: bundled De Anza → UC Berkeley fixture, or live GitHub dataset when
-            available.
+          <p className="text-meta leading-relaxed">
+            Import articulation agreements from bundled fixtures, a community mirror, or live
+            ASSIST.org scraping. School IDs can be numeric (e.g. <code>110</code>) or slugs like{" "}
+            <code>de_anza_college</code> — scrape mode resolves slugs via the ASSIST institution
+            hierarchy before calling the API.
           </p>
           <FormField label="Source school ID">
             <input
@@ -544,7 +563,8 @@ export function TransferModule() {
             onChange={(mode) => setAssistForm((f) => ({ ...f, mode }))}
             options={[
               { id: "fixture", label: "Fixture" },
-              { id: "live", label: "Live" },
+              { id: "live", label: "Mirror" },
+              { id: "scrape", label: "Scrape" },
             ]}
           />
           <Button

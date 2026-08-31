@@ -5,6 +5,7 @@ pub mod background;
 pub mod commands;
 pub mod db;
 pub mod paths;
+pub mod platform;
 pub mod scrapers;
 pub mod security;
 pub mod swift_mirror;
@@ -55,6 +56,9 @@ pub fn run() {
 
             let db = Arc::new(AppDb::open(&paths.college_db_path)?);
             db.migrate()?;
+            if let Err(e) = paths.retire_legacy_finance_sidecar() {
+                tracing::warn!("Finance.sqlite sidecar retire skipped: {e}");
+            }
             match swift_seed::seed_from_swift_if_needed(&db, &paths) {
                 Ok(Some(report)) => {
                     tracing::info!(
@@ -69,13 +73,33 @@ pub fn run() {
 
             let security = Arc::new(SecurityService::new(paths.clone())?);
             let ai = Arc::new(ai::AiRuntime::new(paths.clone(), db.clone())?);
+            let ai_download = Arc::clone(&ai);
+            let download_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = ai_download.ensure_llm_download(download_app).await {
+                    tracing::warn!(error = %e, "On-device LLM download skipped or failed");
+                }
+            });
 
             app.manage(AppState {
                 db,
-                paths,
+                paths: paths.clone(),
                 security,
                 ai,
             });
+
+            if let Some(main) = app.get_webview_window("main") {
+                #[cfg(target_os = "windows")]
+                {
+                    if let Err(e) = platform::windows::initialize_windows(&main) {
+                        tracing::warn!(error = %e, "Windows integration init failed");
+                    }
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    platform::apply_main_window_chrome(&main);
+                }
+            }
 
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -88,7 +112,27 @@ pub fn run() {
             commands::platform::get_platform_info,
             commands::platform::get_storage_paths,
             commands::platform::platform_typst_available,
+            commands::platform::platform_typst_ensure_download,
             commands::platform::platform_fetch_weather,
+            commands::platform::platform_approx_location,
+            commands::windows::windows_get_capabilities,
+            commands::windows::windows_sync_theme,
+            commands::windows::windows_set_taskbar_progress,
+            commands::windows::windows_clear_taskbar_progress,
+            commands::windows::windows_get_personalization,
+            commands::windows::windows_get_ai_profile,
+            commands::windows::windows_start_focus_session,
+            commands::windows::windows_end_focus_session,
+            commands::windows::windows_get_focus_status,
+            commands::windows::windows_build_widget_feeds,
+            commands::windows::windows_sync_search_index,
+            commands::windows::windows_share_file,
+            commands::windows::windows_copy_rich_text,
+            commands::windows::windows_get_inking_capability,
+            commands::windows::windows_set_efficiency_mode,
+            commands::windows::windows_battery_saver_active,
+            commands::windows::windows_refresh_shell_integration,
+            commands::windows::windows_mmap_file_size,
             commands::platform_import::platform_import_swift_workspace,
             commands::platform_import::platform_sync_published_calendar_feed,
             commands::academics::academics_get_audit_summary,
@@ -112,10 +156,15 @@ pub fn run() {
             commands::calendar::calendar_export_ics_path,
             commands::calendar::calendar_publish_subscribe_feed,
             commands::calendar::calendar_open_apple_calendar_feed,
+            commands::calendar_feed_server::calendar_get_webcal_url,
+            commands::calendar_feed_server::calendar_start_feed_server,
+            commands::calendar_feed_server::calendar_set_feed_bind_mode,
+            commands::calendar_feed_server::calendar_get_feed_bind_mode,
             commands::focus_blocks::calendar_list_focus_blocks,
             commands::focus_blocks::calendar_upsert_focus_block,
             commands::focus_blocks::calendar_delete_focus_block,
             commands::calendar::calendar_geocode_location,
+            commands::calendar::calendar_search_locations,
             commands::calendar_oauth::calendar_oauth_begin,
             commands::calendar_oauth::calendar_oauth_complete,
             commands::calendar_oauth::calendar_oauth_status,
@@ -270,6 +319,12 @@ pub fn run() {
             commands::lms::lms_portal_credentials_clear,
             commands::lms::lms_portal_autofill_login,
             commands::lms::lms_portal_install_bridge,
+            commands::lms::lms_canvas_get_config,
+            commands::lms::lms_canvas_set_config,
+            commands::lms::lms_canvas_sync,
+            commands::lms_canvas_oauth::lms_canvas_oauth_begin,
+            commands::lms_canvas_oauth::lms_canvas_oauth_complete,
+            commands::lms_canvas_oauth::lms_canvas_oauth_set_credentials,
             commands::profile::profile_get_identity,
             commands::profile::profile_list_experiences,
             commands::profile::profile_list_achievements,
@@ -285,6 +340,8 @@ pub fn run() {
             commands::ai::ai_embed_texts,
             commands::ai::ai_chat_completion,
             commands::ai::ai_runtime_status,
+            commands::ai::ai_llm_status,
+            commands::ai::ai_llm_download,
             commands::ai::ai_ping,
             commands::ai::ai_semantic_search_catalog,
             commands::ai::ai_semantic_search_vault,
@@ -313,6 +370,7 @@ pub fn run() {
             commands::writes::career_upsert_application,
             commands::writes::career_update_application_status,
             commands::writes::career_move_application,
+            commands::writes::career_reorder_applications,
             commands::writes::career_apply_complete,
             commands::writes::career_delete_application,
             commands::writes::career_resume_keyword_match,
@@ -333,6 +391,7 @@ pub fn run() {
             commands::writes::finance_upsert_holding,
             commands::writes::finance_delete_holding,
             commands::writes::finance_upsert_recurring,
+            commands::writes::finance_delete_recurring,
             commands::writes::finance_run_recurring_due,
             commands::writes::finance_mark_due_paid,
             commands::writes::documents_upsert_vault_doc,

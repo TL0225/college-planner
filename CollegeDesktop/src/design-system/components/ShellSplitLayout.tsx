@@ -1,31 +1,36 @@
 import { cn } from "../cn";
 import { shell } from "../tokens";
+import { WindowChromeControls } from "./WindowChromeControls";
+import { usePlatform } from "../platform/PlatformProvider";
 
 /**
  * Super-app chrome matching AppShellSplitLayout:
- * traffic-light / logo cell | ModulePillBar header
- * sidebar rail              | white content stage
+ * traffic-light / logo cell | ModulePillBar header | window controls
+ * sidebar rail              | content stage
  */
 export function ShellSplitLayout({
   logo,
   header,
   sidebar,
   children,
-  sidebarWidth = shell.sidebarWidth,
+  sidebarWidth,
+  sidebarCollapsed = false,
 }: {
   logo?: React.ReactNode;
   header: React.ReactNode;
   sidebar: React.ReactNode;
   children: React.ReactNode;
   sidebarWidth?: number;
+  sidebarCollapsed?: boolean;
 }) {
+  const { platform } = usePlatform();
+  const width =
+    sidebarWidth ??
+    (sidebarCollapsed ? shell.sidebarCollapsedWidth : shell.sidebarWidth);
+
   return (
     <div
-      className="flex h-full w-full flex-col"
-      style={{
-        background:
-          "linear-gradient(180deg, color-mix(in srgb, white 28%, var(--color-shell-chrome)) 0%, var(--color-shell-chrome) 48px)",
-      }}
+      className="flex h-full w-full flex-col bg-[var(--color-shell-chrome)]"
     >
       <div
         className="flex shrink-0 border-b border-[var(--color-chrome-stroke)]"
@@ -34,26 +39,13 @@ export function ShellSplitLayout({
         <div
           className="flex shrink-0 items-end border-r border-[var(--color-chrome-stroke)]"
           style={{
-            width: sidebarWidth,
-            paddingLeft: Math.min(shell.titlebarLeadingInset, 16),
+            width,
+            paddingLeft: "var(--shell-titlebar-inset)",
             paddingBottom: 10,
           }}
           data-tauri-drag-region
         >
-          {logo ?? (
-            <div
-              className="flex h-7 w-7 items-center justify-center text-[11px] font-bold text-white"
-              style={{
-                borderRadius: 8,
-                background:
-                  "linear-gradient(145deg, color-mix(in srgb, white 22%, var(--color-primary)), var(--color-primary))",
-                boxShadow: "var(--shadow-pill)",
-              }}
-              aria-hidden
-            >
-              C
-            </div>
-          )}
+          {logo}
         </div>
         <div
           className="flex min-w-0 flex-1 items-end px-3"
@@ -62,12 +54,13 @@ export function ShellSplitLayout({
         >
           {header}
         </div>
+        {platform !== "macos" ? <WindowChromeControls /> : null}
       </div>
 
       <div className="flex min-h-0 flex-1">
         <div
           className="shrink-0 border-r border-[var(--color-chrome-stroke)] bg-[var(--color-shell-chrome)]"
-          style={{ width: sidebarWidth }}
+          style={{ width }}
         >
           {sidebar}
         </div>

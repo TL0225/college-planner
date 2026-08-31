@@ -10,6 +10,7 @@ import {
   ProgressBar,
   StatusChip,
   fieldControlClass,
+  NotesEditor,
 } from "@/design-system";
 import { ipc, formatIpcError, type ProfileIdentity } from "@/lib/ipc";
 import { confirmDelete } from "@/lib/confirm";
@@ -92,6 +93,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
     url: string;
   };
   const [projects, setProjects] = useState<PortfolioProject[]>([]);
+  const [phone, setPhone] = useState("");
   const [projectSheet, setProjectSheet] = useState(false);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [projectForm, setProjectForm] = useState({
@@ -117,6 +119,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
       checks[key] = settings.values[key] === "true";
     }
     setAdvisorChecks(checks);
+    setPhone(settings.values["profile.phone"]?.trim() ?? "");
     try {
       const raw = settings.values["profile.portfolio.projects.v1"];
       const parsed = raw ? (JSON.parse(raw) as PortfolioProject[]) : [];
@@ -210,7 +213,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
 
       {view === "identity" && (
         <div className="min-h-0 flex-1 overflow-auto p-3 pt-1">
@@ -227,7 +230,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
             >
               <div className="flex items-start gap-3">
                 <span
-                  className="flex h-12 w-12 shrink-0 items-center justify-center text-[16px] font-semibold tracking-tight text-[var(--color-primary)]"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center text-section-title font-semibold tracking-tight text-[var(--color-primary)]"
                   style={{
                     borderRadius: 999,
                     border: "1px solid var(--color-chrome-stroke)",
@@ -247,9 +250,12 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                   >
                     {identity?.fullName || "Your name"}
                   </h3>
-                  <p className="mt-0.5 truncate text-[12px] text-[var(--color-text-light)]">
+                  <p className="mt-0.5 truncate text-meta">
                     {identity?.email || "No email yet"}
                   </p>
+                  {phone ? (
+                    <p className="mt-0.5 truncate text-meta">{phone}</p>
+                  ) : null}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {identity?.major ? (
                       <StatusChip title={identity.major} tint="var(--color-primary)" filled />
@@ -261,16 +267,17 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                 </div>
               </div>
             </div>
-            <dl className="space-y-2.5 text-[13px]">
+            <dl className="space-y-2.5 text-body">
               <Row label="University" value={identity?.universityName || "—"} />
               <Row label="Major" value={identity?.major || "—"} />
+              <Row label="Phone" value={phone || "—"} />
               <Row
                 label="Graduation"
                 value={identity?.graduationYear != null ? String(identity.graduationYear) : "—"}
               />
             </dl>
             {experiences.length > 0 && (
-              <p className="mt-4 text-[12px] text-[var(--color-text-light)]">
+              <p className="mt-4 text-meta">
                 {experiences.length} experience{experiences.length === 1 ? "" : "s"} — open
                 Experiences in the sidebar to manage roles and activities.
               </p>
@@ -300,13 +307,13 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                     }}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-text-main)]">
+                      <div className="text-section-title tracking-[-0.01em] text-[var(--color-text-main)]">
                         {e.title}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <StatusChip title={e.organization} filled />
                         {(e.startDate || e.endDate) && (
-                          <span className="text-[11px] text-[var(--color-text-light)]">
+                          <span className="text-caption">
                             {[e.startDate?.slice(0, 10), e.endDate?.slice(0, 10)]
                               .filter(Boolean)
                               .join(" – ") || "Dates TBD"}
@@ -314,7 +321,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                         )}
                       </div>
                       {e.summary && (
-                        <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-text-light)]">
+                        <p className="mt-1.5 text-meta leading-relaxed">
                           {e.summary}
                         </p>
                       )}
@@ -379,7 +386,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                     }}
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-text-main)]">
+                      <div className="text-section-title tracking-[-0.01em] text-[var(--color-text-main)]">
                         {a.title}
                       </div>
                       <div className="mt-1">
@@ -390,7 +397,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                         />
                       </div>
                       {a.notes && (
-                        <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-text-light)]">
+                        <p className="mt-1.5 text-meta leading-relaxed">
                           {a.notes}
                         </p>
                       )}
@@ -442,10 +449,10 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
             <div className="flex flex-wrap items-center gap-4">
               <ProgressRing ratio={profileCompleteness.ratio} label={`${profileCompleteness.filled}/${profileCompleteness.total}`} />
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-[var(--color-text-main)]">
+                <p className="text-section-title text-[var(--color-text-main)]">
                   {identity?.fullName || "Your portfolio"}
                 </p>
-                <p className="mt-1 text-[12px] text-[var(--color-text-light)]">
+                <p className="mt-1 text-meta">
                   {identity?.major || "Add your major"} ·{" "}
                   {identity?.universityName || "Add your university"}
                 </p>
@@ -481,9 +488,9 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="text-[13px] font-semibold">{p.title}</div>
+                          <div className="text-section-title">{p.title}</div>
                           {p.role ? (
-                            <div className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                            <div className="mt-0.5 text-caption">
                               {p.role}
                             </div>
                           ) : null}
@@ -541,7 +548,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                       key={e.id}
                       className="rounded-[10px] border border-[var(--color-chrome-stroke)] px-3 py-2"
                     >
-                      <div className="text-[13px] font-semibold">{e.title}</div>
+                      <div className="text-section-title">{e.title}</div>
                       <StatusChip title={e.organization} filled className="mt-1" />
                     </li>
                   ))}
@@ -558,7 +565,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                       key={a.id}
                       className="rounded-[10px] border border-[var(--color-chrome-stroke)] px-3 py-2"
                     >
-                      <div className="text-[13px] font-semibold">{a.title}</div>
+                      <div className="text-section-title">{a.title}</div>
                       {a.issuer ? (
                         <StatusChip title={a.issuer} tint="var(--color-warning)" filled className="mt-1" />
                       ) : null}
@@ -574,7 +581,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
       {view === "advisor" && (
         <div className="min-h-0 flex-1 space-y-3 overflow-auto p-3 pt-1">
           <AppCard title="Meeting checklist">
-            <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+            <p className="mb-3 text-meta">
               Track what to bring and discuss before your next advisor meeting. Progress is saved
               locally.
             </p>
@@ -589,7 +596,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
                       className="mt-0.5"
                     />
                     <span
-                      className={`text-[13px] ${
+                      className={`text-body ${
                         advisorChecks[key]
                           ? "text-[var(--color-text-light)] line-through"
                           : "text-[var(--color-text-main)]"
@@ -603,7 +610,7 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
             </ul>
           </AppCard>
           <AppCard title="Quick context">
-            <dl className="space-y-2 text-[13px]">
+            <dl className="space-y-2 text-body">
               <Row label="Major" value={identity?.major || "—"} />
               <Row
                 label="Graduation"
@@ -710,10 +717,8 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
             disabled={!expForm.title.trim() || !expForm.organization.trim()}
             onClick={async () => {
               try {
-                if (editingExpId) {
-                  await ipc.profileDeleteExperience(editingExpId);
-                }
                 await ipc.profileUpsertExperience({
+                  id: editingExpId ?? undefined,
                   title: expForm.title.trim(),
                   organization: expForm.organization.trim(),
                   summary: expForm.summary.trim() || undefined,
@@ -755,21 +760,18 @@ export function ProfileModule({ page = "identity" }: { page?: string }) {
             />
           </FormField>
           <FormField label="Notes">
-            <textarea
-              className={fieldControlClass}
-              rows={3}
+            <NotesEditor
               value={achForm.notes}
-              onChange={(e) => setAchForm({ ...achForm, notes: e.target.value })}
+              onChange={(notes) => setAchForm({ ...achForm, notes })}
+              minRows={3}
             />
           </FormField>
           <Button
             disabled={!achForm.title.trim()}
             onClick={async () => {
               try {
-                if (editingAchId) {
-                  await ipc.profileDeleteAchievement(editingAchId);
-                }
                 await ipc.profileUpsertAchievement({
+                  id: editingAchId ?? undefined,
                   title: achForm.title.trim(),
                   issuer: achForm.issuer.trim() || undefined,
                   notes: achForm.notes.trim() || undefined,
@@ -904,10 +906,13 @@ function ProgressRing({ ratio, label }: { ratio: number; label: string }) {
         />
       </svg>
       <div className="absolute text-center">
-        <div className="text-[15px] font-semibold tabular-nums text-[var(--color-text-main)]">
+        <div
+          className="text-section-title font-semibold tabular-nums text-[var(--color-text-main)]"
+          style={{ fontSize: 15 }}
+        >
           {pct}%
         </div>
-        <div className="text-[10px] text-[var(--color-text-light)]">{label}</div>
+        <div className="text-caption">{label}</div>
       </div>
     </div>
   );

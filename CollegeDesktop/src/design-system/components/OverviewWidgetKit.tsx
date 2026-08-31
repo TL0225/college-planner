@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
+import { Children as ReactChildren } from "react";
 import { cn } from "../cn";
 import { radius, spacing } from "../tokens";
+import { StaggeredList, StaggeredItem } from "../motion/StaggeredList";
 
 /** Mirrors Swift `WidgetCategory.accentColor`. */
 export const overviewCategoryAccent = {
-  academic: "var(--color-primary)",
-  productivity: "#ff9f0a",
-  media: "#ff375f",
-  information: "#64d2ff",
-  custom: "#5e5ce6",
+  academic: "var(--registrar-accent)",
+  productivity: "var(--registrar-accent)",
+  media: "#b85c5c",
+  information: "#5c8ab8",
+  custom: "var(--registrar-accent)",
 } as const;
 
 export type OverviewCategory = keyof typeof overviewCategoryAccent;
@@ -32,10 +34,9 @@ export function OverviewWidgetCard({
       aria-label={title}
       style={{
         padding: spacing.md,
-        borderRadius: radius.lg,
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-chrome-stroke)",
-        boxShadow: "inset 0 1px 0 color-mix(in srgb, white 40%, transparent)",
+        borderRadius: "var(--registrar-radius)",
+        background: "var(--registrar-surface)",
+        border: "1px solid var(--registrar-rule)",
       }}
     >
       {children}
@@ -64,8 +65,13 @@ export function OverviewWidgetHeader({
         {icon}
       </span>
       <h2
-        className="min-w-0 flex-1 truncate text-[var(--color-text-main)]"
-        style={{ font: "var(--type-section-title)", fontWeight: 700 }}
+        className="min-w-0 flex-1 truncate"
+        style={{
+          fontFamily: "var(--font-display)",
+          fontWeight: 600,
+          fontSize: 16,
+          color: "var(--registrar-ink)",
+        }}
       >
         {title}
       </h2>
@@ -94,9 +100,9 @@ export function OverviewWidgetEmpty({
       >
         {icon}
       </span>
-      <p className="text-[13px] font-semibold text-[var(--color-text-main)]">{title}</p>
+      <p className="text-section-title">{title}</p>
       {message ? (
-        <p className="max-w-[28ch] text-[11px] font-medium text-[var(--color-text-light)]">{message}</p>
+        <p className="max-w-[28ch] text-label">{message}</p>
       ) : null}
     </div>
   );
@@ -130,8 +136,9 @@ export function OverviewWidgetRow({
 export function OverviewWidgetBadge({ text, color }: { text: string; color: string }) {
   return (
     <span
-      className="shrink-0 rounded-full px-[7px] py-[3px] text-[9px] font-extrabold tracking-wide uppercase"
+      className="shrink-0 rounded-full px-[7px] py-[3px] text-label font-extrabold tracking-wide uppercase"
       style={{
+        fontSize: 9,
         color,
         background: `color-mix(in srgb, ${color} 12%, transparent)`,
       }}
@@ -143,16 +150,19 @@ export function OverviewWidgetBadge({ text, color }: { text: string; color: stri
 
 /** Swift Overview `LazyVGrid` adaptive ~340 / spacing 24. */
 export function OverviewWidgetGridLayout({ children }: { children: ReactNode }) {
+  const items = ReactChildren.toArray(children).filter(Boolean);
   return (
-    <div
+    <StaggeredList
       className="grid w-full"
       style={{
         gap: 24,
         gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
       }}
     >
-      {children}
-    </div>
+      {items.map((child, index) => (
+        <StaggeredItem key={index}>{child}</StaggeredItem>
+      ))}
+    </StaggeredList>
   );
 }
 
@@ -197,7 +207,8 @@ export function CreditRing({
         x={c}
         y={c + 5}
         textAnchor="middle"
-        className="fill-[var(--color-text-main)] text-[15px] font-bold"
+        className="fill-[var(--color-text-main)] text-section-title font-bold"
+        style={{ fontSize: 15 }}
       >
         {Math.round(f * 100)}%
       </text>

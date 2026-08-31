@@ -44,11 +44,11 @@ export function PathTimeline({
               item.selected && "bg-[var(--color-primary-soft)] ring-1 ring-[var(--color-primary)]/25",
             )}
           >
-            <div className="text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-text-main)]">
+            <div className="text-section-title tracking-[-0.01em]">
               {item.title}
             </div>
             {(item.subtitle || item.meta) && (
-              <div className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+              <div className="mt-0.5 text-caption">
                 {[item.subtitle, item.meta].filter(Boolean).join(" · ")}
                 {idx === 0 && items.length > 1 ? " · latest" : ""}
               </div>

@@ -7,7 +7,7 @@ import {
 } from "@/design-system";
 import {
   buildNetWorthTrend,
-  CashFlowBarChart,
+  CashFlowMeter,
   FinanceSectionHero,
   monthCashFlow,
   NetWorthTrendChart,
@@ -126,20 +126,26 @@ export function FinanceDashboardScreen({
       <AppCard title="Cash flow this month">
         <div className="flex flex-wrap gap-6">
           <div>
-            <p className="text-[11px] text-[var(--color-text-light)]">Income</p>
-            <p className="text-[18px] font-semibold tabular-nums text-[var(--color-success)]">
+            <p className="text-caption">Income</p>
+            <p
+              className="text-section-title font-semibold tabular-nums text-[var(--color-success)]"
+              style={{ fontSize: 18 }}
+            >
               {money(income)}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-[var(--color-text-light)]">Spending</p>
-            <p className="text-[18px] font-semibold tabular-nums text-[var(--color-error)]">
+            <p className="text-caption">Spending</p>
+            <p
+              className="text-section-title font-semibold tabular-nums text-[var(--color-error)]"
+              style={{ fontSize: 18 }}
+            >
               {money(spending)}
             </p>
           </div>
         </div>
         <div className="mt-3">
-          <CashFlowBarChart income={income} spending={spending} />
+          <CashFlowMeter income={income} spending={spending} />
         </div>
       </AppCard>
     </div>
@@ -157,15 +163,15 @@ export function FinanceDashboardScreen({
                 className="flex w-full items-center justify-between gap-3 py-2 text-left transition hover:bg-[var(--color-row-hover)]"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-[13px] font-medium text-[var(--color-text-main)]">
+                  <p className="truncate text-body font-medium text-[var(--color-text-main)]">
                     {a.name}
                   </p>
-                  <p className="text-[11px] capitalize text-[var(--color-text-light)]">
+                  <p className="text-caption capitalize">
                     {a.accountType.replace(/_/g, " ")}
                   </p>
                 </div>
                 <span
-                  className={`shrink-0 text-[13px] font-semibold tabular-nums ${
+                  className={`shrink-0 text-section-title tabular-nums ${
                     a.balance < 0 ? "text-[var(--color-error)]" : "text-[var(--color-text-main)]"
                   }`}
                 >
@@ -189,15 +195,15 @@ export function FinanceDashboardScreen({
               {recentTxs.map((t) => (
                 <li key={t.id} className="flex items-center justify-between gap-3 py-2">
                   <div className="min-w-0">
-                    <p className="truncate text-[13px] text-[var(--color-text-main)]">
+                    <p className="truncate text-body text-[var(--color-text-main)]">
                       {t.payee || "Untitled"}
                     </p>
-                    <p className="text-[11px] text-[var(--color-text-light)]">
+                    <p className="text-caption">
                       {new Date(t.postedAt).toLocaleDateString()}
                     </p>
                   </div>
                   <span
-                    className={`shrink-0 text-[13px] font-semibold tabular-nums ${
+                    className={`shrink-0 text-section-title tabular-nums ${
                       t.amount < 0 ? "text-[var(--color-error)]" : "text-[var(--color-success)]"
                     }`}
                   >

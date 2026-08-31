@@ -68,7 +68,7 @@ export function PathingResumePanel({
 
   return (
     <AppCard title="Resume">
-      <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
+      <p className="mb-3 text-meta">
         Choose the vault resume document associated with this path entry.
       </p>
       {resumeDocs.length === 0 ? (

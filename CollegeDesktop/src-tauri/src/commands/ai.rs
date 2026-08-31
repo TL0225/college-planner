@@ -1,9 +1,9 @@
-use crate::ai::{AiRuntimeStatus, ChatCompletionRequest, ChatCompletionResponse};
+use crate::ai::{AiRuntimeStatus, ChatCompletionRequest, ChatCompletionResponse, LlmModelStatus};
 use crate::ai::openai_compat::PingResult;
 use crate::commands::CmdResult;
 use crate::AppState;
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,6 +37,24 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 #[tauri::command]
 pub fn ai_runtime_status(state: State<'_, AppState>) -> AiRuntimeStatus {
     state.ai.status()
+}
+
+#[tauri::command]
+pub fn ai_llm_status(state: State<'_, AppState>) -> LlmModelStatus {
+    state.ai.llm_status()
+}
+
+#[tauri::command]
+pub async fn ai_llm_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<LlmModelStatus> {
+    state
+        .ai
+        .ensure_llm_download(app)
+        .await
+        .map_err(crate::commands::CommandError::from)?;
+    Ok(state.ai.llm_status())
 }
 
 #[tauri::command]

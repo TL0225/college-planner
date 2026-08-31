@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -12,15 +12,17 @@ import {
   MonthGrid,
   SegmentedPills,
   StatusChip,
-  TrailingInspector,
   WeekGrid,
   DayTimeline,
   dateKey,
   fieldControlClass,
+  usePlatform,
 } from "@/design-system";
-import { ipc, formatIpcError } from "@/lib/ipc";
+import { ipc, formatIpcError, type WebcalUrlResult } from "@/lib/ipc";
 import { confirmDelete } from "@/lib/confirm";
 import { showToast } from "@/lib/toast";
+import { navigate } from "@/lib/shellNavigate";
+import { humanLabel } from "@/lib/copy/humanLabels";
 import { useLiveQuery } from "@/lib/useLiveQuery";
 import {
   dayVisibleRange,
@@ -31,14 +33,17 @@ import {
 } from "./expandRecurring";
 import { EVENT_COLOR_PRESETS, resolveEventColor } from "./eventColors";
 import {
-  appleMapsUrl,
   embedGeocodeInNotes,
-  googleMapsUrl,
-  openStreetMapUrl,
   parseGeocodeFromNotes,
-  type GeocodeResult,
 } from "./locationGeocode";
-import { EventLocationMap } from "./EventLocationMap";
+import {
+  CalendarEventPanel,
+  anchorFromElement,
+  type EventPopoverAnchor,
+  type EventFormState,
+} from "./CalendarEventPanel";
+import { parseRecurrence } from "./recurrence";
+import { CalendarPeriodNav } from "./CalendarPeriodNav";
 
 type CalSource = {
   id: string;
@@ -55,6 +60,7 @@ type CalEvent = {
   title: string;
   startAt: string;
   endAt?: string;
+  allDay?: boolean;
   location: string;
   notes?: string;
   provider: string;
@@ -78,6 +84,7 @@ function toLocalInput(iso: string): string {
 }
 
 export function CalendarModule({ page = "month" }: { page?: string }) {
+  const { isMac } = usePlatform();
   const sourceFilterId = page.startsWith("source-") ? page.slice(7) : null;
   const view =
     page === "tasks"
@@ -108,7 +115,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   });
   const [agendaFilter, setAgendaFilter] = useState<"upcoming" | "all">("upcoming");
-  const [eventSheet, setEventSheet] = useState(false);
+  const [eventPopoverAnchor, setEventPopoverAnchor] = useState<EventPopoverAnchor | null>(null);
   const [taskSheet, setTaskSheet] = useState(false);
   const [icsSheet, setIcsSheet] = useState(false);
   const [calendarsSheet, setCalendarsSheet] = useState(false);
@@ -139,20 +146,24 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     writtenAt: string;
   } | null>(null);
   const [appleFeedBusy, setAppleFeedBusy] = useState(false);
+  const [webcalFeed, setWebcalFeed] = useState<WebcalUrlResult | null>(null);
+  const [feedBindMode, setFeedBindMode] = useState<"localhost" | "lan">("localhost");
+  const [webcalBusy, setWebcalBusy] = useState(false);
   const [icsText, setIcsText] = useState("");
   const [icsNote, setIcsNote] = useState<string | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [eventForm, setEventForm] = useState({
+  const [eventForm, setEventForm] = useState<EventFormState>({
     title: "",
     startAt: new Date().toISOString().slice(0, 16),
+    endAt: new Date().toISOString().slice(0, 16),
+    allDay: false,
     location: "",
     color: "",
-    recurrence: "none" as "none" | "weekly" | "monthly",
+    recurrence: "none",
     notes: "",
-    geocode: null as GeocodeResult | null,
+    geocode: null,
   });
-  const [geocodeBusy, setGeocodeBusy] = useState(false);
   const [taskForm, setTaskForm] = useState({
     title: "",
     dueAt: toLocalInput(new Date(Date.now() + 86400000 * 3).toISOString()),
@@ -210,12 +221,22 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    void ipc.calendarGetFeedBindMode().then((mode) => {
+      if (mode === "lan" || mode === "localhost") setFeedBindMode(mode);
+    });
+  }, []);
+
   const sourceById = useMemo(() => new Map(sources.map((s) => [s.id, s])), [sources]);
 
   const enabledSourceIds = useMemo(
     () => new Set(sources.filter((s) => s.isEnabled).map((s) => s.id)),
     [sources],
   );
+
+  const calendarSurfaceRef = useRef<HTMLDivElement>(null);
+
+  const DEFAULT_EVENT_COLOR = "#a6813f";
 
   const resolveDisplayColor = useCallback(
     (event: CalEvent | CalendarEventOccurrence) => {
@@ -225,7 +246,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
         const source = sourceById.get(sourceId);
         if (source?.color) return resolveEventColor(source.color);
       }
-      return undefined;
+      return DEFAULT_EVENT_COLOR;
     },
     [sourceById],
   );
@@ -273,12 +294,13 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
   }, [displayEvents, tasks]);
 
   const labelsByDay = useMemo(() => {
-    const map = new Map<string, Array<{ title: string; color?: string }>>();
+    const map = new Map<string, Array<{ id: string; title: string; color?: string }>>();
     for (const e of displayEvents) {
       const key = dateKey(new Date(e.startAt));
       const list = map.get(key) ?? [];
-      if (list.length < 2) {
+      if (list.length < 3) {
         list.push({
+          id: e.occurrenceId,
           title: e.title,
           color: resolveDisplayColor(e),
         });
@@ -309,20 +331,6 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     }
     return map;
   }, [displayEvents, resolveDisplayColor]);
-
-  const dayEvents = useMemo(() => {
-    if (!selectedDay) return [];
-    const key = dateKey(selectedDay);
-    return displayEvents
-      .filter((e) => dateKey(new Date(e.startAt)) === key)
-      .sort((a, b) => a.startAt.localeCompare(b.startAt));
-  }, [displayEvents, selectedDay]);
-
-  const dayTasks = useMemo(() => {
-    if (!selectedDay) return [];
-    const key = dateKey(selectedDay);
-    return tasks.filter((t) => t.dueAt && dateKey(new Date(t.dueAt)) === key);
-  }, [tasks, selectedDay]);
 
   const agendaEvents = useMemo(() => {
     const sorted = [...visibleEvents].sort((a, b) => a.startAt.localeCompare(b.startAt));
@@ -474,7 +482,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     try {
       const result = await ipc.calendarPublishSubscribeFeed();
       setAppleFeed(result);
-      showToast(`Published ${result.eventCount} events to subscribe feed`, "success");
+      showToast(`Saved local ICS feed (${result.eventCount} events)`, "success");
     } catch (e) {
       showToast(formatIpcError(e), "error");
     } finally {
@@ -483,6 +491,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
   };
 
   const openAppleCalendar = async () => {
+    if (!isMac) return;
     setAppleFeedBusy(true);
     try {
       const result = await ipc.calendarOpenAppleCalendarFeed();
@@ -511,42 +520,170 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     }
   };
 
-  const openAddEventForDay = () => {
-    const base = selectedDay ?? new Date();
-    const local = new Date(base);
-    local.setHours(9, 0, 0, 0);
-    const isoLocal = new Date(local.getTime() - local.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    setEditingEventId(null);
-    setEventForm({
-      title: "",
-      startAt: isoLocal,
-      location: "",
-      color: "",
-      recurrence: "none",
-      notes: "",
-      geocode: null,
-    });
-    setEventSheet(true);
+  const startWebcalFeed = async () => {
+    setWebcalBusy(true);
+    try {
+      const result = await ipc.calendarGetWebcalUrl();
+      setWebcalFeed(result);
+      showToast("Live webcal feed is running", "success");
+    } catch (e) {
+      showToast(formatIpcError(e), "error");
+    } finally {
+      setWebcalBusy(false);
+    }
   };
 
-  const openEditEvent = (e: CalendarEventOccurrence | CalEvent) => {
+  const copyWebcalUrl = async (url?: string) => {
+    const target = url ?? webcalFeed?.url;
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target);
+      showToast("Webcal URL copied", "success");
+    } catch (e) {
+      showToast(formatIpcError(e), "error");
+    }
+  };
+
+  const setFeedBind = async (mode: "localhost" | "lan") => {
+    try {
+      await ipc.calendarSetFeedBindMode(mode);
+      setFeedBindMode(mode);
+      setWebcalFeed(null);
+      showToast(
+        mode === "lan"
+          ? "LAN mode set — restart the webcal feed to listen on your network"
+          : "Localhost mode set — restart the webcal feed",
+        "success",
+      );
+    } catch (e) {
+      showToast(formatIpcError(e), "error");
+    }
+  };
+
+  const closeEventPopover = () => {
+    setEventPopoverAnchor(null);
+    setEditingEventId(null);
+  };
+
+  const resetEventForm = (): EventFormState => ({
+    title: "",
+    startAt: new Date().toISOString().slice(0, 16),
+    endAt: new Date().toISOString().slice(0, 16),
+    allDay: false,
+    location: "",
+    color: "",
+    recurrence: "none",
+    notes: "",
+    geocode: null,
+  });
+
+  const toFormDateTime = (iso: string, allDay?: boolean) => {
+    if (allDay) return iso.slice(0, 10);
+    return toLocalInput(iso);
+  };
+
+  const saveEvent = async () => {
+    try {
+      const wasEdit = Boolean(editingEventId);
+      const startIso = eventForm.allDay
+        ? new Date(`${eventForm.startAt.slice(0, 10)}T00:00:00`).toISOString()
+        : new Date(eventForm.startAt).toISOString();
+      const endRaw = eventForm.endAt || eventForm.startAt;
+      const endIso = eventForm.allDay
+        ? new Date(`${endRaw.slice(0, 10)}T23:59:59`).toISOString()
+        : new Date(endRaw).toISOString();
+      await ipc.calendarUpsertEvent({
+        id: editingEventId ?? undefined,
+        title: eventForm.title.trim(),
+        startAt: startIso,
+        endAt: endIso,
+        allDay: eventForm.allDay,
+        location: eventForm.location.trim() || undefined,
+        color: eventForm.color || undefined,
+        recurrence: eventForm.recurrence,
+        notes: embedGeocodeInNotes(eventForm.notes, eventForm.geocode) || undefined,
+      });
+      closeEventPopover();
+      setEventForm(resetEventForm());
+      showToast(wasEdit ? "Event updated" : "Event saved", "success");
+    } catch (e) {
+      showToast(formatIpcError(e), "error");
+    }
+  };
+
+  const openAddEventForDay = (
+    day?: Date,
+    anchor?: EventPopoverAnchor,
+    hour?: number,
+  ) => {
+    const base = day ?? selectedDay ?? new Date();
+    const local = new Date(base);
+    if (hour === -1) {
+      local.setHours(0, 0, 0, 0);
+      const dateStr = local.toISOString().slice(0, 10);
+      setEditingEventId(null);
+      setEventForm({
+        ...resetEventForm(),
+        allDay: true,
+        startAt: dateStr,
+        endAt: dateStr,
+      });
+    } else {
+      if (hour !== undefined && hour >= 0) local.setHours(hour, 0, 0, 0);
+      else local.setHours(9, 0, 0, 0);
+      const isoLocal = new Date(local.getTime() - local.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      const endLocal = new Date(local.getTime() + 60 * 60 * 1000);
+      const endIsoLocal = new Date(endLocal.getTime() - endLocal.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      setEditingEventId(null);
+      setEventForm({
+        ...resetEventForm(),
+        startAt: isoLocal,
+        endAt: endIsoLocal,
+      });
+    }
+    setEventPopoverAnchor(
+      anchor ??
+        (calendarSurfaceRef.current
+          ? anchorFromElement(calendarSurfaceRef.current)
+          : { x: window.innerWidth / 2 - 180, y: 140, width: 200, height: 48 }),
+    );
+  };
+
+  const openEditEvent = (
+    e: CalendarEventOccurrence | CalEvent,
+    anchor?: EventPopoverAnchor,
+  ) => {
     const baseId = "baseId" in e ? e.baseId : e.id;
     const base = eventById.get(baseId) ?? e;
     const notes = "notes" in base ? base.notes ?? "" : "";
     const { geocode, userNotes } = parseGeocodeFromNotes(notes);
+    const allDay = Boolean("allDay" in base && base.allDay);
     setEditingEventId(baseId);
     setEventForm({
       title: base.title,
-      startAt: toLocalInput(base.startAt),
+      startAt: toFormDateTime(base.startAt, allDay),
+      endAt: toFormDateTime(base.endAt ?? base.startAt, allDay),
+      allDay,
       location: base.location || "",
       color: base.color || "",
-      recurrence: (base.recurrence as "none" | "weekly" | "monthly") || "none",
+      recurrence: parseRecurrence(base.recurrence),
       notes: userNotes,
       geocode,
     });
-    setEventSheet(true);
+    setEventPopoverAnchor(
+      anchor ?? { x: window.innerWidth / 2 - 180, y: 140, width: 200, height: 48 },
+    );
+  };
+
+  const handleSelectEvent = (occurrenceId: string, anchor: EventPopoverAnchor) => {
+    const ev = displayEvents.find((e) => e.occurrenceId === occurrenceId);
+    if (!ev) return;
+    setSelectedDay(new Date(ev.startAt));
+    openEditEvent(ev, anchor);
   };
 
   const openAddTask = () => {
@@ -579,100 +716,18 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
     return () => window.removeEventListener("college:quick-add", onQuick);
   }, []);
 
-  const dayInspector = selectedDay ? (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-[var(--color-chrome-stroke)] px-4 py-3">
-        <h3
-          className="text-[var(--color-text-main)]"
-          style={{ font: "var(--type-section-title)", fontSize: 15, letterSpacing: "-0.015em" }}
-        >
-          {selectedDay.toLocaleDateString(undefined, {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          })}
-        </h3>
-        <p className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
-          {dayEvents.length} event{dayEvents.length === 1 ? "" : "s"} · {dayTasks.length} task
-          {dayTasks.length === 1 ? "" : "s"}
-        </p>
-      </div>
-      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
-      <div>
-        <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--color-text-light)]">
-          Events
-        </div>
-        {dayEvents.length === 0 ? (
-          <p className="text-[12px] text-[var(--color-text-light)]">Nothing scheduled.</p>
-        ) : (
-          <ul className="divide-y divide-[var(--color-chrome-stroke)]">
-            {dayEvents.map((e) => (
-              <li key={e.occurrenceId}>
-                <ListRow
-                  title={e.title}
-                  subtitle={`${new Date(e.startAt).toLocaleTimeString(undefined, {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}${e.location ? ` · ${e.location}` : ""}`}
-                  onClick={() => openEditEvent(e)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {dayTasks.length > 0 && (
-        <div>
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.07em] text-[var(--color-text-light)]">
-            Tasks due
-          </div>
-          <ul className="divide-y divide-[var(--color-chrome-stroke)]">
-            {dayTasks.map((t) => (
-              <li key={t.id}>
-                <ListRow
-                  title={t.title}
-                  trailing={t.isComplete ? "Done" : "Open"}
-                  onClick={() => openEditTask(t)}
-                />
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      </div>
-      <div className="flex flex-wrap gap-2 border-t border-[var(--color-chrome-stroke)] p-3">
-        <Button size="sm" onClick={openAddEventForDay}>
-          Add event
-        </Button>
-        {dayEvents[0] && (
-          <Button size="sm" variant="secondary" onClick={() => openEditEvent(dayEvents[0]!)}>
-            Edit first
-          </Button>
-        )}
-        {dayEvents[0] && (
-          <Button
-            size="sm"
-            variant="danger"
-            onClick={async () => {
-              const ev = dayEvents[0]!;
-              if (!confirmDelete(ev.title || "event")) return;
-              try {
-                await ipc.calendarDeleteEvent(ev.baseId);
-                showToast("Event deleted", "success");
-              } catch (e) {
-                showToast(formatIpcError(e), "error");
-              }
-            }}
-          >
-            Delete first
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => setSelectedDay(null)}>
-          Close
-        </Button>
-      </div>
-    </div>
-  ) : null;
+  const goToToday = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    setSelectedDay(today);
+    if (view === "month") {
+      setCursor(new Date(now.getFullYear(), now.getMonth(), 1));
+    } else if (view === "week") {
+      setWeekAnchor(now);
+    } else if (view === "day") {
+      setDayCursor(today);
+    }
+  };
 
   const title =
     view === "month"
@@ -686,9 +741,10 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
             : "Tasks";
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <AppPageHeader
         title={title}
+        showsTitle={view !== "month" && view !== "week" && view !== "day"}
         leading={
           view === "agenda" ? (
             <SegmentedPills
@@ -701,8 +757,22 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
             />
           ) : undefined
         }
+        center={
+          view === "month" || view === "week" || view === "day" ? (
+            <CalendarPeriodNav
+              view={view}
+              cursor={cursor}
+              weekAnchor={weekAnchor}
+              dayCursor={dayCursor}
+              onMonthChange={setCursor}
+              onWeekChange={setWeekAnchor}
+              onDayChange={setDayCursor}
+              onSelectToday={goToToday}
+            />
+          ) : undefined
+        }
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <Button size="sm" variant="secondary" onClick={() => void refresh()}>
               Refresh
             </Button>
@@ -753,11 +823,11 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
           </div>
         }
       />
-      {error && <p className="px-3 text-[12px] text-[var(--color-error)]">{error}</p>}
+      {error && <p className="px-3 text-meta text-[var(--color-error)]">{error}</p>}
 
       {sources.length > 0 && view !== "tasks" && (
         <div className="flex flex-wrap items-center gap-2 px-3 pb-2">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--color-text-light)]">
+          <span className="text-label font-semibold uppercase tracking-[0.06em]">
             Calendars
           </span>
           {sources.map((source) => {
@@ -768,7 +838,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                 type="button"
                 title={source.isEnabled ? `Hide ${source.name}` : `Show ${source.name}`}
                 onClick={() => void toggleSourceEnabled(source)}
-                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-label transition-colors ${
                   source.isEnabled
                     ? "border-[var(--color-chrome-stroke)] bg-[var(--color-content-surface)] text-[var(--color-text-main)]"
                     : "border-[var(--color-chrome-stroke)] bg-transparent text-[var(--color-text-light)] opacity-60"
@@ -781,7 +851,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                   style={
                     swatch
                       ? { backgroundColor: swatch }
-                      : { background: "var(--color-primary-soft)" }
+                      : { background: "color-mix(in srgb, var(--registrar-accent) 30%, transparent)" }
                   }
                 />
                 {source.name}
@@ -790,7 +860,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
           })}
           <button
             type="button"
-            className="rounded-full border border-dashed border-[var(--color-chrome-stroke)] px-2.5 py-1 text-[11px] font-medium text-[var(--color-text-light)] transition-colors hover:bg-[var(--color-row-hover)] hover:text-[var(--color-text-main)]"
+            className="rounded-full border border-dashed border-[var(--color-chrome-stroke)] px-2.5 py-1 text-label text-[var(--color-text-light)] transition-colors hover:bg-[var(--color-row-hover)] hover:text-[var(--color-text-main)]"
             onClick={() => {
               setSourceSyncNote(null);
               setCalendarsSheet(true);
@@ -801,59 +871,56 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden px-3 pb-3">
+      <div ref={calendarSurfaceRef} className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2">
         {view === "month" && (
-          <TrailingInspector
-            open={!!selectedDay}
-            main={
-              <div className="h-full p-3">
-              <MonthGrid
-                cursor={cursor}
-                selected={selectedDay}
-                countsByDay={countsByDay}
-                labelsByDay={labelsByDay}
-                onCursorChange={setCursor}
-                onSelectDay={setSelectedDay}
-              />
-              </div>
-            }
-          >
-            {dayInspector}
-          </TrailingInspector>
+          <div className="relative min-h-0 flex-1">
+            <MonthGrid
+              cursor={cursor}
+              selected={selectedDay}
+              countsByDay={countsByDay}
+              labelsByDay={labelsByDay}
+              onSelectDay={(day, anchor) => {
+                setSelectedDay(day);
+                openAddEventForDay(day, anchor);
+              }}
+              onSelectEvent={handleSelectEvent}
+            />
+          </div>
         )}
 
         {view === "week" && (
-          <TrailingInspector
-            open={!!selectedDay}
-            main={
-              <div className="h-full p-3">
-              <WeekGrid
-                anchor={weekAnchor}
-                selected={selectedDay}
-                eventsByDay={eventsByDay}
-                onAnchorChange={setWeekAnchor}
-                onSelectDay={setSelectedDay}
-              />
-              </div>
-            }
-          >
-            {dayInspector}
-          </TrailingInspector>
+          <div className="relative min-h-0 flex-1">
+            <WeekGrid
+              anchor={weekAnchor}
+              selected={selectedDay}
+              eventsByDay={eventsByDay}
+              onSelectDay={(day, anchor) => {
+                setSelectedDay(day);
+                openAddEventForDay(day, anchor);
+              }}
+              onSelectEvent={handleSelectEvent}
+            />
+          </div>
         )}
 
         {view === "day" && (
-          <div className="min-h-0 flex-1 p-3">
+          <div className="relative min-h-0 flex-1">
             <DayTimeline
               day={dayCursor}
               items={[
-                ...expandRecurringEvents(visibleEvents, ...dayVisibleRange(dayCursor)).map((e) => ({
-                  id: e.occurrenceId,
-                  title: e.title,
-                  startAt: e.startAt,
-                  location: e.location,
-                  kind: "event" as const,
-                  color: resolveDisplayColor(e),
-                })),
+                ...expandRecurringEvents(visibleEvents, ...dayVisibleRange(dayCursor)).map((e) => {
+                  const base = eventById.get(e.baseId);
+                  return {
+                    id: e.occurrenceId,
+                    title: e.title,
+                    startAt: e.startAt,
+                    endAt: e.endAt ?? base?.endAt,
+                    location: e.location,
+                    kind: "event" as const,
+                    color: resolveDisplayColor(e),
+                    allDay: base?.allDay ?? e.allDay,
+                  };
+                }),
                 ...tasks
                   .filter((t) => t.dueAt)
                   .map((t) => ({
@@ -863,20 +930,11 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                     kind: "task" as const,
                   })),
               ]}
-              onPrev={() => {
-                const d = new Date(dayCursor);
-                d.setDate(d.getDate() - 1);
-                setDayCursor(d);
+              onSelectSlot={(hour, anchor) => {
+                setSelectedDay(dayCursor);
+                openAddEventForDay(dayCursor, anchor, hour);
               }}
-              onNext={() => {
-                const d = new Date(dayCursor);
-                d.setDate(d.getDate() + 1);
-                setDayCursor(d);
-              }}
-              onToday={() => {
-                const now = new Date();
-                setDayCursor(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-              }}
+              onSelectEvent={handleSelectEvent}
             />
           </div>
         )}
@@ -894,7 +952,12 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                       subtitle={`${new Date(e.startAt).toLocaleString()} · ${e.provider}${
                         e.location ? ` · ${e.location}` : ""
                       }`}
-                      onClick={() => openEditEvent(e)}
+                      onClick={() => {
+                        const anchor = calendarSurfaceRef.current
+                          ? anchorFromElement(calendarSurfaceRef.current)
+                          : undefined;
+                        openEditEvent(e, anchor);
+                      }}
                     />
                   </li>
                 ))}
@@ -906,9 +969,10 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
         {view === "tasks" && (
           <>
             <AppCard title="Study focus">
-              <p className="mb-3 text-[12px] text-[var(--color-text-light)]">
-                Saved focus blocks persist across sessions (Swift parity). Suggestions from open
-                tasks appear below when you have none saved.
+              <p className="mb-3 text-meta">
+                Saved focus blocks persist across sessions. Suggestions from open tasks appear below
+                when you have none saved. On desktop, these are local reminders only — OS Do Not
+                Disturb is not enabled yet.
               </p>
               <div className="mb-3 flex flex-wrap gap-2">
                 <input
@@ -965,8 +1029,8 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                       className="flex items-center justify-between rounded-[10px] border border-[var(--color-chrome-stroke)] px-3 py-2"
                     >
                       <div>
-                        <div className="text-[13px] font-medium">{b.title}</div>
-                        <div className="text-[11px] text-[var(--color-text-light)]">
+                        <div className="text-body font-medium">{b.title}</div>
+                        <div className="text-caption">
                           {b.durationMinutes} min
                         </div>
                       </div>
@@ -975,8 +1039,13 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                         variant="ghost"
                         onClick={async () => {
                           if (!confirmDelete(b.title)) return;
-                          await ipc.calendarDeleteFocusBlock(b.id);
-                          await refresh();
+                          try {
+                            await ipc.calendarDeleteFocusBlock(b.id);
+                            await refresh();
+                            showToast("Focus block deleted", "success");
+                          } catch (err) {
+                            showToast(formatIpcError(err), "error");
+                          }
                         }}
                       >
                         Delete
@@ -1001,6 +1070,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                   ...open.slice(0, 3).map((t) => ({
                     key: t.id,
                     title: t.title,
+                    durationMinutes: 45,
                     subtitle: t.dueAt
                       ? `Due ${new Date(t.dueAt).toLocaleDateString()} · 45 min focus`
                       : "45 min focus block",
@@ -1009,6 +1079,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                   ...todayEvents.slice(0, 2).map((e) => ({
                     key: e.id,
                     title: e.title,
+                    durationMinutes: 45,
                     subtitle: `${new Date(e.startAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · review / prep`,
                     tint: "var(--color-primary)",
                   })),
@@ -1016,17 +1087,29 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                 if (blocks.length === 0) return null;
                 return (
                   <ul className="space-y-2">
-                    <li className="text-[11px] font-semibold uppercase text-[var(--color-text-light)]">
+                    <li className="text-label font-semibold uppercase">
                       Suggested
                     </li>
                     {blocks.map((b) => (
                       <li
                         key={b.key}
-                        className="flex items-center justify-between rounded-[10px] border border-dashed border-[var(--color-chrome-stroke)] px-3 py-2"
+                        className="flex cursor-pointer items-center justify-between rounded-[10px] border border-dashed border-[var(--color-chrome-stroke)] px-3 py-2 transition-colors hover:bg-[var(--color-content-surface)]"
+                        onClick={async () => {
+                          try {
+                            await ipc.calendarUpsertFocusBlock({
+                              title: b.title,
+                              durationMinutes: b.durationMinutes,
+                            });
+                            await refresh();
+                            showToast("Focus block saved", "success");
+                          } catch (err) {
+                            showToast(formatIpcError(err), "error");
+                          }
+                        }}
                       >
                         <div className="min-w-0">
-                          <div className="truncate text-[13px] font-medium">{b.title}</div>
-                          <div className="text-[11px] text-[var(--color-text-light)]">{b.subtitle}</div>
+                          <div className="truncate text-body font-medium">{b.title}</div>
+                          <div className="text-caption">{b.subtitle}</div>
                         </div>
                         <StatusChip title="Suggested" tint={b.tint} />
                       </li>
@@ -1058,7 +1141,13 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                           t.dueAt ? `Due ${new Date(t.dueAt).toLocaleDateString()}` : undefined
                         }
                         trailing={t.isComplete ? "Done" : "Mark done"}
-                        onClick={() => void ipc.calendarToggleTaskComplete(t.id)}
+                        onClick={async () => {
+                          try {
+                            await ipc.calendarToggleTaskComplete(t.id);
+                          } catch (e) {
+                            showToast(formatIpcError(e), "error");
+                          }
+                        }}
                       />
                     </div>
                     <Button
@@ -1089,155 +1178,6 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
           </>
         )}
       </div>
-
-      <ModalSheet
-        open={eventSheet}
-        onOpenChange={setEventSheet}
-        title={editingEventId ? "Edit event" : "Add event"}
-      >
-        <div className="space-y-3">
-          <FormField label="Title">
-            <input
-              className={fieldControlClass}
-              value={eventForm.title}
-              onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
-            />
-          </FormField>
-          <FormField label="Starts">
-            <input
-              className={fieldControlClass}
-              type="datetime-local"
-              value={eventForm.startAt}
-              onChange={(e) => setEventForm({ ...eventForm, startAt: e.target.value })}
-            />
-          </FormField>
-          <FormField label="Location">
-            <div className="flex gap-2">
-              <input
-                className={`${fieldControlClass} min-w-0 flex-1`}
-                value={eventForm.location}
-                onChange={(e) =>
-                  setEventForm({ ...eventForm, location: e.target.value, geocode: null })
-                }
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!eventForm.location.trim() || geocodeBusy}
-                onClick={async () => {
-                  const query = eventForm.location.trim();
-                  if (!query) return;
-                  setGeocodeBusy(true);
-                  try {
-                    const result = await ipc.calendarGeocodeLocation(query);
-                    setEventForm((prev) => ({
-                      ...prev,
-                      geocode: {
-                        lat: result.lat,
-                        lon: result.lon,
-                        displayName: result.displayName,
-                      },
-                    }));
-                    showToast("Location resolved", "success");
-                  } catch (e) {
-                    showToast(formatIpcError(e), "error");
-                  } finally {
-                    setGeocodeBusy(false);
-                  }
-                }}
-              >
-                {geocodeBusy ? "Looking up…" : "Look up location"}
-              </Button>
-            </div>
-          </FormField>
-          {eventForm.location.trim() && (
-            <LocationMapPreview
-              query={eventForm.location.trim()}
-              geocode={eventForm.geocode}
-            />
-          )}
-          <FormField label="Color">
-            <div className="flex flex-wrap gap-2">
-              {EVENT_COLOR_PRESETS.map((preset) => {
-                const swatch = "hex" in preset ? preset.hex : undefined;
-                const selected = eventForm.color === preset.id;
-                return (
-                  <button
-                    key={preset.id || "default"}
-                    type="button"
-                    title={preset.label}
-                    onClick={() => setEventForm({ ...eventForm, color: preset.id })}
-                    className={`h-7 w-7 rounded-full border-2 transition-transform ${
-                      selected
-                        ? "scale-110 border-[var(--color-text-main)]"
-                        : "border-transparent hover:scale-105"
-                    }`}
-                    style={
-                      swatch
-                        ? { backgroundColor: swatch }
-                        : {
-                            background:
-                              "linear-gradient(135deg, var(--color-primary-soft), var(--color-content-surface))",
-                            border: "1px solid var(--color-chrome-stroke)",
-                          }
-                    }
-                  />
-                );
-              })}
-            </div>
-          </FormField>
-          <FormField label="Repeats">
-            <select
-              className={fieldControlClass}
-              value={eventForm.recurrence}
-              onChange={(e) =>
-                setEventForm({
-                  ...eventForm,
-                  recurrence: e.target.value as "none" | "weekly" | "monthly",
-                })
-              }
-            >
-              <option value="none">Does not repeat</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </FormField>
-          <Button
-            disabled={!eventForm.title.trim()}
-            onClick={async () => {
-              try {
-                const wasEdit = Boolean(editingEventId);
-                await ipc.calendarUpsertEvent({
-                  id: editingEventId ?? undefined,
-                  title: eventForm.title.trim(),
-                  startAt: new Date(eventForm.startAt).toISOString(),
-                  location: eventForm.location.trim() || undefined,
-                  color: eventForm.color || undefined,
-                  recurrence: eventForm.recurrence,
-                  notes: embedGeocodeInNotes(eventForm.notes, eventForm.geocode) || undefined,
-                });
-                setEventSheet(false);
-                setEditingEventId(null);
-                setEventForm({
-                  title: "",
-                  startAt: new Date().toISOString().slice(0, 16),
-                  location: "",
-                  color: "",
-                  recurrence: "none",
-                  notes: "",
-                  geocode: null,
-                });
-                showToast(wasEdit ? "Event updated" : "Event saved", "success");
-              } catch (e) {
-                showToast(formatIpcError(e), "error");
-              }
-            }}
-          >
-            Save event
-          </Button>
-        </div>
-      </ModalSheet>
 
       <ModalSheet
         open={taskSheet}
@@ -1289,36 +1229,112 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
 
       <ModalSheet open={calendarsSheet} onOpenChange={setCalendarsSheet} title="Calendars">
         <div className="space-y-4">
-          <p className="text-[12px] text-[var(--color-text-light)]">
+          <p className="text-meta">
             Subscribe to ICS feeds, connect Google or Outlook via OAuth, or manage local calendars.
             Disabled calendars are hidden from month, week, and day views.
           </p>
 
-          <AppCard title="Apple Calendar (EventKit substitute)">
+          <AppCard title={isMac ? "Add to Apple Calendar" : "Add to calendar app"}>
             <div className="space-y-3">
-              <p className="text-[12px] text-[var(--color-text-light)]">
-                Publish a stable ICS feed under your College data folder, then open Calendar.app on
-                macOS to subscribe or import. This replaces native EventKit two-way sync for now.
+              <p className="text-meta">
+                Subscribe to a live webcal feed while College is running, or save a local ICS file
+                under your College data folder for one-time import.
               </p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" disabled={appleFeedBusy} onClick={() => void publishAppleFeed()}>
-                  Publish feed
-                </Button>
-                <Button size="sm" disabled={appleFeedBusy} onClick={() => void openAppleCalendar()}>
-                  Open in Calendar.app
-                </Button>
-                <Button size="sm" variant="secondary" disabled={appleFeedBusy} onClick={() => void watchPublishedFeed()}>
-                  Watch published feed
-                </Button>
-              </div>
-              {appleFeed ? (
-                <p className="text-[11px] text-[var(--color-text-light)]">
-                  {appleFeed.eventCount} events · {appleFeed.path}
-                  {appleFeed.writtenAt
-                    ? ` · updated ${new Date(appleFeed.writtenAt).toLocaleString()}`
-                    : ""}
+              <div className="space-y-2">
+                <p className="text-caption font-medium text-[var(--color-text-main)]">
+                  Live webcal subscription
                 </p>
-              ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <SegmentedPills
+                    value={feedBindMode}
+                    onChange={(mode) => void setFeedBind(mode as "localhost" | "lan")}
+                    options={[
+                      { id: "localhost", label: "This device" },
+                      { id: "lan", label: "LAN devices" },
+                    ]}
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={webcalBusy}
+                    onClick={() => void startWebcalFeed()}
+                  >
+                    {webcalFeed ? "Refresh webcal feed" : "Start webcal feed"}
+                  </Button>
+                  {webcalFeed ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void copyWebcalUrl()}
+                    >
+                      Copy localhost URL
+                    </Button>
+                  ) : null}
+                  {webcalFeed?.lanWebcalUrl ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void copyWebcalUrl(webcalFeed.lanWebcalUrl!)}
+                    >
+                      Copy LAN URL
+                    </Button>
+                  ) : null}
+                </div>
+                {webcalFeed ? (
+                  <div className="space-y-1 break-all text-caption">
+                    <p>
+                      {webcalFeed.url}
+                      <span className="text-meta">
+                        {" "}
+                        · port {webcalFeed.port} · {webcalFeed.bindMode}
+                      </span>
+                    </p>
+                    {webcalFeed.lanWebcalUrl ? (
+                      <p className="text-meta">
+                        LAN ({webcalFeed.localIp}): {webcalFeed.lanWebcalUrl} — allow port{" "}
+                        {webcalFeed.port} through Windows Firewall if phones/tablets cannot subscribe.
+                      </p>
+                    ) : feedBindMode === "lan" ? (
+                      <p className="text-meta">
+                        LAN mode is on but no network IP was detected. Restart the feed after connecting
+                        to Wi‑Fi.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-caption">
+                    Starts a local HTTP server. Use <strong>This device</strong> for same-machine
+                    calendars, or <strong>LAN devices</strong> for phones/tablets on your Wi‑Fi (College
+                    must stay open).
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2 border-t border-[var(--color-chrome-stroke)] pt-3">
+                <p className="text-caption font-medium text-[var(--color-text-main)]">
+                  Local ICS file
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="secondary" disabled={appleFeedBusy} onClick={() => void publishAppleFeed()}>
+                    Save local ICS feed
+                  </Button>
+                  {isMac ? (
+                    <Button size="sm" disabled={appleFeedBusy} onClick={() => void openAppleCalendar()}>
+                      Open in Calendar.app
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="secondary" disabled={appleFeedBusy} onClick={() => void watchPublishedFeed()}>
+                    Re-import saved feed
+                  </Button>
+                </div>
+                {appleFeed ? (
+                  <p className="text-caption">
+                    {appleFeed.eventCount} events · {appleFeed.path}
+                    {appleFeed.writtenAt
+                      ? ` · updated ${new Date(appleFeed.writtenAt).toLocaleString()}`
+                      : ""}
+                  </p>
+                ) : null}
+              </div>
             </div>
           </AppCard>
 
@@ -1340,7 +1356,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
               >
                 {oauthBusy === "push-all" ? "Pushing…" : "Push local events to cloud"}
               </Button>
-              <p className="text-[11px] text-[var(--color-text-light)]">
+              <p className="text-caption">
                 Pull (−7d→+90d) or push College-local events (EventKit write substitute). Tokens refresh
                 automatically.
               </p>
@@ -1352,7 +1368,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                   provider === "google"
                     ? oauthStatus?.googleConfigured
                     : oauthStatus?.outlookConfigured;
-                const label = provider === "google" ? "Google" : "Outlook";
+                const label = provider === "google" ? humanLabel("google") : humanLabel("outlook");
                 const busy = oauthBusy === provider || oauthBusy === `sync-${provider}`;
                 return (
                   <div
@@ -1361,7 +1377,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-medium text-[var(--color-text-main)]">
+                        <span className="text-body font-medium text-[var(--color-text-main)]">
                           {label}
                         </span>
                         {account?.accountEmail ? (
@@ -1369,16 +1385,23 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                         ) : configured ? (
                           <StatusChip title="Not connected" />
                         ) : (
-                          <StatusChip title="Add Client ID in Settings" tint="var(--color-warning)" />
+                          <StatusChip title="Not set up" tint="var(--color-warning)" />
                         )}
                       </div>
                       {!configured && (
-                        <p className="mt-1 text-[11px] text-[var(--color-text-light)]">
-                          Settings → Calendar OAuth → paste your {label} Client ID, then return here.
+                        <p className="mt-1 text-caption">
+                          <button
+                            type="button"
+                            className="text-[var(--color-primary)] hover:underline"
+                            onClick={() => navigate({ hub: "settings", page: "connections" })}
+                          >
+                            Connect {label}
+                          </button>
+                          {" "}to sync your events.
                         </p>
                       )}
                       {account?.lastSyncedAt && (
-                        <p className="mt-0.5 text-[11px] text-[var(--color-text-light)]">
+                        <p className="mt-0.5 text-caption">
                           Last sync {new Date(account.lastSyncedAt).toLocaleString()}
                         </p>
                       )}
@@ -1480,7 +1503,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
             )}
           </AppCard>
           {sourceSyncNote && (
-            <p className="text-[12px] text-[var(--color-text-light)]">{sourceSyncNote}</p>
+            <p className="text-meta">{sourceSyncNote}</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={openAddSource}>
@@ -1490,7 +1513,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
 
           {(showSourceForm || editingSourceId !== null) && (
             <div className="space-y-3 border-t border-[var(--color-chrome-stroke)] pt-4">
-              <h4 className="text-[13px] font-medium text-[var(--color-text-main)]">
+              <h4 className="text-body font-medium text-[var(--color-text-main)]">
                 {editingSourceId ? "Edit calendar" : "New calendar"}
               </h4>
               <FormField label="Name">
@@ -1530,7 +1553,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
                   placeholder="https://calendar.google.com/calendar/ical/…"
                 />
               </FormField>
-              <label className="flex items-center gap-2 text-[12px] text-[var(--color-text-main)]">
+              <label className="flex items-center gap-2 text-meta text-[var(--color-text-main)]">
                 <input
                   type="checkbox"
                   checked={sourceForm.isEnabled}
@@ -1602,7 +1625,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
 
       <ModalSheet open={icsSheet} onOpenChange={setIcsSheet} title="Import ICS">
         <div className="space-y-3">
-          <p className="text-[12px] text-[var(--color-text-light)]">
+          <p className="text-meta">
             Choose a `.ics` file or paste VEVENT text. Rows need SUMMARY + DTSTART.
           </p>
           <Button
@@ -1635,7 +1658,7 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
               placeholder={"BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:Office hours\nDTSTART:20260301T150000Z\nEND:VEVENT\nEND:VCALENDAR"}
             />
           </FormField>
-          {icsNote && <p className="text-[12px] text-[var(--color-text-light)]">{icsNote}</p>}
+          {icsNote && <p className="text-meta">{icsNote}</p>}
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!icsText.trim()}
@@ -1671,89 +1694,33 @@ export function CalendarModule({ page = "month" }: { page?: string }) {
           </div>
         </div>
       </ModalSheet>
-    </div>
-  );
-}
 
-function LocationMapPreview({
-  query,
-  geocode,
-}: {
-  query: string;
-  geocode?: GeocodeResult | null;
-}) {
-  const displayLabel = geocode?.displayName ?? query;
-  const appleUrl = appleMapsUrl(query, geocode);
-  const googleUrl = googleMapsUrl(query, geocode);
-  const osmUrl = openStreetMapUrl(query, geocode);
-
-  return (
-    <div className="overflow-hidden rounded-[12px] border border-[var(--color-chrome-stroke)]">
-      {geocode && (
-        <div className="border-b border-[var(--color-chrome-stroke)]">
-          <EventLocationMap geocode={geocode} />
-        </div>
+      {eventPopoverAnchor && (
+        <CalendarEventPanel
+          anchor={eventPopoverAnchor}
+          title={editingEventId ? "Edit event" : "Add event"}
+          form={eventForm}
+          onChange={setEventForm}
+          editing={Boolean(editingEventId)}
+          onSave={() => void saveEvent()}
+          onDelete={
+            editingEventId
+              ? async () => {
+                  if (!confirmDelete(eventForm.title || "event")) return;
+                  try {
+                    await ipc.calendarDeleteEvent(editingEventId);
+                    closeEventPopover();
+                    setEventForm(resetEventForm());
+                    showToast("Event deleted", "success");
+                  } catch (e) {
+                    showToast(formatIpcError(e), "error");
+                  }
+                }
+              : undefined
+          }
+          onClose={closeEventPopover}
+        />
       )}
-      <div
-        className="px-3 py-3"
-        style={
-          geocode
-            ? undefined
-            : {
-                background:
-                  "linear-gradient(145deg, color-mix(in srgb, var(--color-primary) 12%, var(--color-surface)), color-mix(in srgb, var(--color-success) 6%, var(--color-content-surface)))",
-              }
-        }
-      >
-        {!geocode && (
-          <div className="relative px-1 py-2">
-            <div
-              className="pointer-events-none absolute inset-0 opacity-[0.12]"
-              style={{
-                backgroundImage:
-                  "linear-gradient(var(--color-chrome-stroke) 1px, transparent 1px), linear-gradient(90deg, var(--color-chrome-stroke) 1px, transparent 1px)",
-                backgroundSize: "24px 24px",
-              }}
-            />
-            <div className="relative flex items-start gap-3">
-              <span
-                className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--color-chrome-stroke)] bg-[var(--color-surface)] text-[13px] font-semibold text-[var(--color-primary)]"
-                aria-hidden
-              >
-                ⌖
-              </span>
-              <p className="text-[11px] text-[var(--color-text-light)]">
-                Look up the address to show an OpenStreetMap preview.
-              </p>
-            </div>
-          </div>
-        )}
-        <div className={geocode ? "" : "relative mt-1"}>
-          <p className="text-[13px] font-semibold text-[var(--color-text-main)]">{displayLabel}</p>
-          {geocode && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <StatusChip title={`${geocode.lat.toFixed(5)}° lat`} />
-              <StatusChip title={`${geocode.lon.toFixed(5)}° lon`} />
-            </div>
-          )}
-          {geocode && (
-            <p className="mt-1.5 text-[11px] text-[var(--color-text-light)]">
-              OpenStreetMap preview — open in a map app for turn-by-turn directions.
-            </p>
-          )}
-          <div className="mt-2.5 flex flex-wrap gap-1.5">
-            <Button size="sm" variant="secondary" onClick={() => void openUrl(appleUrl)}>
-              Apple Maps
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => void openUrl(googleUrl)}>
-              Google Maps
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => void openUrl(osmUrl)}>
-              OpenStreetMap
-            </Button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

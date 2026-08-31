@@ -1,8 +1,8 @@
 //! Credential store + biometric auth behind shared traits.
 //! Windows: DPAPI + Windows Hello
-//! macOS: Keychain + Touch ID
+//! macOS: Keychain + Touch ID / LocalAuthentication
 
-mod traits;
+pub mod traits;
 
 #[cfg(target_os = "macos")]
 mod keychain_macos;
@@ -17,9 +17,9 @@ use std::sync::Arc;
 use traits::{BiometricAuthenticator, CredentialStore};
 
 #[cfg(target_os = "macos")]
-use keychain_macos::{MacBiometric, MacKeychainStore};
+use keychain_macos::MacKeychainStore;
 #[cfg(target_os = "windows")]
-use dpapi_windows::{WindowsBiometric, WindowsCredentialStore};
+use dpapi_windows::WindowsCredentialStore;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,11 +56,11 @@ impl SecurityService {
         let biometrics: Box<dyn BiometricAuthenticator> = {
             #[cfg(target_os = "macos")]
             {
-                Box::new(MacBiometric::new())
+                Box::new(crate::platform::macos::MacLocalAuthBiometric::new())
             }
             #[cfg(target_os = "windows")]
             {
-                Box::new(WindowsBiometric::new())
+                Box::new(crate::platform::windows::WindowsHelloBiometric::new())
             }
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             {

@@ -537,7 +537,12 @@ pub fn import_swift_workspace_inner(
 
     let same_as_live = canonical_path(&src) == canonical_path(&paths.college_db_path);
 
-    let _backup = backup_college_db(db, &paths.college_db_path, &paths.backups_dir)?;
+    let _backup = backup_college_db(
+        db,
+        &paths.college_db_path,
+        &paths.vault_dir,
+        &paths.backups_dir,
+    )?;
     let temp = copy_to_temp(&src, "swift")?;
     let attach_uri = format!(
         "file:{}?mode=ro",
